@@ -13,9 +13,12 @@
     "test": "jest"
   },
   "dependencies": {
-    "@wilsonzlin/crawler-toolkit": "^0.2.0",
+    "@types/luxon": "^3.4.2",
+    "@wilsonzlin/crawler-toolkit": "^0.3.0",
     "@wzlin/valid": "^0.4.0",
-    "better-sqlite3": "^9.4.5"
+    "better-sqlite3": "^9.4.5",
+    "luxon": "^3.4.4",
+    "pino": "^8.19.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.9",
