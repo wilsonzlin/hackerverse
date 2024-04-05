@@ -1,0 +1,30 @@
+{
+  "name": "hndr",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wilsonzlin/hndr.git"
+  },
+  "author": "Wilson Lin <npm@wilsonl.in>",
+  "scripts": {
+    "build-crawler": "esbuild --bundle --legal-comments=none --minify --outdir=dist/hn-crawler --platform=node --sourcemap=inline src/hn-crawler/main.ts",
+    "clean": "rm -rf dist",
+    "format": "prettier --write src",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@wilsonzlin/crawler-toolkit": "^0.2.0",
+    "@wzlin/valid": "^0.4.0",
+    "better-sqlite3": "^9.4.5"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.9",
+    "@types/jest": "^29.5.12",
+    "esbuild": "^0.20.2",
+    "jest": "^29.7.0",
+    "prettier": "3.2.5",
+    "prettier-plugin-organize-imports": "3.2.4",
+    "ts-jest": "^29.1.2",
+    "typescript": "^5.4.4"
+  }
+}

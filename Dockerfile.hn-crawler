@@ -1,0 +1,6 @@
+FROM node:21
+
+WORKDIR /app
+COPY dist dist
+
+CMD node dist/hn-crawler/main
