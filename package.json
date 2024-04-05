@@ -7,7 +7,7 @@
   },
   "author": "Wilson Lin <npm@wilsonl.in>",
   "scripts": {
-    "build-crawler": "esbuild --bundle --legal-comments=none --minify --outdir=dist/hn-crawler --platform=node --sourcemap=inline src/hn-crawler/main.ts",
+    "build-hn-crawler": "esbuild --bundle --external:better-sqlite3 --legal-comments=none --outdir=dist/hn-crawler --platform=node --sourcemap=inline src/hn-crawler/main.ts && docker compose build",
     "clean": "rm -rf dist",
     "format": "prettier --write src",
     "test": "jest"

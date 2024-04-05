@@ -1,5 +1,3 @@
-version: "3.8"
-
 # We use `network_mode: host` in order to send StatsD metrics to the one Telegraf service running on the host. This was seen as easier than running `telegraf` as a background process within each container, or having a separate `telegraf` service that mostly duplicates the host's `telegraf`. Most of our services are publicly exposed anyway, and we use a firewall.
 # We use `init: true` as Node.js won't respond to signals or process.exit() when PID 1.
 

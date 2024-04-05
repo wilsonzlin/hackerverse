@@ -1,6 +1,8 @@
 FROM node:21
 
 WORKDIR /app
+RUN echo '{}' > package.json
+RUN npm i better-sqlite3
 COPY dist dist
 
-CMD node dist/hn-crawler/main
+CMD node --enable-source-maps dist/hn-crawler/main
