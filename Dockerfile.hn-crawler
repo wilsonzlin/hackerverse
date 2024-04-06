@@ -11,7 +11,9 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
-COPY package.json .
+COPY package.json .npmrc .
+ARG GH_PAT
+RUN echo "//npm.pkg.github.com/:_authToken=${GH_PAT}" >>.npmrc
 RUN npm i
 
 COPY tsconfig.json .

@@ -7,6 +7,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.hn-crawler
+      args:
+        GH_PAT: ${GH_PAT}
 
   hn-enqueuer:
     image: us-ashburn-1.ocir.io/sd58faummalr/hndr/hn-enqueuer
@@ -14,3 +16,5 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.hn-enqueuer
+      args:
+        GH_PAT: ${GH_PAT}
