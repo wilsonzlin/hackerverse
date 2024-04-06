@@ -2,6 +2,7 @@ import { encode } from "@msgpack/msgpack";
 import { crawlHn } from "@wilsonzlin/crawler-toolkit";
 import Batcher from "@xtjs/lib/js/Batcher";
 import asyncTimeout from "@xtjs/lib/js/asyncTimeout";
+import mapNonEmpty from "@xtjs/lib/js/mapNonEmpty";
 import { load } from "cheerio";
 import { StatsD } from "hot-shots";
 import { Duration } from "luxon";
@@ -62,9 +63,9 @@ const measureMs = async <T>(
       promises.push(
         (async () => {
           if (c) {
-            const text = load(c.textHtml).text();
-            const textEmb = await measureMs("embed_comment_text", () =>
-              embedBatcher.execute(text),
+            const text = load(c.textHtml).text().trim();
+            const textEmb = await mapNonEmpty(text, (t) =>
+              measureMs("embed_comment_text", () => embedBatcher.execute(t)),
             );
             await measureMs("upsert_comment", () =>
               upsertDbRow({
@@ -78,19 +79,24 @@ const measureMs = async <T>(
                   author: c.author,
                   ts: c.timestamp,
                   post: c.post,
-                  emb_dense_text: rawBytes(new Float32Array(textEmb.dense)),
-                  emb_sparse_text: encode(textEmb.sparse),
+                  emb_dense_text:
+                    textEmb && rawBytes(new Float32Array(textEmb.dense)),
+                  emb_sparse_text: textEmb && encode(textEmb.sparse),
                 },
                 keyColumns: ["id"],
               }),
             );
           }
           if (p) {
-            const title = load(p.titleHtml).text();
-            const text = load(p.textHtml).text();
+            const title = load(p.titleHtml).text().trim();
+            const text = load(p.textHtml).text().trim();
             const [titleEmb, textEmb] = await Promise.all([
-              measureMs("embed_post_title", () => embedBatcher.execute(title)),
-              measureMs("embed_post_text", () => embedBatcher.execute(text)),
+              mapNonEmpty(title, (t) =>
+                measureMs("embed_post_title", () => embedBatcher.execute(t)),
+              ),
+              mapNonEmpty(text, (t) =>
+                measureMs("embed_post_text", () => embedBatcher.execute(t)),
+              ),
             ]);
             await measureMs("upsert_post", () =>
               upsertDbRow({
@@ -106,10 +112,12 @@ const measureMs = async <T>(
                   ts: p.timestamp,
                   parent: p.parent,
                   url: p.url,
-                  emb_dense_title: rawBytes(new Float32Array(titleEmb.dense)),
-                  emb_sparse_title: encode(titleEmb.sparse),
-                  emb_dense_text: rawBytes(new Float32Array(textEmb.dense)),
-                  emb_sparse_text: encode(textEmb.sparse),
+                  emb_dense_title:
+                    titleEmb && rawBytes(new Float32Array(titleEmb.dense)),
+                  emb_sparse_title: titleEmb && encode(titleEmb.sparse),
+                  emb_dense_text:
+                    textEmb && rawBytes(new Float32Array(textEmb.dense)),
+                  emb_sparse_text: textEmb && encode(textEmb.sparse),
                 },
                 keyColumns: ["id"],
               }),
