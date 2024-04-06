@@ -13,21 +13,24 @@
     "test": "jest"
   },
   "dependencies": {
-    "@types/luxon": "^3.4.2",
     "@wilsonzlin/crawler-toolkit": "^0.3.0",
     "@wzlin/valid": "^0.4.0",
-    "better-sqlite3": "^9.4.5",
+    "db-rpc-client-js": "^0.3.1",
     "luxon": "^3.4.4",
-    "pino": "^8.19.0"
+    "pino": "^8.19.0",
+    "queued-client-js": "^0.2.1"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.9",
     "@types/jest": "^29.5.12",
+    "@types/luxon": "^3.4.2",
+    "@types/node": "^20.12.5",
     "esbuild": "^0.20.2",
     "jest": "^29.7.0",
     "prettier": "3.2.5",
     "prettier-plugin-organize-imports": "3.2.4",
+    "sacli": "^4.0.4",
     "ts-jest": "^29.1.2",
+    "ts-node": "^10.9.2",
     "typescript": "^5.4.4"
   }
 }
