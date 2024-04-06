@@ -1,8 +1,21 @@
-FROM node:21
+# Use the image with the oldest version of CUDA while maintaining PyTorch >=2.0.
+# This is because some RunPod Community Cloud hosts have older NVIDIA driver versions. What matters on the host is the NVIDIA driver version, not the CUDA version. NVIDIA drivers are only compatible up to a certain version of CUDA.
+FROM runpod/pytorch:2.1.0-py3.10-cuda11.8.0-devel-ubuntu22.04
+
+COPY --from=wilsonzlin/pkg-bge-m3:5a212480c9a75bb651bcb894978ed409e4c47b82 /pkg /model
+
+RUN curl -fLSs https://deb.nodesource.com/setup_21.x | bash - && apt install -yq nodejs
 
 WORKDIR /app
-RUN echo '{}' > package.json
-RUN npm i better-sqlite3
-COPY dist dist
 
-CMD node --enable-source-maps dist/hn-crawler/main
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+
+COPY package.json .
+RUN npm i
+
+COPY tsconfig.json .
+COPY common common
+COPY hn-crawler hn-crawler
+
+CMD ts-node -T hn-crawler/main

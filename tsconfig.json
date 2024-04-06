@@ -1,6 +1,5 @@
 {
-  "include": ["src/**/*.ts"],
-  "exclude": ["src/**/*.spec.ts"],
+  "exclude": ["**/*.spec.ts", "node_modules/"],
   "compilerOptions": {
     "allowJs": false,
     "allowSyntheticDefaultImports": true,
@@ -9,7 +8,8 @@
     "esModuleInterop": true,
     "isolatedModules": true,
     "lib": ["ESNext"],
-    "module": "CommonJS",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "noErrorTruncation": true,
     "noFallthroughCasesInSwitch": true,
     "noImplicitAny": true,
@@ -17,7 +17,6 @@
     "noImplicitThis": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "outDir": "dist",
     "sourceMap": false,
     "strict": true,
     "strictBindCallApply": true,

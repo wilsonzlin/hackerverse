@@ -1,6 +1,6 @@
 import { VUnknown } from "@wzlin/valid";
 import { Command } from "sacli";
-import { db } from "../res";
+import { db } from "../common/res";
 
 const cli = Command.new("db");
 

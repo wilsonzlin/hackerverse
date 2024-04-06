@@ -7,30 +7,31 @@
   },
   "author": "Wilson Lin <npm@wilsonl.in>",
   "scripts": {
-    "build-hn-crawler": "esbuild --bundle --external:better-sqlite3 --legal-comments=none --outdir=dist/hn-crawler --platform=node --sourcemap=inline src/hn-crawler/main.ts && docker compose build",
-    "clean": "rm -rf dist",
-    "format": "prettier --write src",
+    "format": "prettier --ignore-path=.gitignore --ignore-path=.prettierignore --write .",
     "test": "jest"
   },
   "dependencies": {
-    "@wilsonzlin/crawler-toolkit": "^0.3.0",
-    "@wzlin/valid": "^0.4.0",
-    "db-rpc-client-js": "^0.3.1",
-    "luxon": "^3.4.4",
-    "pino": "^8.19.0",
-    "queued-client-js": "^0.2.1"
-  },
-  "devDependencies": {
+    "@msgpack/msgpack": "^2",
+    "@msgpipe/nodejs": "^0.0.1",
     "@types/jest": "^29.5.12",
     "@types/luxon": "^3.4.2",
     "@types/node": "^20.12.5",
-    "esbuild": "^0.20.2",
+    "@wilsonzlin/crawler-toolkit": "^0.5.0",
+    "@wzlin/valid": "^0.4.0",
+    "@xtjs/lib": "^0.54.0",
+    "cheerio": "^1.0.0-rc.12",
+    "db-rpc-client-js": "^0.3.1",
+    "luxon": "^3.4.4",
+    "pino": "^8.19.0",
+    "queued-client-js": "^0.2.1",
+    "sacli": "^4.0.4",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.4"
+  },
+  "devDependencies": {
     "jest": "^29.7.0",
     "prettier": "3.2.5",
     "prettier-plugin-organize-imports": "3.2.4",
-    "sacli": "^4.0.4",
-    "ts-jest": "^29.1.2",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.4.4"
+    "ts-jest": "^29.1.2"
   }
 }
