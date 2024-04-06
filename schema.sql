@@ -18,10 +18,10 @@ create table hn_post (
   parent bigint,
   url text,
 
-  emb_dense_title blob, -- Packed f32 little endian.
-  emb_sparse_title blob, -- MsgPack, Record<string, number>.
-  emb_dense_text blob, -- Packed f32 little endian.
-  emb_sparse_text blob, -- MsgPack, Record<string, number>.
+  emb_dense_title longblob, -- Packed f32 little endian.
+  emb_sparse_title longblob, -- MsgPack, Record<string, number>.
+  emb_dense_text longblob, -- Packed f32 little endian.
+  emb_sparse_text longblob, -- MsgPack, Record<string, number>.
 
   primary key (id)
 );
@@ -38,8 +38,8 @@ create table hn_comment (
   ts datetime,
   post bigint,
 
-  emb_dense_text blob, -- Packed f32 little endian.
-  emb_sparse_text blob, -- MsgPack, Record<string, number>.
+  emb_dense_text longblob, -- Packed f32 little endian.
+  emb_sparse_text longblob, -- MsgPack, Record<string, number>.
 
   primary key (id)
 );

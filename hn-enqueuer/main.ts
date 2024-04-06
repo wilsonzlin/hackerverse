@@ -1,6 +1,12 @@
 import { fetchHnMaxId } from "@wilsonzlin/crawler-toolkit";
 import { VInteger, VStruct, Valid } from "@wzlin/valid";
-import { QUEUE_HN_CRAWL, db, lg, upsertDbRow, vQueueHnCrawlTask } from "../common/res";
+import {
+  QUEUE_HN_CRAWL,
+  db,
+  lg,
+  upsertDbRow,
+  vQueueHnCrawlTask,
+} from "../common/res";
 
 (async () => {
   const nextId = await db
@@ -35,7 +41,7 @@ import { QUEUE_HN_CRAWL, db, lg, upsertDbRow, vQueueHnCrawlTask } from "../commo
   await upsertDbRow({
     table: "cfg",
     row: {
-      k: 'hn_crawler_next_id',
+      k: "hn_crawler_next_id",
       v: `${maxId + 1}`,
     },
     keyColumns: ["k"],

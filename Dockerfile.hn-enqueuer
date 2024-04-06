@@ -11,4 +11,4 @@ COPY tsconfig.json .
 COPY common common
 COPY hn-enqueuer hn-enqueuer
 
-CMD ts-node -T hn-enqueuer/main
+CMD npx ts-node -T hn-enqueuer/main

@@ -8,7 +8,7 @@ cli
   .subcommand("query")
   .required("query", String, { default: true })
   .action(async (args) => {
-    console.log(await db.query(args.query, [], new VUnknown()));
+    console.table(await db.query(args.query, [], new VUnknown()));
   });
 
 cli.eval(process.argv.slice(2));

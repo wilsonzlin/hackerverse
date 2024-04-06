@@ -7,7 +7,7 @@
     "declaration": true,
     "esModuleInterop": true,
     "isolatedModules": true,
-    "lib": ["ESNext"],
+    "lib": ["ESNext", "DOM"], // TODO DOM is for broken @msgpack/msgpack types.
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "noErrorTruncation": true,

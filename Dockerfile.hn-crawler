@@ -4,6 +4,14 @@ FROM runpod/pytorch:2.1.0-py3.10-cuda11.8.0-devel-ubuntu22.04
 
 COPY --from=wilsonzlin/pkg-bge-m3:5a212480c9a75bb651bcb894978ed409e4c47b82 /pkg /model
 
+RUN curl -fLSs --output /usr/bin/runpodctl https://github.com/runpod/runpodctl/releases/download/v1.14.2/runpodctl-linux-amd64
+RUN chmod +x /usr/bin/runpodctl
+
+COPY --from=telegraf /usr/bin/telegraf /telegraf
+COPY hn-crawler/telegraf.conf /
+COPY --from=grafana/promtail /usr/bin/promtail /promtail
+COPY hn-crawler/promtail.yaml /
+
 RUN curl -fLSs https://deb.nodesource.com/setup_21.x | bash - && apt install -yq nodejs
 
 WORKDIR /app
@@ -19,5 +27,6 @@ RUN npm i
 COPY tsconfig.json .
 COPY common common
 COPY hn-crawler hn-crawler
+RUN npx tsc
 
-CMD ts-node -T hn-crawler/main
+CMD bash hn-crawler/docker.entrypoint.sh

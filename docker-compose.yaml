@@ -9,6 +9,14 @@ services:
       dockerfile: Dockerfile.hn-crawler
       args:
         GH_PAT: ${GH_PAT}
+    environment:
+      DB_RPC_API_KEY: ${DB_RPC_API_KEY}
+      INFLUXDB_ENDPOINT: ${INFLUXDB_ENDPOINT}
+      INFLUXDB_TOKEN: ${INFLUXDB_TOKEN}
+      LOKI_BASICAUTH_PASSWORD: ${LOKI_BASICAUTH_PASSWORD}
+      LOKI_BASICAUTH_USER: ${LOKI_BASICAUTH_USER}
+      LOKI_ENDPOINT: ${LOKI_ENDPOINT}
+      QUEUED_API_KEY: ${QUEUED_API_KEY}
 
   hn-enqueuer:
     image: us-ashburn-1.ocir.io/sd58faummalr/hndr/hn-enqueuer
@@ -18,3 +26,6 @@ services:
       dockerfile: Dockerfile.hn-enqueuer
       args:
         GH_PAT: ${GH_PAT}
+    environment:
+      DB_RPC_API_KEY: ${DB_RPC_API_KEY}
+      QUEUED_API_KEY: ${QUEUED_API_KEY}
