@@ -1,18 +1,19 @@
 from dataclasses import dataclass
 from FlagEmbedding import BGEM3FlagModel
 from msgpipe import PyIpc
-from typing import Dict, List
+from service_toolkit.panic import set_excepthook
+from typing import Dict
+from typing import List
 import numpy as np
+
+set_excepthook()
 
 # This will use the GPU automatically if it's available.
 model = BGEM3FlagModel("/model", use_fp16=True, normalize_embeddings=True)
 
 
 def convert_dict(d: Dict[str, np.ndarray]):
-    return {
-        k: v.item()
-        for k, v in d.items()
-    }
+    return {k: v.item() for k, v in d.items()}
 
 
 @dataclass

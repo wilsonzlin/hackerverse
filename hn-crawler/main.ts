@@ -1,5 +1,6 @@
 import { encode } from "@msgpack/msgpack";
 import { crawlHn } from "@wilsonzlin/crawler-toolkit";
+import { setUpUncaughtExceptionHandler } from "@wzlin/service-toolkit";
 import Batcher from "@xtjs/lib/js/Batcher";
 import asyncTimeout from "@xtjs/lib/js/asyncTimeout";
 import mapNonEmpty from "@xtjs/lib/js/mapNonEmpty";
@@ -9,10 +10,12 @@ import { Duration } from "luxon";
 import {
   QUEUE_HN_CRAWL,
   lg,
-  upsertDbRow,
+  upsertDbRowBatch,
   vQueueHnCrawlTask,
 } from "../common/res";
 import { createEmbedWorker } from "./worker_embed";
+
+setUpUncaughtExceptionHandler();
 
 const rawBytes = (t: ArrayBufferView) =>
   Buffer.from(t.buffer, t.byteOffset, t.byteLength);
@@ -41,6 +44,50 @@ const measureMs = async <T>(
   const embedBatcher = new Batcher((texts: string[]) =>
     embedWorker.embed(texts),
   );
+  type PostRow = {
+    id: number;
+    deleted: boolean;
+    dead: boolean;
+    score: number;
+    title: string;
+    text: string;
+    author: string | undefined;
+    ts: Date | undefined;
+    parent: number | undefined;
+    url: string | undefined;
+    emb_dense_title: Buffer | undefined;
+    emb_sparse_title: Uint8Array | undefined;
+    emb_dense_text: Buffer | undefined;
+    emb_sparse_text: Uint8Array | undefined;
+  };
+  type CommentRow = {
+    id: number;
+    deleted: boolean;
+    dead: boolean;
+    score: number;
+    text: string;
+    author: string | undefined;
+    ts: Date | undefined;
+    post: number | undefined;
+    emb_dense_text: Buffer | undefined;
+    emb_sparse_text: Uint8Array | undefined;
+  };
+  const upsertPostBatcher = new Batcher(async (rows: PostRow[]) => {
+    await upsertDbRowBatch({
+      table: "hn_post",
+      rows,
+      keyColumns: ["id"],
+    });
+    return [];
+  });
+  const upsertCommentBatcher = new Batcher(async (rows: CommentRow[]) => {
+    await upsertDbRowBatch({
+      table: "hn_comment",
+      rows,
+      keyColumns: ["id"],
+    });
+    return [];
+  });
 
   while (true) {
     const [t] = await QUEUE_HN_CRAWL.pollMessages(
@@ -68,22 +115,18 @@ const measureMs = async <T>(
               measureMs("embed_comment_text", () => embedBatcher.execute(t)),
             );
             await measureMs("upsert_comment", () =>
-              upsertDbRow({
-                table: "hn_comment",
-                row: {
-                  id: c.id,
-                  deleted: c.deleted,
-                  dead: c.dead,
-                  score: c.score,
-                  text,
-                  author: c.author,
-                  ts: c.timestamp,
-                  post: c.post,
-                  emb_dense_text:
-                    textEmb && rawBytes(new Float32Array(textEmb.dense)),
-                  emb_sparse_text: textEmb && encode(textEmb.sparse),
-                },
-                keyColumns: ["id"],
+              upsertCommentBatcher.execute({
+                id: c.id,
+                deleted: c.deleted,
+                dead: c.dead,
+                score: c.score,
+                text,
+                author: c.author,
+                ts: c.timestamp,
+                post: c.post,
+                emb_dense_text:
+                  textEmb && rawBytes(new Float32Array(textEmb.dense)),
+                emb_sparse_text: textEmb && encode(textEmb.sparse),
               }),
             );
           }
@@ -99,27 +142,23 @@ const measureMs = async <T>(
               ),
             ]);
             await measureMs("upsert_post", () =>
-              upsertDbRow({
-                table: "hn_post",
-                row: {
-                  id: p.id,
-                  deleted: p.deleted,
-                  dead: p.dead,
-                  score: p.score,
-                  title,
-                  text,
-                  author: p.author,
-                  ts: p.timestamp,
-                  parent: p.parent,
-                  url: p.url,
-                  emb_dense_title:
-                    titleEmb && rawBytes(new Float32Array(titleEmb.dense)),
-                  emb_sparse_title: titleEmb && encode(titleEmb.sparse),
-                  emb_dense_text:
-                    textEmb && rawBytes(new Float32Array(textEmb.dense)),
-                  emb_sparse_text: textEmb && encode(textEmb.sparse),
-                },
-                keyColumns: ["id"],
+              upsertPostBatcher.execute({
+                id: p.id,
+                deleted: p.deleted,
+                dead: p.dead,
+                score: p.score,
+                title,
+                text,
+                author: p.author,
+                ts: p.timestamp,
+                parent: p.parent,
+                url: p.url,
+                emb_dense_title:
+                  titleEmb && rawBytes(new Float32Array(titleEmb.dense)),
+                emb_sparse_title: titleEmb && encode(titleEmb.sparse),
+                emb_dense_text:
+                  textEmb && rawBytes(new Float32Array(textEmb.dense)),
+                emb_sparse_text: textEmb && encode(textEmb.sparse),
               }),
             );
           }

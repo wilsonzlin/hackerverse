@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+pushd "$(dirname "$0")" >/dev/null
+
+# Python.
+autoflake --in-place --remove-all-unused-imports $(git ls-files '*.py')
+black $(git ls-files '*.py')
+isort --settings-path .isort.cfg $(git ls-files '*.py')
+
+# JavaScript.
+npx prettier --ignore-path=.gitignore --ignore-path=.prettierignore --write .

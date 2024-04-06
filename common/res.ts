@@ -10,28 +10,28 @@ export const db = new DbRpcClient({
   apiKey: process.env["DB_RPC_API_KEY"],
 }).database("hndr");
 
-export const upsertDbRow = async <R extends Record<string, MsgPackValue>>({
+export const upsertDbRowBatch = async <R extends Record<string, MsgPackValue>>({
   keyColumns,
-  row,
+  rows,
   table,
 }: {
   keyColumns: (keyof R)[];
-  row: R;
+  rows: R[];
   table: string;
 }) => {
-  const ents = Object.entries(row);
+  const cols = Object.keys(rows[0]);
   const sql = `
-    insert into ${table} (${ents.map((e) => e[0]).join(", ")})
-    values (${ents.map(() => "?").join(", ")})
+    insert into ${table} (${cols.join(", ")})
+    values (${cols.map(() => "?").join(", ")})
     on duplicate key update
-      ${ents
-        .filter((e) => !keyColumns.includes(e[0] as any))
-        .map((e) => `${e[0]} = values(${e[0]})`)
+      ${cols
+        .filter((c) => !keyColumns.includes(c))
+        .map((c) => `${c} = values(${c})`)
         .join(", ")}
   `;
-  return await db.exec(
+  return await db.batch(
     sql,
-    ents.map((e) => e[1]),
+    rows.map((r) => cols.map((c) => r[c])),
   );
 };
 
