@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@msgpack/msgpack": "^2",
-    "@msgpipe/nodejs": "^0.0.1",
+    "@msgpipe/nodejs": "^0.1.0",
     "@types/jest": "^29.5.12",
     "@types/luxon": "^3.4.2",
     "@types/node": "^20.12.5",

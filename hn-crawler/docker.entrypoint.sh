@@ -3,12 +3,6 @@
 set -Eeuo pipefail
 shopt -s nullglob
 
-# We could be running:
-# - locally on a dev machine.
-# - on bare metal, with host networking, where the host already has metrics and logs collection, and a StatsD server.
-# - on an isolated individual VM.
-# - on a container service like RunPod or Oracle Cloud Container Instances.
-
 # RunPod instances do not self-terminate after the main process exits, so we could get stuck in a bug loop and waste expensive GPU rental.
 self_terminate() {
   if [[ ${NO_SELF_TERMINATE:-} == "1" ]]; then
@@ -40,9 +34,5 @@ service ssh start
 # Wait for log collector to start, as it won't export existing log entries before it starts.
 sleep 5
 
-export HF_DATASETS_OFFLINE=1
-export NODE_NO_WARNINGS=1
-export NODE_OPTIONS='--max-old-space-size=16384 --stack-trace-limit=1024'
-export TRANSFORMERS_OFFLINE=1
 # We cannot use ts-node as it doesn't support node:worker.
 node /app/hn-crawler/main.js |& tee /app.log

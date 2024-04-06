@@ -4,7 +4,7 @@ server:
 clients:
   - url: ${LOKI_ENDPOINT}/loki/api/v1/push
     basic_auth:
-      username: ${LOKI_BASICAUTH_USERNAME}
+      username: ${LOKI_BASICAUTH_USER}
       password: ${LOKI_BASICAUTH_PASSWORD}
 
 scrape_configs:

@@ -21,7 +21,8 @@ class EmbedReq:
 
 
 def embed_handler(x: EmbedReq):
-    out = model.encode(x.texts, return_dense=True, return_sparse=True)
+    # Batch size of 16 tends to cause OOM on 24 GB NVIDIA RTX A5000.
+    out = model.encode(x.texts, return_dense=True, return_sparse=True, batch_size=8)
     return {
         "embeddings": [
             {"dense": dense, "sparse": convert_dict(sparse)}

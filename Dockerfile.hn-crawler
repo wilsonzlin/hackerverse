@@ -29,4 +29,9 @@ COPY common common
 COPY hn-crawler hn-crawler
 RUN npx tsc
 
+ENV HF_DATASETS_OFFLINE=1
+ENV NODE_NO_WARNINGS=1
+ENV NODE_OPTIONS='--max-old-space-size=16384 --stack-trace-limit=1024'
+ENV TQDM_DISABLE=1
+ENV TRANSFORMERS_OFFLINE=1
 CMD bash hn-crawler/docker.entrypoint.sh
