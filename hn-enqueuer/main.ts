@@ -4,7 +4,7 @@ import {
   QUEUE_HN_CRAWL,
   db,
   lg,
-  upsertDbRow,
+  upsertDbRowBatch,
   vQueueHnCrawlTask,
 } from "../common/res";
 
@@ -38,12 +38,14 @@ import {
   );
   lg.info({ messages: msgs.length }, "enqueued tasks");
   // Need to upsert as the first run won't have any row to update.
-  await upsertDbRow({
+  await upsertDbRowBatch({
     table: "cfg",
-    row: {
-      k: "hn_crawler_next_id",
-      v: `${maxId + 1}`,
-    },
+    rows: [
+      {
+        k: "hn_crawler_next_id",
+        v: `${maxId + 1}`,
+      },
+    ],
     keyColumns: ["k"],
   });
   lg.info("all done!");

@@ -1,9 +1,11 @@
 import { encode } from "@msgpack/msgpack";
-import { crawlHn } from "@wilsonzlin/crawler-toolkit";
+import { fetchHnItem } from "@wilsonzlin/crawler-toolkit";
 import { setUpUncaughtExceptionHandler } from "@wzlin/service-toolkit";
 import Batcher from "@xtjs/lib/js/Batcher";
-import asyncTimeout from "@xtjs/lib/js/asyncTimeout";
+import PromiseQueue from "@xtjs/lib/js/PromiseQueue";
+import map from "@xtjs/lib/js/map";
 import mapNonEmpty from "@xtjs/lib/js/mapNonEmpty";
+import numberGenerator from "@xtjs/lib/js/numberGenerator";
 import { load } from "cheerio";
 import { StatsD } from "hot-shots";
 import { Duration } from "luxon";
@@ -78,7 +80,7 @@ const measureMs = async <T>(
       rows,
       keyColumns: ["id"],
     });
-    return [];
+    return Array(rows.length).fill(0);
   });
   const upsertCommentBatcher = new Batcher(async (rows: CommentRow[]) => {
     await upsertDbRowBatch({
@@ -86,7 +88,7 @@ const measureMs = async <T>(
       rows,
       keyColumns: ["id"],
     });
-    return [];
+    return Array(rows.length).fill(0);
   });
 
   while (true) {
@@ -95,20 +97,19 @@ const measureMs = async <T>(
       Duration.fromObject({ minutes: 15 }).as("millisecond"),
     );
     if (!t) {
-      await asyncTimeout(3000);
-      continue;
+      lg.info("no more tasks, stopping");
+      // Don't idle with an expensive GPU.
+      process.exit(0);
     }
     const { startId, endId } = vQueueHnCrawlTask.parseRoot(t.contents);
+    const q = new PromiseQueue(80);
 
-    const promises = Array<Promise<unknown>>();
-    for await (const { comment: c, post: p } of crawlHn({
-      concurrency: 80,
-      logger: lg,
-      nextId: startId,
-      maxId: endId,
-    })) {
-      promises.push(
-        (async () => {
+    await Promise.all(
+      map(numberGenerator(startId, endId + 1), (id) =>
+        q.add(async () => {
+          const { comment: c, post: p } = await measureMs("fetch_item", () =>
+            fetchHnItem(id, lg),
+          );
           if (c) {
             const text = load(c.textHtml).text().trim();
             const textEmb = await mapNonEmpty(text, (t) =>
@@ -162,9 +163,10 @@ const measureMs = async <T>(
               }),
             );
           }
-        })(),
-      );
-    }
-    await Promise.all(promises);
+        }),
+      ),
+    );
+
+    await QUEUE_HN_CRAWL.deleteMessages([t]);
   }
 })();
