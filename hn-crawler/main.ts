@@ -94,7 +94,7 @@ const measureMs = async <T>(
   while (true) {
     const [t] = await QUEUE_HN_CRAWL.pollMessages(
       1,
-      Duration.fromObject({ minutes: 15 }).as("millisecond"),
+      Duration.fromObject({ minutes: 15 }).as("seconds"),
     );
     if (!t) {
       lg.info("no more tasks, stopping");
@@ -102,13 +102,15 @@ const measureMs = async <T>(
       process.exit(0);
     }
     const { startId, endId } = vQueueHnCrawlTask.parseRoot(t.contents);
-    const q = new PromiseQueue(80);
+    const q = new PromiseQueue(512);
 
     await Promise.all(
       map(numberGenerator(startId, endId + 1), (id) =>
         q.add(async () => {
           const { comment: c, post: p } = await measureMs("fetch_item", () =>
-            fetchHnItem(id, lg),
+            fetchHnItem(id, {
+              onRetry: () => statsd.increment("item_fetch_error"),
+            }),
           );
           if (c) {
             const text = load(c.textHtml).text().trim();

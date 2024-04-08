@@ -1,3 +1,4 @@
 FlagEmbedding
 msgpipe
 service-toolkit
+statsd
