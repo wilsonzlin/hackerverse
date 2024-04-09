@@ -1,6 +1,26 @@
 # We use `init: true` as Node.js won't respond to signals or process.exit() when PID 1.
 
 services:
+  build-data:
+    image: us-ashburn-1.ocir.io/sd58faummalr/hndr/build-data
+    init: true
+    build:
+      context: .
+      dockerfile: Dockerfile.build-data
+    environment:
+      DB_RPC_API_KEY: ${DB_RPC_API_KEY}
+    volumes:
+      - "/hndr/data:/hndr-data"
+
+  calc-comment-post-ids:
+    image: us-ashburn-1.ocir.io/sd58faummalr/hndr/calc-comment-post-ids
+    init: true
+    build:
+      context: .
+      dockerfile: Dockerfile.calc-comment-post-ids
+    environment:
+      DB_RPC_API_KEY: ${DB_RPC_API_KEY}
+
   hn-crawler:
     image: us-ashburn-1.ocir.io/sd58faummalr/hndr/hn-crawler
     init: true

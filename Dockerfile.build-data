@@ -1,0 +1,11 @@
+FROM rust
+
+WORKDIR /app
+
+COPY Cargo.toml .
+COPY common common
+COPY build-data build-data
+RUN cargo build --release --bin build-data
+
+ENV RUST_BACKTRACE=1
+CMD target/release/build-data

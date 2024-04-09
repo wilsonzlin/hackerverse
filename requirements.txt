@@ -1,4 +1,8 @@
 FlagEmbedding
 msgpipe
+numpy
+pandas
+requests
 service-toolkit
 statsd
+umap-learn

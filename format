@@ -11,3 +11,6 @@ isort --settings-path .isort.cfg $(git ls-files '*.py')
 
 # JavaScript.
 npx prettier --ignore-path=.gitignore --ignore-path=.prettierignore --write .
+
+# Rust.
+cargo +nightly fmt

@@ -1,4 +1,4 @@
-import { VInteger, VStruct } from "@wzlin/valid";
+import { VInteger, VStruct, VUtf8Bytes, Validator } from "@wzlin/valid";
 import { DbRpcClient, MsgPackValue } from "db-rpc-client-js";
 import pino from "pino";
 import { QueuedClient } from "queued-client-js";
@@ -9,6 +9,35 @@ export const db = new DbRpcClient({
   endpoint: "https://db-rpc.posh.wilsonl.in",
   apiKey: process.env["DB_RPC_API_KEY"],
 }).database("hndr");
+
+export const getCfg = async <V>(
+  k: string,
+  v: Validator<V>,
+): Promise<V | undefined> => {
+  const [row] = await db.query(
+    "select v from cfg where k = ?",
+    [k],
+    new VStruct({
+      // MariaDB returns `v` as UTF-8 bytes for some reason.
+      v: new VUtf8Bytes(v),
+    }),
+  );
+  return row.v;
+};
+
+export const setCfg = async (k: string, v: string | number) => {
+  // Need to upsert as the first setCfg call won't have any row to update.
+  await upsertDbRowBatch({
+    table: "cfg",
+    rows: [
+      {
+        k,
+        v: String(v),
+      },
+    ],
+    keyColumns: ["k"],
+  });
+};
 
 export const upsertDbRowBatch = async <R extends Record<string, MsgPackValue>>({
   keyColumns,

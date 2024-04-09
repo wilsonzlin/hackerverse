@@ -2,10 +2,9 @@ import { encode } from "@msgpack/msgpack";
 import { fetchHnItem } from "@wilsonzlin/crawler-toolkit";
 import { setUpUncaughtExceptionHandler } from "@wzlin/service-toolkit";
 import Batcher from "@xtjs/lib/js/Batcher";
-import PromiseQueue from "@xtjs/lib/js/PromiseQueue";
-import map from "@xtjs/lib/js/map";
+import Pipeline from "@xtjs/lib/js/Pipeline";
+import assertState from "@xtjs/lib/js/assertState";
 import mapNonEmpty from "@xtjs/lib/js/mapNonEmpty";
-import numberGenerator from "@xtjs/lib/js/numberGenerator";
 import { load } from "cheerio";
 import { StatsD } from "hot-shots";
 import { Duration } from "luxon";
@@ -55,7 +54,6 @@ const measureMs = async <T>(
     text: string;
     author: string | undefined;
     ts: Date | undefined;
-    parent: number | undefined;
     url: string | undefined;
     emb_dense_title: Buffer | undefined;
     emb_sparse_title: Uint8Array | undefined;
@@ -70,7 +68,7 @@ const measureMs = async <T>(
     text: string;
     author: string | undefined;
     ts: Date | undefined;
-    post: number | undefined;
+    parent: number;
     emb_dense_text: Buffer | undefined;
     emb_sparse_text: Uint8Array | undefined;
   };
@@ -91,84 +89,111 @@ const measureMs = async <T>(
     return Array(rows.length).fill(0);
   });
 
-  while (true) {
-    const [t] = await QUEUE_HN_CRAWL.pollMessages(
-      1,
-      Duration.fromObject({ minutes: 15 }).as("seconds"),
-    );
-    if (!t) {
-      lg.info("no more tasks, stopping");
-      // Don't idle with an expensive GPU.
-      process.exit(0);
+  let task:
+    | {
+        message: {
+          id: number;
+          pollTag: number;
+        };
+        nextId: number;
+        maxId: number;
+      }
+    | undefined;
+  await Pipeline.from<number>(async () => {
+    if (!task || task.nextId > task.maxId) {
+      if (task) {
+        await QUEUE_HN_CRAWL.deleteMessages([task.message]);
+      }
+      task = undefined;
+      const [t] = await QUEUE_HN_CRAWL.pollMessages(
+        1,
+        Duration.fromObject({ minutes: 15 }).as("seconds"),
+      );
+      if (!t) {
+        return;
+      }
+      const { startId, endId } = vQueueHnCrawlTask.parseRoot(t.contents);
+      task = {
+        message: {
+          id: t.id,
+          pollTag: t.pollTag,
+        },
+        nextId: startId,
+        maxId: endId,
+      };
     }
-    const { startId, endId } = vQueueHnCrawlTask.parseRoot(t.contents);
-    const q = new PromiseQueue(512);
+    return task.nextId++;
+  })
+    .then({
+      concurrency: 512,
+      costBuffer: 1,
+      inputCost: () => 1,
+      handler: async (id) => {
+        return await measureMs("fetch_item", () =>
+          fetchHnItem(id, {
+            onRetry: () => statsd.increment("item_fetch_error"),
+          }),
+        );
+      },
+    })
+    .finally(async ({ post: p, comment: c }) => {
+      if (c) {
+        const text = load(c.textHtml).text().trim();
+        const textEmb = await mapNonEmpty(text, (t) =>
+          measureMs("embed_comment_text", () => embedBatcher.execute(t)),
+        );
+        await measureMs("upsert_comment", () =>
+          upsertCommentBatcher.execute({
+            id: c.id,
+            deleted: c.deleted,
+            dead: c.dead,
+            score: c.score,
+            text,
+            author: c.author,
+            ts: c.timestamp,
+            parent: c.parent,
+            emb_dense_text:
+              textEmb && rawBytes(new Float32Array(textEmb.dense)),
+            emb_sparse_text: textEmb && encode(textEmb.sparse),
+          }),
+        );
+      }
+      if (p) {
+        const title = load(p.titleHtml).text().trim();
+        const text = load(p.textHtml).text().trim();
+        const [titleEmb, textEmb] = await Promise.all([
+          mapNonEmpty(title, (t) =>
+            measureMs("embed_post_title", () => embedBatcher.execute(t)),
+          ),
+          mapNonEmpty(text, (t) =>
+            measureMs("embed_post_text", () => embedBatcher.execute(t)),
+          ),
+        ]);
+        await measureMs("upsert_post", () =>
+          upsertPostBatcher.execute({
+            id: p.id,
+            deleted: p.deleted,
+            dead: p.dead,
+            score: p.score,
+            title,
+            text,
+            author: p.author,
+            ts: p.timestamp,
+            url: p.url,
+            emb_dense_title:
+              titleEmb && rawBytes(new Float32Array(titleEmb.dense)),
+            emb_sparse_title: titleEmb && encode(titleEmb.sparse),
+            emb_dense_text:
+              textEmb && rawBytes(new Float32Array(textEmb.dense)),
+            emb_sparse_text: textEmb && encode(textEmb.sparse),
+          }),
+        );
+      }
+    });
 
-    await Promise.all(
-      map(numberGenerator(startId, endId + 1), (id) =>
-        q.add(async () => {
-          const { comment: c, post: p } = await measureMs("fetch_item", () =>
-            fetchHnItem(id, {
-              onRetry: () => statsd.increment("item_fetch_error"),
-            }),
-          );
-          if (c) {
-            const text = load(c.textHtml).text().trim();
-            const textEmb = await mapNonEmpty(text, (t) =>
-              measureMs("embed_comment_text", () => embedBatcher.execute(t)),
-            );
-            await measureMs("upsert_comment", () =>
-              upsertCommentBatcher.execute({
-                id: c.id,
-                deleted: c.deleted,
-                dead: c.dead,
-                score: c.score,
-                text,
-                author: c.author,
-                ts: c.timestamp,
-                post: c.post,
-                emb_dense_text:
-                  textEmb && rawBytes(new Float32Array(textEmb.dense)),
-                emb_sparse_text: textEmb && encode(textEmb.sparse),
-              }),
-            );
-          }
-          if (p) {
-            const title = load(p.titleHtml).text().trim();
-            const text = load(p.textHtml).text().trim();
-            const [titleEmb, textEmb] = await Promise.all([
-              mapNonEmpty(title, (t) =>
-                measureMs("embed_post_title", () => embedBatcher.execute(t)),
-              ),
-              mapNonEmpty(text, (t) =>
-                measureMs("embed_post_text", () => embedBatcher.execute(t)),
-              ),
-            ]);
-            await measureMs("upsert_post", () =>
-              upsertPostBatcher.execute({
-                id: p.id,
-                deleted: p.deleted,
-                dead: p.dead,
-                score: p.score,
-                title,
-                text,
-                author: p.author,
-                ts: p.timestamp,
-                parent: p.parent,
-                url: p.url,
-                emb_dense_title:
-                  titleEmb && rawBytes(new Float32Array(titleEmb.dense)),
-                emb_sparse_title: titleEmb && encode(titleEmb.sparse),
-                emb_dense_text:
-                  textEmb && rawBytes(new Float32Array(textEmb.dense)),
-                emb_sparse_text: textEmb && encode(textEmb.sparse),
-              }),
-            );
-          }
-        }),
-      ),
-    );
-
-    await QUEUE_HN_CRAWL.deleteMessages([t]);
-  }
+  // Ensure we don't have any polled queue message to delete.
+  assertState(task === undefined);
+  // Don't idle with an expensive GPU.
+  lg.info("no more tasks, stopping");
+  process.exit(0);
 })();

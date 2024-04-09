@@ -1,23 +1,15 @@
 import { fetchHnMaxId } from "@wilsonzlin/crawler-toolkit";
-import { VInteger, VStruct, Valid } from "@wzlin/valid";
+import { VInteger, Valid } from "@wzlin/valid";
 import {
   QUEUE_HN_CRAWL,
-  db,
+  getCfg,
   lg,
-  upsertDbRowBatch,
+  setCfg,
   vQueueHnCrawlTask,
 } from "../common/res";
 
 (async () => {
-  const nextId = await db
-    .query(
-      "select v from cfg where k = 'hn_crawler_next_id'",
-      [],
-      new VStruct({
-        v: new VInteger(0),
-      }),
-    )
-    .then((r) => r.at(0)?.v ?? 0);
+  const nextId = (await getCfg("enqueuer_next_id", new VInteger(0))) ?? 0;
 
   const maxId = await fetchHnMaxId();
   lg.info({ nextId, maxId }, "found range");
@@ -37,16 +29,6 @@ import {
     })),
   );
   lg.info({ messages: msgs.length }, "enqueued tasks");
-  // Need to upsert as the first run won't have any row to update.
-  await upsertDbRowBatch({
-    table: "cfg",
-    rows: [
-      {
-        k: "hn_crawler_next_id",
-        v: `${maxId + 1}`,
-      },
-    ],
-    keyColumns: ["k"],
-  });
+  await setCfg("enqueuer_next_id", maxId + 1);
   lg.info("all done!");
 })();

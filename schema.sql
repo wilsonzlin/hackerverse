@@ -15,7 +15,6 @@ create table hn_post (
   -- These can all be NULL for one reason or another.
   author varchar(100),
   ts datetime,
-  parent bigint,
   url text,
 
   emb_dense_title longblob, -- Packed f32 little endian.
@@ -33,9 +32,11 @@ create table hn_comment (
   dead boolean not null default false,
   score int not null default 0,
   text longtext not null,
+  parent bigint not null,
   -- These can all be NULL for one reason or another.
   author varchar(100),
   ts datetime,
+  -- This is not provided by the HN API, we need to calculate this ourselves via `parent`.
   post bigint,
 
   emb_dense_text longblob, -- Packed f32 little endian.
