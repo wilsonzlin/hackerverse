@@ -2,7 +2,7 @@
 
 services:
   als:
-    image: us-ashburn-1.ocir.io/sd58faummalr/hndr/python-base
+    image: wilsonzlin/hndr-python-base
     init: true
     build:
       context: .
@@ -15,7 +15,7 @@ services:
       - "${DOCKER_VOLUME_DIR}:/hndr-data"
 
   build-data:
-    image: us-ashburn-1.ocir.io/sd58faummalr/hndr/rust-base
+    image: wilsonzlin/hndr-rust-base
     init: true
     build:
       context: .
@@ -27,7 +27,7 @@ services:
       - "${DOCKER_VOLUME_DIR}:/hndr-data"
 
   calc-comment-post-ids:
-    image: us-ashburn-1.ocir.io/sd58faummalr/hndr/rust-base
+    image: wilsonzlin/hndr-rust-base
     init: true
     build:
       context: .
@@ -37,7 +37,7 @@ services:
       MAIN: calc-comment-post-ids
 
   calc-post-canon-ids:
-    image: us-ashburn-1.ocir.io/sd58faummalr/hndr/rust-base
+    image: wilsonzlin/hndr-rust-base
     init: true
     build:
       context: .
@@ -49,7 +49,7 @@ services:
       - "${DOCKER_VOLUME_DIR}:/hndr-data"
 
   crawler:
-    image: us-ashburn-1.ocir.io/sd58faummalr/hndr/crawler
+    image: wilsonzlin/hndr-crawler
     init: true
     build:
       context: .
@@ -64,7 +64,7 @@ services:
       QUEUED_API_KEY: ${QUEUED_API_KEY}
 
   enqueuer:
-    image: us-ashburn-1.ocir.io/sd58faummalr/hndr/enqueuer
+    image: wilsonzlin/hndr-enqueuer
     init: true
     build:
       context: .
@@ -74,7 +74,7 @@ services:
       QUEUED_API_KEY: ${QUEUED_API_KEY}
 
   kmeans:
-    image: us-ashburn-1.ocir.io/sd58faummalr/hndr/python-base
+    image: wilsonzlin/hndr-python-base
     init: true
     build:
       context: .
@@ -85,7 +85,7 @@ services:
       - "${DOCKER_VOLUME_DIR}:/hndr-data"
 
   umap:
-    image: us-ashburn-1.ocir.io/sd58faummalr/hndr/python-base
+    image: wilsonzlin/hndr-python-base
     init: true
     build:
       context: .
