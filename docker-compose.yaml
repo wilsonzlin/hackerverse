@@ -26,6 +26,18 @@ services:
     volumes:
       - "${DOCKER_VOLUME_DIR}:/hndr-data"
 
+  build-nn-data:
+    image: wilsonzlin/hndr-rust-base
+    init: true
+    build:
+      context: .
+      dockerfile: Dockerfile.rust-base
+    environment:
+      DB_RPC_API_KEY: ${DB_RPC_API_KEY}
+      MAIN: build-nn-data
+    volumes:
+      - "${DOCKER_VOLUME_DIR}:/hndr-data"
+
   calc-comment-post-ids:
     image: wilsonzlin/hndr-rust-base
     init: true

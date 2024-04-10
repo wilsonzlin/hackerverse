@@ -1,6 +1,9 @@
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
+pub mod arrow;
+
+#[derive(Clone)]
 pub struct DbRpcClient {
   client: reqwest::Client,
 }

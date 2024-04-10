@@ -26,6 +26,10 @@ name = "build-data"
 path = "build-data/main.rs"
 
 [[bin]]
+name = "build-nn-data"
+path = "build-nn-data/main.rs"
+
+[[bin]]
 name = "calc-comment-post-ids"
 path = "calc-comment-post-ids/main.rs"
 
