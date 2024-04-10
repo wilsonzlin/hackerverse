@@ -2,35 +2,38 @@
 
 services:
   build-data:
-    image: us-ashburn-1.ocir.io/sd58faummalr/hndr/build-data
+    image: us-ashburn-1.ocir.io/sd58faummalr/hndr/rust-base
     init: true
     build:
       context: .
-      dockerfile: Dockerfile.build-data
+      dockerfile: Dockerfile.rust-base
     environment:
       DB_RPC_API_KEY: ${DB_RPC_API_KEY}
+      MAIN: build-data
     volumes:
-      - "/hndr/data:/hndr-data"
+      - "${DOCKER_VOLUME_DIR}:/hndr-data"
 
   calc-comment-post-ids:
-    image: us-ashburn-1.ocir.io/sd58faummalr/hndr/calc-comment-post-ids
+    image: us-ashburn-1.ocir.io/sd58faummalr/hndr/rust-base
     init: true
     build:
       context: .
-      dockerfile: Dockerfile.calc-comment-post-ids
+      dockerfile: Dockerfile.rust-base
     environment:
       DB_RPC_API_KEY: ${DB_RPC_API_KEY}
+      MAIN: calc-comment-post-ids
 
   calc-post-canon-ids:
-    image: us-ashburn-1.ocir.io/sd58faummalr/hndr/calc-post-canon-ids
+    image: us-ashburn-1.ocir.io/sd58faummalr/hndr/rust-base
     init: true
     build:
       context: .
-      dockerfile: Dockerfile.calc-post-canon-ids
+      dockerfile: Dockerfile.rust-base
     environment:
       DB_RPC_API_KEY: ${DB_RPC_API_KEY}
+      MAIN: calc-post-canon-ids
     volumes:
-      - "/hndr/data:/hndr-data"
+      - "${DOCKER_VOLUME_DIR}:/hndr-data"
 
   crawler:
     image: us-ashburn-1.ocir.io/sd58faummalr/hndr/crawler
@@ -61,11 +64,24 @@ services:
       DB_RPC_API_KEY: ${DB_RPC_API_KEY}
       QUEUED_API_KEY: ${QUEUED_API_KEY}
 
-  umap:
-    image: us-ashburn-1.ocir.io/sd58faummalr/hndr/umap
+  kmeans:
+    image: us-ashburn-1.ocir.io/sd58faummalr/hndr/python-base
     init: true
     build:
       context: .
-      dockerfile: Dockerfile.umap
+      dockerfile: Dockerfile.python-base
+    environment:
+      MAIN: kmeans/main.py
     volumes:
-      - "/hndr/data:/hndr-data"
+      - "${DOCKER_VOLUME_DIR}:/hndr-data"
+
+  umap:
+    image: us-ashburn-1.ocir.io/sd58faummalr/hndr/python-base
+    init: true
+    build:
+      context: .
+      dockerfile: Dockerfile.python-base
+    environment:
+      MAIN: umap/main.py
+    volumes:
+      - "${DOCKER_VOLUME_DIR}:/hndr-data"

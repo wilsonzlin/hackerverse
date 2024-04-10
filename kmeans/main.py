@@ -6,7 +6,9 @@ print("Loading data")
 f = ds.dataset(f"/hndr-data/umap.arrow", format="ipc")
 table = f.to_table(columns=["id", "x", "y"])
 df = table.to_pandas()
-mat = np.array(zip(df.pop("x"), df.pop("y")), dtype=np.float32)
+mat = np.array(list(zip(df.pop("x"), df.pop("y"))), dtype=np.float32)
+assert mat.shape == (len(df), 2)
+print("Matrix:", mat.shape)
 
 for zoom_level in range(6):
     k = 16384 * (2**zoom_level)

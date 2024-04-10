@@ -1,0 +1,9 @@
+FROM rust
+
+WORKDIR /app
+
+COPY . .
+RUN cargo build --release --bin $MAIN
+
+ENV RUST_BACKTRACE=1
+CMD target/release/$MAIN

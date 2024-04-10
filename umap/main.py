@@ -3,10 +3,23 @@ import pyarrow.dataset as ds
 import umap
 
 print("Loading data")
+
+f = ds.dataset(f"/hndr-data/posts_canon.arrow", format="ipc")
+table = f.to_table()
+df_canon = table.to_pandas()
+
 f = ds.dataset(f"/hndr-data/posts.arrow", format="ipc")
 table = f.to_table(columns=["id", "emb_dense_title"])
 df = table.to_pandas()
+print("Posts:", len(df))
+assert len(df) == len(df_canon)
+
 df = df[df["emb_dense_title"].notnull()]
+print("After filtering NULL titles:", len(df))
+
+df = df[df["id"] == df_canon["canon_id"]]
+print("After filtering non-canon:", len(df))
+
 mat_emb = [np.frombuffer(buf, dtype=np.float32) for buf in df.pop("emb_dense_title")]
 
 print("UMAPping")
