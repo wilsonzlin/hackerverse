@@ -6,6 +6,7 @@ use arrow::array::FixedSizeBinaryArray;
 use arrow::array::FixedSizeListArray;
 use arrow::array::Int16Array;
 use arrow::array::ListArray;
+use arrow::array::ListBuilder;
 use arrow::array::MapArray;
 use arrow::array::RecordBatch;
 use arrow::array::StringArray;
@@ -81,11 +82,7 @@ async fn main() {
 
   let interaction_schema = Schema::new(vec![
     Field::new("user", DataType::UInt64, false),
-    Field::new(
-      "posts",
-      DataType::List(Arc::new(Field::new("post", DataType::UInt64, false))),
-      false,
-    ),
+    Field::new("post", DataType::UInt64, false),
   ]);
 
   #[derive(Deserialize)]
@@ -287,7 +284,6 @@ async fn main() {
   }
 
   println!("calculated {} users", user_ids.len());
-  println!("calculated {} interactions", interactions.len());
 
   #[rustfmt::skip]
   flush(&mut out_users, &user_schema, {
@@ -306,14 +302,16 @@ async fn main() {
   #[rustfmt::skip]
   flush(&mut out_interactions, &interaction_schema, {
     let mut users = Vec::new();
-    let mut postss = Vec::new();
-    for (user, posts) in interactions {
-      users.push(user);
-      postss.push(Some(posts.into_iter().map(|v| Some(v)).collect_vec()));
+    let mut posts = Vec::new();
+    for (user, user_posts) in interactions {
+      for post in user_posts {
+        users.push(user);
+        posts.push(post);
+      };
     };
     vec![
       Arc::new(UInt64Array::from(users)),
-      Arc::new(ListArray::from_iter_primitive::<UInt64Type, _, _>(postss)),
+      Arc::new(UInt64Array::from(posts)),
     ]
   });
 

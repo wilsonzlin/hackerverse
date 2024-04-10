@@ -1,8 +1,12 @@
 FlagEmbedding
+implicit
 msgpipe
 numpy
 pandas
+pyarrow
 requests
+scikit-learn
+scipy
 service-toolkit
 statsd
 umap-learn

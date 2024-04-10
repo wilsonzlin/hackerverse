@@ -35,4 +35,4 @@ service ssh start
 sleep 5
 
 # We cannot use ts-node as it doesn't support node:worker.
-node /app/hn-crawler/main.js |& tee /app.log
+node /app/crawler/main.js |& tee /app.log

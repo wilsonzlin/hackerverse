@@ -21,12 +21,12 @@ services:
     environment:
       DB_RPC_API_KEY: ${DB_RPC_API_KEY}
 
-  hn-crawler:
-    image: us-ashburn-1.ocir.io/sd58faummalr/hndr/hn-crawler
+  crawler:
+    image: us-ashburn-1.ocir.io/sd58faummalr/hndr/crawler
     init: true
     build:
       context: .
-      dockerfile: Dockerfile.hn-crawler
+      dockerfile: Dockerfile.crawler
       args:
         GH_PAT: ${GH_PAT}
     environment:
@@ -38,14 +38,23 @@ services:
       LOKI_ENDPOINT: ${LOKI_ENDPOINT}
       QUEUED_API_KEY: ${QUEUED_API_KEY}
 
-  hn-enqueuer:
-    image: us-ashburn-1.ocir.io/sd58faummalr/hndr/hn-enqueuer
+  enqueuer:
+    image: us-ashburn-1.ocir.io/sd58faummalr/hndr/enqueuer
     init: true
     build:
       context: .
-      dockerfile: Dockerfile.hn-enqueuer
+      dockerfile: Dockerfile.enqueuer
       args:
         GH_PAT: ${GH_PAT}
     environment:
       DB_RPC_API_KEY: ${DB_RPC_API_KEY}
       QUEUED_API_KEY: ${QUEUED_API_KEY}
+
+  umap:
+    image: us-ashburn-1.ocir.io/sd58faummalr/hndr/umap
+    init: true
+    build:
+      context: .
+      dockerfile: Dockerfile.umap
+    volumes:
+      - "/hndr/data:/hndr-data"
