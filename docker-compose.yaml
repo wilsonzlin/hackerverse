@@ -1,6 +1,19 @@
 # We use `init: true` as Node.js won't respond to signals or process.exit() when PID 1.
 
 services:
+  als:
+    image: us-ashburn-1.ocir.io/sd58faummalr/hndr/python-base
+    init: true
+    build:
+      context: .
+      dockerfile: Dockerfile.python-base
+    environment:
+      MAIN: als/main.py
+      # OpenBLAS is configured to use 32 threads. It is highly recommended to disable its internal threadpool by setting the environment variable 'OPENBLAS_NUM_THREADS=1' or by calling 'threadpoolctl.threadpool_limits(1, "blas")'. Having OpenBLAS use a threadpool can lead to severe performance issues here.
+      OPENBLAS_NUM_THREADS: "1"
+    volumes:
+      - "${DOCKER_VOLUME_DIR}:/hndr-data"
+
   build-data:
     image: us-ashburn-1.ocir.io/sd58faummalr/hndr/rust-base
     init: true

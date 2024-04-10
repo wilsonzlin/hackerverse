@@ -7,4 +7,6 @@ RUN pip install -r requirements.txt
 
 COPY . .
 
+# Otherwise nothing is printed.
+ENV PYTHONUNBUFFERED=0
 CMD python $MAIN
