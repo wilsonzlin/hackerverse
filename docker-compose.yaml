@@ -21,6 +21,17 @@ services:
     environment:
       DB_RPC_API_KEY: ${DB_RPC_API_KEY}
 
+  calc-post-canon-ids:
+    image: us-ashburn-1.ocir.io/sd58faummalr/hndr/calc-post-canon-ids
+    init: true
+    build:
+      context: .
+      dockerfile: Dockerfile.calc-post-canon-ids
+    environment:
+      DB_RPC_API_KEY: ${DB_RPC_API_KEY}
+    volumes:
+      - "/hndr/data:/hndr-data"
+
   crawler:
     image: us-ashburn-1.ocir.io/sd58faummalr/hndr/crawler
     init: true
