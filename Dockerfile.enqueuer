@@ -2,9 +2,7 @@ FROM node:21
 
 WORKDIR /app
 
-COPY package.json .npmrc .
-ARG GH_PAT
-RUN echo "//npm.pkg.github.com/:_authToken=${GH_PAT}" >>.npmrc
+COPY package.json .
 RUN npm i
 
 COPY tsconfig.json .

@@ -1,5 +1,5 @@
 import { encode } from "@msgpack/msgpack";
-import { fetchHnItem } from "@wilsonzlin/crawler-toolkit";
+import { fetchHnItem } from "@wzlin/crawler-toolkit-hn";
 import { setUpUncaughtExceptionHandler } from "@wzlin/service-toolkit";
 import Batcher from "@xtjs/lib/js/Batcher";
 import Pipeline from "@xtjs/lib/js/Pipeline";

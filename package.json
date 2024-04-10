@@ -15,7 +15,7 @@
     "@types/jest": "^29.5.12",
     "@types/luxon": "^3.4.2",
     "@types/node": "^20.12.5",
-    "@wilsonzlin/crawler-toolkit": "^0.11.0",
+    "@wzlin/crawler-toolkit-hn": "^0.11.0",
     "@wzlin/service-toolkit": "^0.0.1",
     "@wzlin/valid": "^0.4.1",
     "@xtjs/lib": "^0.56.0",

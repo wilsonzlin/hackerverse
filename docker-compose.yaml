@@ -54,8 +54,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.crawler
-      args:
-        GH_PAT: ${GH_PAT}
     environment:
       DB_RPC_API_KEY: ${DB_RPC_API_KEY}
       INFLUXDB_ENDPOINT: ${INFLUXDB_ENDPOINT}
@@ -71,8 +69,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.enqueuer
-      args:
-        GH_PAT: ${GH_PAT}
     environment:
       DB_RPC_API_KEY: ${DB_RPC_API_KEY}
       QUEUED_API_KEY: ${QUEUED_API_KEY}
