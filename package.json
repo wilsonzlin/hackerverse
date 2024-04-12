@@ -20,6 +20,7 @@
     "@wzlin/service-toolkit": "^0.0.1",
     "@wzlin/valid": "^0.4.1",
     "@xtjs/lib": "^0.56.1",
+    "chalk": "^4",
     "cheerio": "^1.0.0-rc.12",
     "db-rpc-client-js": "^0.5.0",
     "hot-shots": "^10.0.0",

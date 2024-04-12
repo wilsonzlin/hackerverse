@@ -7,7 +7,7 @@ import {
   Validator,
 } from "@wzlin/valid";
 import Batcher from "@xtjs/lib/js/Batcher";
-import assertExists from "@xtjs/lib/js/assertExists";
+import mapExists from "@xtjs/lib/js/mapExists";
 import { DbRpcClient, MsgPackValue } from "db-rpc-client-js";
 import { StatsD } from "hot-shots";
 import pino from "pino";
@@ -16,7 +16,8 @@ import { QueuedClient } from "queued-client-js";
 export const statsd = new StatsD({
   host: process.env["STATSD_HOST"] || "127.0.0.1",
   port: 8125,
-  prefix: assertExists(process.env["MAIN"]) + ".",
+  // We may be running locally/CLI.
+  prefix: mapExists(process.env["MAIN"], (svc) => svc + "."),
 });
 
 export const measureMs = async <T>(

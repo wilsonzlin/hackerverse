@@ -30,6 +30,7 @@ COPY embedder embedder
 RUN npx tsc
 
 ENV HF_DATASETS_OFFLINE=1
+# For StatsD prefix.
 ENV MAIN=embedder
 ENV NODE_NO_WARNINGS=1
 ENV NODE_OPTIONS='--max-old-space-size=16384 --stack-trace-limit=1024'
