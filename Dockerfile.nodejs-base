@@ -5,12 +5,10 @@ WORKDIR /app
 COPY package.json .
 RUN npm i
 
-COPY tsconfig.json .
-COPY common common
-COPY enqueuer enqueuer
+COPY . .
 RUN npx tsc
 
 ENV NODE_NO_WARNINGS=1
 ENV NODE_OPTIONS='--max-old-space-size=16384 --stack-trace-limit=1024'
 # We cannot use ts-node as it doesn't support node:worker.
-CMD node enqueuer/main.js
+CMD node $MAIN/main.js

@@ -51,13 +51,14 @@ services:
       - "${DOCKER_VOLUME_DIR}:/hndr-data"
 
   crawler:
-    image: wilsonzlin/hndr-crawler
+    image: wilsonzlin/hndr-nodejs-base
     init: true
     build:
       context: .
-      dockerfile: Dockerfile.crawler
+      dockerfile: Dockerfile.nodejs-base
     environment:
       DB_RPC_API_KEY: ${DB_RPC_API_KEY}
+      MAIN: crawler
       QUEUED_API_KEY: ${QUEUED_API_KEY}
 
   embedder:
@@ -76,13 +77,14 @@ services:
       QUEUED_API_KEY: ${QUEUED_API_KEY}
 
   enqueuer:
-    image: wilsonzlin/hndr-enqueuer
+    image: wilsonzlin/hndr-nodejs-base
     init: true
     build:
       context: .
-      dockerfile: Dockerfile.enqueuer
+      dockerfile: Dockerfile.nodejs-base
     environment:
       DB_RPC_API_KEY: ${DB_RPC_API_KEY}
+      MAIN: enqueuer
       QUEUED_API_KEY: ${QUEUED_API_KEY}
 
   kmeans:
