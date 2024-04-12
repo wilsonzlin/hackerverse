@@ -10,6 +10,7 @@ import { randomInt } from "node:crypto";
 import { Agent, fetch, setGlobalDispatcher } from "undici";
 import {
   QUEUE_CRAWL,
+  db,
   lg,
   measureMs,
   statsd,
@@ -60,6 +61,7 @@ const CONTENT_CRAWL_CONCURRENCY = 128;
         }
         const { id, proto, url } = vQueueCrawlTask.parseRoot(t.contents);
 
+        const fetched = new Date();
         const abortController = new AbortController();
         const timeout = setTimeout(() => abortController.abort(), 1000 * 60);
         let raw: ArrayBuffer | undefined;
@@ -86,6 +88,7 @@ const CONTENT_CRAWL_CONCURRENCY = 128;
           );
           statsd.increment("fetch_bytes", raw?.byteLength);
         } catch (err) {
+          // If `code` is `20`, it's due to the AbortSignal. `DOMException.ABORT_ERR === 20`.
           const code =
             err.cause?.code ||
             err.code ||
@@ -109,6 +112,10 @@ const CONTENT_CRAWL_CONCURRENCY = 128;
             code === "EAI_AGAIN" ||
             (err instanceof BadStatusError && err.status === 429)
           ) {
+            await db.exec(
+              "update url set fetched = ?, fetch_err = ? where url = ?",
+              [fetched, code, url],
+            );
             // Don't instead create a new message, as that will cause exponential explosion if two workers polled the same message somehow.
             await QUEUE_CRAWL.updateMessage(t, randomInt(60 * 15));
             continue;
@@ -129,6 +136,10 @@ const CONTENT_CRAWL_CONCURRENCY = 128;
           title: p.title,
         };
         await Promise.all([
+          db.exec(
+            "update url set fetched = ?, fetch_err = null where url = ?",
+            [fetched, url],
+          ),
           upsertKvRow.execute({
             k: `url/${id}/text`,
             v: encodeUtf8(text),
