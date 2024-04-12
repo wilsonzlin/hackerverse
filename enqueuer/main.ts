@@ -169,12 +169,17 @@ const processItem = async (item: Item) => {
     // Sometimes the `url` value is an empty string, likely because the post has been deleted.
     // normaliseUrl() will remove any hash component, and normalise percent escapes and query params.
     url = mapNonEmpty(item.url ?? "", (u) => normaliseUrlToParts(u, true));
+    const urlNoProto = url && `${url.domain}${url.pathname}${url.query}`;
+    // Database limitation.
+    if (urlNoProto && encodeUtf8(urlNoProto).byteLength > 3000) {
+      url = undefined;
+    }
     const title = parsePostTitle(item.title ?? "");
     embInput = (
       url
         ? [
             title,
-            `${url.domain}${url.pathname}${url.query}`,
+            urlNoProto,
             "<<<REPLACE_WITH_PAGE_TITLE>>>",
             "<<<REPLACE_WITH_PAGE_DESCRIPTION>>>",
             "<<<REPLACE_WITH_PAGE_TEXT>>>",

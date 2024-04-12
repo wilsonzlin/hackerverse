@@ -45,6 +45,7 @@ class BadContentTypeError extends Error {
   }
 }
 
+// Designed to run on 1 CPU core and 4 GB RAM.
 const CONTENT_CRAWL_CONCURRENCY = 128;
 (async () => {
   await Promise.all(
