@@ -29,10 +29,6 @@ path = "build-data/main.rs"
 name = "build-nn-data"
 path = "build-nn-data/main.rs"
 
-[[bin]]
-name = "calc-post-canon-ids"
-path = "calc-post-canon-ids/main.rs"
-
 [profile.release]
 codegen-units = 1
 debug = true
