@@ -319,7 +319,7 @@ new WorkerPool(__filename, cpus().length)
       flushing = false;
     };
 
-    const CONCURRENCY = cpus().length * 10;
+    const CONCURRENCY = cpus().length * 16;
     await Promise.all(
       Array.from({ length: CONCURRENCY }, async () => {
         while (nextId <= maxId) {
