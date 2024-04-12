@@ -11,6 +11,7 @@ import {
 } from "@wzlin/crawler-toolkit-web";
 import { VInteger, VString, VStruct, VUtf8Bytes, Valid } from "@wzlin/valid";
 import Batcher from "@xtjs/lib/js/Batcher";
+import WorkerPool from "@xtjs/lib/js/WorkerPool";
 import assertExists from "@xtjs/lib/js/assertExists";
 import defined from "@xtjs/lib/js/defined";
 import encodeUtf8 from "@xtjs/lib/js/encodeUtf8";
@@ -21,6 +22,7 @@ import { load } from "cheerio";
 import { StatsD } from "hot-shots";
 import { decode } from "html-entities";
 import { Duration } from "luxon";
+import { cpus } from "node:os";
 import {
   QUEUE_CRAWL,
   QUEUE_EMBED,
@@ -283,43 +285,52 @@ const processItem = async (item: Item) => {
   }
 };
 
-(async () => {
-  let nextId = (await getCfg("enqueuer_next_id", new VInteger(0))) ?? 0;
-  const maxId = await fetchHnMaxId();
-  lg.info({ nextId, maxId }, "found range");
-  let nextIdToCommit = nextId;
-  const idsPendingCommit = new Set<number>();
+new WorkerPool(__filename, cpus().length)
+  .workerTask("process", async (item: Item) => {
+    await processItem(item);
+  })
+  .leader(async (pool) => {
+    let nextId = (await getCfg("enqueuer_next_id", new VInteger(0))) ?? 0;
+    const maxId = await fetchHnMaxId();
+    lg.info({ nextId, maxId }, "found range");
+    let nextIdToCommit = nextId;
+    const idsPendingCommit = new Set<number>();
 
-  let flushing = false;
-  const maybeFlushId = async () => {
-    if (flushing) {
-      return;
-    }
-    flushing = true;
-    while (idsPendingCommit.has(nextIdToCommit)) {
-      idsPendingCommit.delete(nextIdToCommit);
-      await setCfg("enqueuer_next_id", nextIdToCommit + 1);
-      nextIdToCommit++;
-      statsd.increment("commit_next_id");
-    }
-    flushing = false;
-  };
+    let flushing = false;
+    const maybeFlushId = async () => {
+      if (flushing) {
+        return;
+      }
+      flushing = true;
+      let didChange = false;
+      while (idsPendingCommit.has(nextIdToCommit)) {
+        idsPendingCommit.delete(nextIdToCommit);
+        nextIdToCommit++;
+        didChange = true;
+      }
+      if (didChange) {
+        await setCfg("enqueuer_next_id", nextIdToCommit);
+        statsd.increment("commit_next_id");
+      }
+      flushing = false;
+    };
 
-  const wg = waitGroup();
-  for await (const { id, item } of crawlHn({
-    concurrency: 512,
-    nextId,
-    // Posts may change a lot within 48 hours (score, top comments, moderator changes to parent/title/URL).
-    stopOnItemWithinDurationMs: DUR_MS_48H,
-    onItemFetchRetry: () => statsd.increment("item_fetch_error"),
-  })) {
-    wg.add(1);
-    processItem(item).then(() => {
-      idsPendingCommit.add(id);
-      maybeFlushId();
-      wg.done();
-    });
-  }
-  await wg;
-  lg.info("all done!");
-})();
+    const wg = waitGroup();
+    for await (const { id, item } of crawlHn({
+      concurrency: 512,
+      nextId,
+      // Posts may change a lot within 48 hours (score, top comments, moderator changes to parent/title/URL).
+      stopOnItemWithinDurationMs: DUR_MS_48H,
+      onItemFetchRetry: () => statsd.increment("item_fetch_error"),
+    })) {
+      wg.add(1);
+      pool.execute("process", item).then(() => {
+        idsPendingCommit.add(id);
+        maybeFlushId();
+        wg.done();
+      });
+    }
+    await wg;
+    lg.info("all done!");
+  })
+  .go();
