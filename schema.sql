@@ -4,43 +4,57 @@ create table cfg (
   primary key (k)
 );
 
-create table hn_post (
+create table kv (
+  k varchar(512) not null,
+  v longblob not null,
+  primary key (k)
+);
+
+create table usr (
+  id bigint not null auto_increment,
+  username varchar(100) not null,
+  primary key (id),
+  unique (username)
+);
+
+-- Stored in KV:
+-- - title
+-- - text
+-- - all embeddings and their inputs
+create table post (
   id bigint not null,
 
   deleted boolean not null default false,
   dead boolean not null default false,
   score int not null default 0,
-  title text not null,
-  text longtext not null,
   -- These can all be NULL for one reason or another.
-  author varchar(100),
+  author bigint,
   ts datetime,
   url text,
 
-  emb_dense_title longblob, -- Packed f32 little endian.
-  emb_sparse_title longblob, -- MsgPack, Record<string, number>.
-  emb_dense_text longblob, -- Packed f32 little endian.
-  emb_sparse_text longblob, -- MsgPack, Record<string, number>.
+  page_fetched boolean not null default false,
 
   primary key (id)
 );
+create index post_author on post (author);
+create index post_url on post (url);
 
-create table hn_comment (
+-- Stored in KV:
+-- - text
+-- - all embeddings and their inputs
+create table comment (
   id bigint not null,
 
   deleted boolean not null default false,
   dead boolean not null default false,
   score int not null default 0,
-  text longtext not null,
   parent bigint not null,
   -- These can all be NULL for one reason or another.
-  author varchar(100),
+  author bigint,
   ts datetime,
-  -- This is not provided by the HN API, we need to calculate this ourselves via `parent`.
   post bigint,
-
-  emb_dense_text longblob, -- Packed f32 little endian.
-  emb_sparse_text longblob, -- MsgPack, Record<string, number>.
 
   primary key (id)
 );
+create index comment_parent on comment (parent);
+create index comment_author on comment (author);

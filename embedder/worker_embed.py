@@ -10,7 +10,7 @@ import time
 
 set_excepthook()
 
-statsd = StatsClient("localhost", 8125, prefix="hn_crawler")
+statsd = StatsClient("localhost", 8125, prefix="embedder")
 
 # This will use the GPU automatically if it's available.
 model = BGEM3FlagModel("/model", use_fp16=True, normalize_embeddings=True)

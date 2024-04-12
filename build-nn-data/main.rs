@@ -162,29 +162,25 @@ struct InteractionDatapoint {
   user_id: u64,
   user_history: [f32; 1024],  // Up until this point.
   user_comments: [f32; 1024], // Up until this point.
-  candidate_post_id: u64,
-  did_interact: bool,
+  post_id: u64,
 }
 
 fn interactions_to_columnar(interactions: Vec<InteractionDatapoint>) -> Vec<ArrayRef> {
   let mut user_ids = Vec::new();
   let mut user_historys = Vec::new();
   let mut user_commentss = Vec::new();
-  let mut candidate_post_ids = Vec::new();
-  let mut did_interacts = Vec::new();
+  let mut post_ids = Vec::new();
   for i in interactions {
     user_ids.push(i.user_id);
     user_historys.push(serialise_embedding(&i.user_history));
     user_commentss.push(serialise_embedding(&i.user_comments));
-    candidate_post_ids.push(i.candidate_post_id);
-    did_interacts.push(i.did_interact);
+    post_ids.push(i.post_id);
   }
   vec![
     Arc::new(UInt64Array::from(user_ids)),
     Arc::new(FixedSizeBinaryArray::try_from_iter(user_historys.into_iter()).unwrap()),
     Arc::new(FixedSizeBinaryArray::try_from_iter(user_commentss.into_iter()).unwrap()),
-    Arc::new(UInt64Array::from(candidate_post_ids)),
-    Arc::new(BooleanArray::from(did_interacts)),
+    Arc::new(UInt64Array::from(post_ids)),
   ]
 }
 
@@ -318,8 +314,7 @@ async fn main() {
       Field::new("user_id", DataType::UInt64, false),
       Field::new("user_history", DataType::FixedSizeBinary(4096), false),
       Field::new("user_comments", DataType::FixedSizeBinary(4096), false),
-      Field::new("candidate_post_id", DataType::UInt64, false),
-      Field::new("did_interact", DataType::Boolean, false),
+      Field::new("post_id", DataType::UInt64, false),
     ]),
     interactions_to_columnar,
   );
@@ -373,6 +368,7 @@ async fn main() {
     "#,
   );
 
+  let mut last_logged_post_id = 0;
   let mut buf_comment: Option<CommentRow> = None;
   let mut buf_post: Option<PostRow> = None;
   enum Item {
@@ -401,22 +397,23 @@ async fn main() {
         let Some(user_ids) = interactions.get(&p.id) else {
           continue;
         };
+        if last_logged_post_id + 100_000 < p.id {
+          println!("Processing post {}", p.id);
+          last_logged_post_id = p.id;
+        };
         let emb = deserialise_embedding(&p.emb_dense_title);
         for &user_id in user_ids {
           let user_name = user_id_to_name.get(&user_id).unwrap();
-          let user_history = user_histories
-            .entry(user_name.clone())
-            .or_default()
-            .add(&emb)
-            .avg();
+          // Get average BEFORE adding this post.
+          let user_history = user_histories.entry(user_name.clone()).or_default();
           out_interactions.push(InteractionDatapoint {
             user_id,
-            user_history,
+            user_history: user_history.avg(),
             user_comments: user_comments.entry(user_name.clone()).or_default().avg(),
-            candidate_post_id: p.id,
-            did_interact: true,
+            post_id: p.id,
           });
-          // TODO Sample negatives.
+          user_history.add(&emb);
+          // We let the downstream user of this data to do any negative sampling. Otherwise, we'll bloat our dataset and prevent customised/experimental sampling approaches.
         }
         let ts_day_of_year = {
           let diff = p.ts.timestamp()
@@ -475,4 +472,5 @@ async fn main() {
 
   out_interactions.finish();
   out_posts.finish();
+  println!("All done!");
 }

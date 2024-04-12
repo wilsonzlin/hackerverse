@@ -30,10 +30,6 @@ name = "build-nn-data"
 path = "build-nn-data/main.rs"
 
 [[bin]]
-name = "calc-comment-post-ids"
-path = "calc-comment-post-ids/main.rs"
-
-[[bin]]
 name = "calc-post-canon-ids"
 path = "calc-post-canon-ids/main.rs"
 
