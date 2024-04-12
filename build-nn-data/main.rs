@@ -2,7 +2,6 @@ use ahash::AHashMap;
 use arrow::array::Array;
 use arrow::array::ArrayRef;
 use arrow::array::AsArray;
-use arrow::array::BooleanArray;
 use arrow::array::FixedSizeBinaryArray;
 use arrow::array::Float32Array;
 use arrow::array::UInt64Array;
