@@ -1,9 +1,4 @@
-import {
-  Item,
-  crawlHn,
-  fetchHnItem,
-  fetchHnMaxId,
-} from "@wzlin/crawler-toolkit-hn";
+import { Item, fetchHnItem, fetchHnMaxId } from "@wzlin/crawler-toolkit-hn";
 import {
   elementToText,
   normaliseUrl,
@@ -17,9 +12,7 @@ import defined from "@xtjs/lib/js/defined";
 import encodeUtf8 from "@xtjs/lib/js/encodeUtf8";
 import mapExists from "@xtjs/lib/js/mapExists";
 import mapNonEmpty from "@xtjs/lib/js/mapNonEmpty";
-import waitGroup from "@xtjs/lib/js/waitGroup";
 import { load } from "cheerio";
-import { StatsD } from "hot-shots";
 import { decode } from "html-entities";
 import { Duration } from "luxon";
 import { cpus } from "node:os";
@@ -29,7 +22,9 @@ import {
   db,
   getCfg,
   lg,
+  measureMs,
   setCfg,
+  statsd,
   upsertDbRowBatch,
   upsertKvRow,
   vQueueCrawlTask,
@@ -38,11 +33,12 @@ import {
 
 const DUR_MS_48H = Duration.fromObject({ hours: 48 }).as("milliseconds");
 
-const statsd = new StatsD({
-  host: "telegraf",
-  port: 8125,
-  prefix: "enqueuer.",
-});
+const fetchItem = async (id: number) =>
+  measureMs("item_fetch_ms", () =>
+    fetchHnItem(id, {
+      onRetry: () => statsd.increment("item_fetch_error"),
+    }),
+  );
 
 const parsePostTitle = (html: string) =>
   decode(html) // Titles shouldn't contain any elements, so merely decoding should be enough.
@@ -149,7 +145,7 @@ const processItem = async (item: Item) => {
     // All comments have a parent.
     let parentId = assertExists(item.parent);
     while (true) {
-      const p = await fetchHnItem(parentId);
+      const p = await fetchItem(parentId);
       if (p?.type === "story") {
         chain.unshift(
           "# Post",
@@ -192,7 +188,7 @@ const processItem = async (item: Item) => {
     const MAX_LEN = 1024 * 64; // 64 KiB.
     while (topComments.length && embInput.length < MAX_LEN) {
       // Embelish with top-level top comments (item.children are ranked already). This is useful if the page isn't primarily text, could not be fetched, etc.
-      const i = await fetchHnItem(topComments.shift()!);
+      const i = await fetchItem(topComments.shift()!);
       // We don't want to include negative comments as part of the post's text representation.
       if (!i || i.type !== "comment" || i.dead || i.deleted || i.score! < 0) {
         continue;
@@ -286,16 +282,24 @@ const processItem = async (item: Item) => {
 };
 
 new WorkerPool(__filename, cpus().length)
-  .workerTask("process", async (item: Item) => {
+  .workerTask("process", async (id: number) => {
+    const item = await fetchItem(id);
+    if (!item) {
+      return;
+    }
+    // Posts may change a lot within 48 hours (score, top comments, moderator changes to parent/title/URL).
+    if (item.time && Date.now() - item.time.getTime() < DUR_MS_48H) {
+      return;
+    }
     await processItem(item);
   })
   .leader(async (pool) => {
     let nextId = (await getCfg("enqueuer_next_id", new VInteger(0))) ?? 0;
     const maxId = await fetchHnMaxId();
     lg.info({ nextId, maxId }, "found range");
+
     let nextIdToCommit = nextId;
     const idsPendingCommit = new Set<number>();
-
     let flushing = false;
     const maybeFlushId = async () => {
       if (flushing) {
@@ -315,22 +319,17 @@ new WorkerPool(__filename, cpus().length)
       flushing = false;
     };
 
-    const wg = waitGroup();
-    for await (const { id, item } of crawlHn({
-      concurrency: 512,
-      nextId,
-      // Posts may change a lot within 48 hours (score, top comments, moderator changes to parent/title/URL).
-      stopOnItemWithinDurationMs: DUR_MS_48H,
-      onItemFetchRetry: () => statsd.increment("item_fetch_error"),
-    })) {
-      wg.add(1);
-      pool.execute("process", item).then(() => {
-        idsPendingCommit.add(id);
-        maybeFlushId();
-        wg.done();
-      });
-    }
-    await wg;
+    const CONCURRENCY = cpus().length * 10;
+    await Promise.all(
+      Array.from({ length: CONCURRENCY }, async () => {
+        while (nextId <= maxId) {
+          const id = nextId++;
+          await pool.execute("process", id);
+          idsPendingCommit.add(id);
+          maybeFlushId();
+        }
+      }),
+    );
     lg.info("all done!");
   })
   .go();

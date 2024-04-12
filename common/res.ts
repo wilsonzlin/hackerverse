@@ -7,13 +7,19 @@ import {
   Validator,
 } from "@wzlin/valid";
 import Batcher from "@xtjs/lib/js/Batcher";
+import assertExists from "@xtjs/lib/js/assertExists";
 import { DbRpcClient, MsgPackValue } from "db-rpc-client-js";
 import { StatsD } from "hot-shots";
 import pino from "pino";
 import { QueuedClient } from "queued-client-js";
 
+export const statsd = new StatsD({
+  host: process.env["STATSD_HOST"] || "127.0.0.1",
+  port: 8125,
+  prefix: assertExists(process.env["MAIN"]) + ".",
+});
+
 export const measureMs = async <T>(
-  statsd: StatsD,
   metric: string,
   fn: () => Promise<T>,
   tags?: Record<string, string>,
@@ -114,10 +120,17 @@ export const upsertDbRowBatch = async <R extends Record<string, MsgPackValue>>({
         .map((c) => `${c} = values(${c})`)
         .join(", ")}
   `;
-  return await db.batch(
-    sql,
-    rows.map((r) => cols.map((c) => r[c])),
+  const res = await measureMs(
+    "upsert_row_batch_ms",
+    () =>
+      db.batch(
+        sql,
+        rows.map((r) => cols.map((c) => r[c])),
+      ),
+    { table },
   );
+  statsd.increment("upsert_row_count", rows.length, { table });
+  return res;
 };
 
 export const queued = new QueuedClient({

@@ -86,6 +86,10 @@ services:
       DB_RPC_API_KEY: ${DB_RPC_API_KEY}
       MAIN: enqueuer
       QUEUED_API_KEY: ${QUEUED_API_KEY}
+      STATSD_HOST: telegraf
+    sysctls:
+      net.ipv4.ip_local_port_range: "10000 65535"
+      net.core.somaxconn: "1048576"
 
   kmeans:
     image: wilsonzlin/hndr-python-base

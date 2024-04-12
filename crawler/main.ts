@@ -5,7 +5,6 @@ import encodeUtf8 from "@xtjs/lib/js/encodeUtf8";
 import mapExists from "@xtjs/lib/js/mapExists";
 import withoutUndefined from "@xtjs/lib/js/withoutUndefined";
 import { load } from "cheerio";
-import { StatsD } from "hot-shots";
 import { Duration } from "luxon";
 import { randomInt } from "node:crypto";
 import { Agent, fetch, setGlobalDispatcher } from "undici";
@@ -13,6 +12,7 @@ import {
   QUEUE_CRAWL,
   lg,
   measureMs,
+  statsd,
   upsertKvRow,
   vQueueCrawlTask,
 } from "../common/res";
@@ -45,12 +45,6 @@ class BadContentTypeError extends Error {
   }
 }
 
-const statsd = new StatsD({
-  host: process.env["STATSD_HOST"] || "127.0.0.1",
-  port: 8125,
-  prefix: "crawler.",
-});
-
 const CONTENT_CRAWL_CONCURRENCY = 128;
 (async () => {
   await Promise.all(
@@ -69,7 +63,7 @@ const CONTENT_CRAWL_CONCURRENCY = 128;
         const timeout = setTimeout(() => abortController.abort(), 1000 * 60);
         let raw: ArrayBuffer | undefined;
         try {
-          const f = await measureMs(statsd, "fetch_ms", () =>
+          const f = await measureMs("fetch_ms", () =>
             fetch(`${proto}//${url}`, {
               headers: withoutUndefined({
                 accept: "text/html,application/xhtml+xml",
@@ -86,7 +80,7 @@ const CONTENT_CRAWL_CONCURRENCY = 128;
           if (ct && !ct.startsWith("text/html")) {
             throw new BadContentTypeError(ct);
           }
-          const raw = await measureMs(statsd, "fetch_response_ms", () =>
+          const raw = await measureMs("fetch_response_ms", () =>
             f.arrayBuffer(),
           );
           statsd.increment("fetch_bytes", raw?.byteLength);
@@ -122,9 +116,7 @@ const CONTENT_CRAWL_CONCURRENCY = 128;
           clearTimeout(timeout);
         }
         const html = decodeUtf8(raw!);
-        const p = await measureMs(statsd, "parse", async () =>
-          parseHtml(load(html)),
-        );
+        const p = await measureMs("parse", async () => parseHtml(load(html)));
         const text = (p.mainArticleText || p.pageText).slice(0, 64 * 1024);
         const meta = {
           description: p.description,

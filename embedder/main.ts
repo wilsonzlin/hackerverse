@@ -3,7 +3,6 @@ import { setUpUncaughtExceptionHandler } from "@wzlin/service-toolkit";
 import Batcher from "@xtjs/lib/js/Batcher";
 import Pipeline from "@xtjs/lib/js/Pipeline";
 import decodeUtf8 from "@xtjs/lib/js/decodeUtf8";
-import { StatsD } from "hot-shots";
 import { Duration } from "luxon";
 import {
   QUEUE_EMBED,
@@ -19,12 +18,6 @@ setUpUncaughtExceptionHandler();
 
 const rawBytes = (t: ArrayBufferView) =>
   Buffer.from(t.buffer, t.byteOffset, t.byteLength);
-
-const statsd = new StatsD({
-  host: "127.0.0.1",
-  port: 8125,
-  prefix: "embedder.",
-});
 
 (async () => {
   const embedWorker = await createEmbedWorker();
@@ -53,7 +46,7 @@ const statsd = new StatsD({
       },
     })
     .finally(async ({ embInput, msg, task }) => {
-      const textEmb = await measureMs(statsd, "embed_text", () =>
+      const textEmb = await measureMs("embed_text", () =>
         embedBatcher.execute(embInput),
       );
       const keyPfx = task.outputKey;
