@@ -38,16 +38,6 @@ services:
     volumes:
       - "${DOCKER_VOLUME_DIR}:/hndr-data"
 
-  calc-comment-post-ids:
-    image: wilsonzlin/hndr-rust-base
-    init: true
-    build:
-      context: .
-      dockerfile: Dockerfile.rust-base
-    environment:
-      DB_RPC_API_KEY: ${DB_RPC_API_KEY}
-      MAIN: calc-comment-post-ids
-
   calc-post-canon-ids:
     image: wilsonzlin/hndr-rust-base
     init: true
@@ -59,6 +49,16 @@ services:
       MAIN: calc-post-canon-ids
     volumes:
       - "${DOCKER_VOLUME_DIR}:/hndr-data"
+
+  crawler:
+    image: wilsonzlin/hndr-crawler
+    init: true
+    build:
+      context: .
+      dockerfile: Dockerfile.crawler
+    environment:
+      DB_RPC_API_KEY: ${DB_RPC_API_KEY}
+      QUEUED_API_KEY: ${QUEUED_API_KEY}
 
   embedder:
     image: wilsonzlin/hndr-embedder

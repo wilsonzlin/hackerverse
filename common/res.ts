@@ -1,4 +1,11 @@
-import { VBytes, VString, VStruct, VUtf8Bytes, Validator } from "@wzlin/valid";
+import {
+  VBytes,
+  VInteger,
+  VString,
+  VStruct,
+  VUtf8Bytes,
+  Validator,
+} from "@wzlin/valid";
 import Batcher from "@xtjs/lib/js/Batcher";
 import { DbRpcClient, MsgPackValue } from "db-rpc-client-js";
 import { StatsD } from "hot-shots";
@@ -116,6 +123,14 @@ export const upsertDbRowBatch = async <R extends Record<string, MsgPackValue>>({
 export const queued = new QueuedClient({
   endpoint: "https://queued.posh.wilsonl.in",
   apiKey: process.env["QUEUED_API_KEY"],
+});
+
+export const QUEUE_CRAWL = queued.queue("hndr:crawl");
+
+export const vQueueCrawlTask = new VStruct({
+  id: new VInteger(1),
+  proto: new VString(),
+  url: new VString(),
 });
 
 export const QUEUE_EMBED = queued.queue("hndr:embed");

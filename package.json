@@ -21,7 +21,7 @@
     "@wzlin/valid": "^0.4.1",
     "@xtjs/lib": "^0.56.1",
     "cheerio": "^1.0.0-rc.12",
-    "db-rpc-client-js": "^0.3.1",
+    "db-rpc-client-js": "^0.4.1",
     "hot-shots": "^10.0.0",
     "html-entities": "^2.5.2",
     "luxon": "^3.4.4",

@@ -18,6 +18,22 @@ create table usr (
 );
 
 -- Stored in KV:
+-- - meta
+-- - text
+create table url (
+  id bigint not null auto_increment,
+  -- Without protocol. We use varbinary as an indexed column can only have around ~3000 bytes, and since we use utf8mb4, the limit is too low (~750) for URLs. We can't just use ascii charset as URLs can contain non-ASCII.
+  url varbinary(3000) not null,
+  proto varchar(20) not null,
+  fetched datetime,
+  fetch_err varchar(128),
+  primary key (id),
+  unique (url)
+);
+
+create index url_fetch_err on url (fetch_err);
+
+-- Stored in KV:
 -- - title
 -- - text
 -- - all embeddings and their inputs
@@ -30,9 +46,7 @@ create table post (
   -- These can all be NULL for one reason or another.
   author bigint,
   ts datetime,
-  url text,
-
-  page_fetched boolean not null default false,
+  url bigint,
 
   primary key (id)
 );
