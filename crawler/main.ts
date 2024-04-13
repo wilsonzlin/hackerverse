@@ -63,22 +63,21 @@ const CONTENT_CRAWL_CONCURRENCY = 256;
         }
         const { id, proto, url } = vQueueCrawlTask.parseRoot(t.contents);
 
-        const fetched = new Date();
-        let fetchErr: string | undefined;
+        const fetchStarted = new Date();
+        let fetchEnded: Date | undefined;
+        let fetchErr: any;
         const abortController = new AbortController();
         const timeout = setTimeout(() => abortController.abort(), 1000 * 60);
         let raw: ArrayBuffer | undefined;
         try {
-          const f = await measureMs("fetch_ms", () =>
-            fetch(`${proto}//${url}`, {
-              headers: withoutUndefined({
-                accept: "text/html,application/xhtml+xml",
-                "accept-language": "en-US,en;q=0.5",
-                "user-agent": process.env["USER_AGENT"],
-              }),
-              signal: abortController.signal,
+          const f = await fetch(`${proto}//${url}`, {
+            headers: withoutUndefined({
+              accept: "text/html,application/xhtml+xml",
+              "accept-language": "en-US,en;q=0.5",
+              "user-agent": process.env["USER_AGENT"],
             }),
-          );
+            signal: abortController.signal,
+          }).finally(() => (fetchEnded = new Date()));
           if (!f.ok) {
             throw new BadStatusError(f.status);
           }
@@ -97,7 +96,7 @@ const CONTENT_CRAWL_CONCURRENCY = 256;
             err.constructor?.name ||
             "Unknown";
           statsd.increment("fetch_error", {
-            error: fetchErr!,
+            error: fetchErr,
           });
           if (
             fetchErr === "EAI_AGAIN" ||
@@ -110,6 +109,20 @@ const CONTENT_CRAWL_CONCURRENCY = 256;
           }
         } finally {
           clearTimeout(timeout);
+          if (fetchEnded) {
+            statsd.timing(
+              "fetch_ms",
+              fetchEnded.getTime() - fetchStarted.getTime(),
+              {
+                result:
+                  fetchErr == DOMException.ABORT_ERR
+                    ? "timeout"
+                    : fetchErr != undefined
+                      ? "error"
+                      : "ok",
+              },
+            );
+          }
         }
         let text, meta;
         if (raw) {
@@ -128,10 +141,11 @@ const CONTENT_CRAWL_CONCURRENCY = 256;
         }
         await Promise.all([
           db.exec("update url set fetched = ?, fetch_err = ? where url = ?", [
-            fetched,
+            fetchStarted,
             fetchErr,
             url,
           ]),
+          // Do not overwrite or delete existing text/meta if this crawl has failed.
           text &&
             upsertKvRow.execute({
               k: `url/${id}/text`,
