@@ -21,8 +21,8 @@ static SEL_MAIN_ARTICLE: Lazy<Selector> = Lazy::new(|| {
       main article,
       #article,
       [role=article],
-      [itemtype=http://schema.org/Article],
-      [itemtype=https://schema.org/Article]
+      [itemtype="http://schema.org/Article"],
+      [itemtype="https://schema.org/Article"]
     "#,
   )
   .unwrap()
@@ -120,6 +120,18 @@ static INLINE_ELEMS: Lazy<AHashSet<&'static str>> = Lazy::new(|| {
   ])
 });
 
+fn remove_by_sel<'a>(doc: &mut Html, sel: &Selector) {
+  // https://github.com/causal-agent/scraper/issues/125#issuecomment-1492472021
+  let elem_ids_to_remove = doc.select(sel).map(|e| e.id()).collect_vec();
+  for id in elem_ids_to_remove {
+    // Element may no longer exist if removed in a previous iteration.
+    let Some(mut n) = doc.tree.get_mut(id) else {
+      continue;
+    };
+    n.detach();
+  }
+}
+
 // Copied from wilsonzlin/crawler-toolkit-web.
 fn element_to_text<'a>(elem: ElementRef<'a>, emit_link_hrefs: bool) -> String {
   let mut out = String::new();
@@ -203,11 +215,7 @@ pub(crate) fn parse_html(html: &str) -> (Meta, String) {
     };
   }
 
-  // https://github.com/causal-agent/scraper/issues/125#issuecomment-1492472021
-  let elem_ids_to_remove = doc.select(&*SEL_STRIP).map(|e| e.id()).collect_vec();
-  for id in elem_ids_to_remove {
-    doc.tree.get_mut(id).unwrap().detach();
-  }
+  remove_by_sel(&mut doc, &SEL_STRIP);
 
   let mut text = doc
     .select(&*SEL_MAIN_ARTICLE)
@@ -216,13 +224,7 @@ pub(crate) fn parse_html(html: &str) -> (Meta, String) {
     .map(|elem| element_to_text(elem, false))
     .unwrap_or_default();
   text.truncate(64 * 1024);
-  let elem_ids_to_remove = doc
-    .select(&*SEL_SNIPPET_STRIP)
-    .map(|e| e.id())
-    .collect_vec();
-  for id in elem_ids_to_remove {
-    doc.tree.get_mut(id).unwrap().detach();
-  }
+  remove_by_sel(&mut doc, &SEL_SNIPPET_STRIP);
   meta.snippet = Some(text.chars().take(251).collect());
 
   (meta, text)

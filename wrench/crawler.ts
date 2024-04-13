@@ -24,9 +24,12 @@ cli.subcommand("terminate").action(async () => {
       displayName,
       page,
     });
-    console.log("Terminating", res.containerInstanceCollection.items.length);
+    const insts = res.containerInstanceCollection.items.filter(
+      (i) => i.lifecycleState != "DELETED" && i.lifecycleState != "DELETING",
+    );
+    console.log("Terminating", insts.length);
     await Promise.all(
-      res.containerInstanceCollection.items.map((i) =>
+      insts.map((i) =>
         ci.deleteContainerInstance({
           containerInstanceId: i.id,
         }),
@@ -51,7 +54,7 @@ cli
             containers: [
               {
                 displayName: "main",
-                imageUrl: "docker.io/wilsonzlin/hndr-nodejs-base",
+                imageUrl: "docker.io/wilsonzlin/hndr-rust-base",
                 environmentVariables: {
                   DB_RPC_API_KEY: assertExists(process.env["DB_RPC_API_KEY"]),
                   MAIN: "crawler",

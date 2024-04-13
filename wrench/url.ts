@@ -26,7 +26,7 @@ cli
         url: new VUtf8Bytes(new VString()),
         proto: new VUtf8Bytes(new VString()),
         fetched: new VOptional(new VDate()),
-        fetch_err: new VOptional(new VString()),
+        fetch_err: new VOptional(new VUtf8Bytes(new VString())),
       }),
     );
     if (!row) {

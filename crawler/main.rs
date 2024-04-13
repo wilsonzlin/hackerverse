@@ -4,6 +4,7 @@ use cadence::Counted;
 use cadence::CountedExt;
 use cadence::StatsdClient;
 use cadence::Timed;
+use chrono::DateTime;
 use chrono::Utc;
 use common::create_db_client;
 use common::create_queue_client;
@@ -34,6 +35,16 @@ struct CrawlTask {
   id: u64,
   proto: String,
   url: String,
+}
+
+fn datetime_to_rmpv(dt: DateTime<Utc>) -> rmpv::Value {
+  rmpv::Value::Ext(
+    -1,
+    u32::try_from(dt.timestamp())
+      .unwrap()
+      .to_be_bytes()
+      .to_vec(),
+  )
 }
 
 fn reqwest_error_to_code(err: reqwest::Error) -> String {
@@ -97,10 +108,9 @@ async fn worker_loop(
     };
     let CrawlTask { id, proto, url } = rmp_serde::from_slice(&t.contents).unwrap();
 
-    let url = format!("{}//{}", proto, url);
     let fetch_started = Utc::now();
     let fetch_started_i = Instant::now();
-    let res = make_request(&client, &url).await;
+    let res = make_request(&client, format!("{}//{}", proto, url)).await;
     statsd
       .time_with_tags("fetch_ms", fetch_started_i.elapsed())
       .with_tag("result", match res.as_ref().map_err(|v| v.as_str()) {
@@ -131,7 +141,7 @@ async fn worker_loop(
         .unwrap();
         db.exec(
           "update url set fetched = ?, fetch_err = NULL where url = ?",
-          vec![fetch_started.to_rfc3339().into(), url.into()],
+          vec![datetime_to_rmpv(fetch_started), url.into()],
         )
         .await
         .unwrap();
@@ -154,7 +164,7 @@ async fn worker_loop(
         // Do not overwrite or delete existing text/meta in the KV table if this crawl has failed.
         db.exec(
           "update url set fetched = ?, fetch_err = ? where url = ?",
-          vec![fetch_started.to_rfc3339().into(), err.into(), url.into()],
+          vec![datetime_to_rmpv(fetch_started), err.into(), url.into()],
         )
         .await
         .unwrap();
@@ -169,7 +179,7 @@ async fn main() {
   set_up_panic_hook();
 
   let db = create_db_client();
-  let queue = create_queue_client("crawl");
+  let queue = create_queue_client("hndr:crawl");
   let statsd = create_statsd("crawler");
   let client = reqwest::Client::builder()
     .connect_timeout(Duration::from_secs(20))
