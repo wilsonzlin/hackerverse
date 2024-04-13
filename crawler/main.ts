@@ -1,8 +1,8 @@
 import { encode } from "@msgpack/msgpack";
 import { parseHtml } from "@wzlin/crawler-toolkit-web";
+import { setUpUncaughtExceptionHandler } from "@wzlin/service-toolkit";
 import decodeUtf8 from "@xtjs/lib/js/decodeUtf8";
 import encodeUtf8 from "@xtjs/lib/js/encodeUtf8";
-import mapExists from "@xtjs/lib/js/mapExists";
 import withoutUndefined from "@xtjs/lib/js/withoutUndefined";
 import { load } from "cheerio";
 import { Duration } from "luxon";
@@ -17,6 +17,8 @@ import {
   upsertKvRow,
   vQueueCrawlTask,
 } from "../common/res";
+
+setUpUncaughtExceptionHandler();
 
 // https://github.com/nodejs/undici/issues/1531#issuecomment-1178869993
 setGlobalDispatcher(
@@ -47,7 +49,7 @@ class BadContentTypeError extends Error {
 }
 
 // Designed to run on 1 CPU core and 4 GB RAM.
-const CONTENT_CRAWL_CONCURRENCY = 128;
+const CONTENT_CRAWL_CONCURRENCY = 256;
 (async () => {
   await Promise.all(
     Array.from({ length: CONTENT_CRAWL_CONCURRENCY }, async () => {
@@ -62,6 +64,7 @@ const CONTENT_CRAWL_CONCURRENCY = 128;
         const { id, proto, url } = vQueueCrawlTask.parseRoot(t.contents);
 
         const fetched = new Date();
+        let fetchErr: string | undefined;
         const abortController = new AbortController();
         const timeout = setTimeout(() => abortController.abort(), 1000 * 60);
         let raw: ArrayBuffer | undefined;
@@ -83,71 +86,62 @@ const CONTENT_CRAWL_CONCURRENCY = 128;
           if (ct && !ct.startsWith("text/html")) {
             throw new BadContentTypeError(ct);
           }
-          const raw = await measureMs("fetch_response_ms", () =>
-            f.arrayBuffer(),
-          );
+          raw = await measureMs("fetch_response_ms", () => f.arrayBuffer());
           statsd.increment("fetch_bytes", raw?.byteLength);
         } catch (err) {
-          // If `code` is `20`, it's due to the AbortSignal. `DOMException.ABORT_ERR === 20`.
-          const code =
+          // If `fetchErr` is `20`, it's due to the AbortSignal. `DOMException.ABORT_ERR === 20`.
+          fetchErr =
             err.cause?.code ||
             err.code ||
             err.cause?.constructor?.name ||
-            err.constructor?.name;
-          lg.warn(
-            {
-              url,
-              code,
-              errorMessage: err.message,
-              errorData: { ...err },
-              causeMessage: err.cause?.message,
-              causeData: mapExists(err.cause, (c) => ({ ...c })),
-            },
-            "failed to fetch",
-          );
+            err.constructor?.name ||
+            "Unknown";
           statsd.increment("fetch_error", {
-            error: code,
+            error: fetchErr!,
           });
           if (
-            code === "EAI_AGAIN" ||
+            fetchErr === "EAI_AGAIN" ||
             (err instanceof BadStatusError && err.status === 429)
           ) {
-            await db.exec(
-              "update url set fetched = ?, fetch_err = ? where url = ?",
-              [fetched, code, url],
-            );
-            // Don't instead create a new message, as that will cause exponential explosion if two workers polled the same message somehow.
+            // Don't update the DB row, we're not finished.
+            // Don't instead create a new message, as that could cause exponential explosion if two workers polled the same message somehow.
             await QUEUE_CRAWL.updateMessage(t, randomInt(60 * 15));
             continue;
           }
         } finally {
           clearTimeout(timeout);
         }
-        const html = decodeUtf8(raw!);
-        const p = await measureMs("parse", async () => parseHtml(load(html)));
-        const text = (p.mainArticleText || p.pageText).slice(0, 64 * 1024);
-        const meta = {
-          description: p.description,
-          imageUrl: p.imageUrl,
-          lang: p.ogLocale || p.htmlLang,
-          snippet: p.snippet,
-          timestamp: p.timestamp,
-          timestampModified: p.timestampModified,
-          title: p.title,
-        };
+        let text, meta;
+        if (raw) {
+          const html = decodeUtf8(raw);
+          const p = await measureMs("parse", async () => parseHtml(load(html)));
+          text = (p.mainArticleText || p.pageText).slice(0, 64 * 1024);
+          meta = {
+            description: p.description,
+            imageUrl: p.imageUrl,
+            lang: p.ogLocale || p.htmlLang,
+            snippet: p.snippet,
+            timestamp: p.timestamp,
+            timestampModified: p.timestampModified,
+            title: p.title,
+          };
+        }
         await Promise.all([
-          db.exec(
-            "update url set fetched = ?, fetch_err = null where url = ?",
-            [fetched, url],
-          ),
-          upsertKvRow.execute({
-            k: `url/${id}/text`,
-            v: encodeUtf8(text),
-          }),
-          upsertKvRow.execute({
-            k: `url/${id}/meta`,
-            v: encode(meta),
-          }),
+          db.exec("update url set fetched = ?, fetch_err = ? where url = ?", [
+            fetched,
+            fetchErr,
+            url,
+          ]),
+          text &&
+            upsertKvRow.execute({
+              k: `url/${id}/text`,
+              v: encodeUtf8(text),
+            }),
+          meta &&
+            upsertKvRow.execute({
+              k: `url/${id}/meta`,
+              v: encode(meta),
+            }),
         ]);
         await QUEUE_CRAWL.deleteMessages([t]);
       }

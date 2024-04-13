@@ -4,6 +4,10 @@ import { ContainerInstanceClient } from "oci-containerinstances";
 import { ContainerInstance } from "oci-containerinstances/lib/model";
 import { Command } from "sacli";
 
+const compartmentId = assertExists(process.env["OCI_COMPARTMENT_OCID"]);
+const availabilityDomain = assertExists(process.env["OCI_AVAILABILITY_DOMAIN"]);
+const displayName = "hndr-crawler";
+
 const ci = new ContainerInstanceClient({
   authenticationDetailsProvider: new ConfigFileAuthenticationDetailsProvider(
     process.env["OCI_CLI_CONFIG_FILE"],
@@ -11,6 +15,26 @@ const ci = new ContainerInstanceClient({
 });
 
 const cli = Command.new("crawler");
+
+cli.subcommand("terminate").action(async () => {
+  let page;
+  do {
+    const res = await ci.listContainerInstances({
+      compartmentId,
+      displayName,
+      page,
+    });
+    console.log("Terminating", res.containerInstanceCollection.items.length);
+    await Promise.all(
+      res.containerInstanceCollection.items.map((i) =>
+        ci.deleteContainerInstance({
+          containerInstanceId: i.id,
+        }),
+      ),
+    );
+    page = res.opcNextPage;
+  } while (page);
+});
 
 cli
   .subcommand("launch")
@@ -20,10 +44,8 @@ cli
       Array.from({ length: args.count }, () =>
         ci.createContainerInstance({
           createContainerInstanceDetails: {
-            availabilityDomain: assertExists(
-              process.env["OCI_AVAILABILITY_DOMAIN"],
-            ),
-            compartmentId: assertExists(process.env["OCI_COMPARTMENT_OCID"]),
+            availabilityDomain,
+            compartmentId,
             containerRestartPolicy:
               ContainerInstance.ContainerRestartPolicy.Never,
             containers: [
@@ -49,7 +71,7 @@ cli
                 },
               },
             ],
-            displayName: "hndr-crawler",
+            displayName,
             shape: "CI.Standard.A1.Flex",
             shapeConfig: {
               ocpus: 1,
