@@ -15,7 +15,8 @@ use chrono::TimeDelta;
 use chrono::TimeZone;
 use chrono::Utc;
 use common::arrow::ArrowIpcOutput;
-use common::DbRpcClient;
+use common::create_db_client;
+use db_rpc_client_rs::DbRpcDbClient;
 use futures::Future;
 use itertools::Itertools;
 use serde::de::DeserializeOwned;
@@ -29,7 +30,7 @@ pub trait Row: DeserializeOwned {
 }
 
 pub struct DbRowStream<R: Row> {
-  client: DbRpcClient,
+  client: DbRpcDbClient,
   query: &'static str,
   next_id: u64,
   buf: VecDeque<R>,
@@ -37,7 +38,7 @@ pub struct DbRowStream<R: Row> {
 }
 
 impl<R: Row> DbRowStream<R> {
-  pub fn new(client: DbRpcClient, query: &'static str) -> Self {
+  pub fn new(client: DbRpcDbClient, query: &'static str) -> Self {
     Self {
       client,
       query,
@@ -55,7 +56,8 @@ impl<R: Row> DbRowStream<R> {
     let rows = self
       .client
       .query::<R>(self.query, vec![self.next_id.into()])
-      .await;
+      .await
+      .unwrap();
     if rows.is_empty() {
       self.ended = true;
     } else {
@@ -242,7 +244,7 @@ fn serialise_embedding(emb: &[f32; 1024]) -> Vec<u8> {
 
 #[tokio::main]
 async fn main() {
-  let client = DbRpcClient::new();
+  let client = create_db_client();
 
   // We load and use our prebuilt interactions data, as otherwise we'd have to store all posts (inc. embeddings) in memory for future comments.
   // Map from post ID to user IDs.

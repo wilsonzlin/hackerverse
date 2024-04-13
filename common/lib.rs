@@ -1,68 +1,38 @@
-use serde::de::DeserializeOwned;
-use serde::Serialize;
+use cadence::QueuingMetricSink;
+use cadence::StatsdClient;
+use cadence::UdpMetricSink;
+use db_rpc_client_rs::DbRpcClient;
+use db_rpc_client_rs::DbRpcClientCfg;
+use db_rpc_client_rs::DbRpcDbClient;
+use queued_client_rs::QueuedClient;
+use queued_client_rs::QueuedClientCfg;
+use queued_client_rs::QueuedQueueClient;
+use std::net::UdpSocket;
+use std::sync::Arc;
 
 pub mod arrow;
 
-#[derive(Clone)]
-pub struct DbRpcClient {
-  client: reqwest::Client,
+pub fn create_db_client() -> DbRpcDbClient {
+  let api_key = std::env::var("DB_RPC_API_KEY").unwrap();
+  DbRpcClient::new(DbRpcClientCfg {
+    api_key: Some(api_key),
+    endpoint: "https://db-rpc.posh.wilsonl.in".to_string(),
+  })
+  .database("hndr")
 }
 
-#[derive(Serialize)]
-struct DbRpcQuery {
-  query: &'static str,
-  params: Vec<rmpv::Value>,
+pub fn create_queue_client(q: impl AsRef<str>) -> QueuedQueueClient {
+  QueuedClient::new(QueuedClientCfg {
+    api_key: Some(std::env::var("QUEUED_API_KEY").unwrap()),
+    endpoint: "https://queued.posh.wilsonl.in".to_string(),
+  })
+  .queue(q.as_ref())
 }
 
-#[derive(Serialize)]
-struct DbRpcBatch {
-  query: &'static str,
-  params: Vec<Vec<rmpv::Value>>,
-}
-
-impl DbRpcClient {
-  pub fn new() -> Self {
-    Self {
-      client: reqwest::Client::new(),
-    }
-  }
-
-  pub async fn query<R: DeserializeOwned>(
-    &self,
-    query: &'static str,
-    params: Vec<rmpv::Value>,
-  ) -> Vec<R> {
-    let raw = self
-      .client
-      .post("https://db-rpc.posh.wilsonl.in/db/hndr/query")
-      .header("Authorization", std::env::var("DB_RPC_API_KEY").unwrap())
-      .header("Content-Type", "application/msgpack")
-      .body(rmp_serde::to_vec_named(&DbRpcQuery { query, params }).unwrap())
-      .send()
-      .await
-      .unwrap()
-      .error_for_status()
-      .unwrap()
-      .bytes()
-      .await
-      .unwrap();
-    rmp_serde::from_slice(&raw).unwrap()
-  }
-
-  pub async fn batch(&self, query: &'static str, params: Vec<Vec<rmpv::Value>>) {
-    self
-      .client
-      .post("https://db-rpc.posh.wilsonl.in/db/hndr/batch")
-      .header("Authorization", std::env::var("DB_RPC_API_KEY").unwrap())
-      .header("Content-Type", "application/msgpack")
-      .body(rmp_serde::to_vec_named(&DbRpcBatch { query, params }).unwrap())
-      .send()
-      .await
-      .unwrap()
-      .error_for_status()
-      .unwrap()
-      .bytes()
-      .await
-      .unwrap();
-  }
+pub fn create_statsd(prefix: &'static str) -> Arc<StatsdClient> {
+  let socket = UdpSocket::bind("0.0.0.0:0").unwrap();
+  socket.set_nonblocking(true).unwrap();
+  let sink = UdpMetricSink::from(("127.0.0.1", 8125), socket).unwrap();
+  let sink = QueuingMetricSink::from(sink);
+  Arc::new(StatsdClient::from_sink(prefix, sink))
 }

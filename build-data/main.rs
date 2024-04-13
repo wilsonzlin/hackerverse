@@ -11,7 +11,7 @@ use arrow::datatypes::Field;
 use arrow::datatypes::Schema;
 use chrono::Utc;
 use common::arrow::ArrowIpcOutput;
-use common::DbRpcClient;
+use common::create_db_client;
 use serde::Deserialize;
 use std::collections::BTreeSet;
 use std::sync::Arc;
@@ -176,7 +176,7 @@ fn create_sparse_embedding_field(name: &'static str) -> Field {
 
 #[tokio::main]
 async fn main() {
-  let client = DbRpcClient::new();
+  let client = create_db_client();
 
   let post_schema = Schema::new(vec![
     Field::new("id", DataType::UInt64, false),
@@ -250,7 +250,7 @@ async fn main() {
         limit 100000
       "#,
       vec![next_post_id.into()],
-    ).await;
+    ).await.unwrap();
     let n = posts.len();
     if n == 0 {
       println!("end of posts");
@@ -286,7 +286,8 @@ async fn main() {
         "#,
         vec![next_comment_id.into()],
       )
-      .await;
+      .await
+      .unwrap();
     let n = comments.len();
     if n == 0 {
       println!("end of comments");
