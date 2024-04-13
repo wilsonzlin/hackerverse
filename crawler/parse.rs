@@ -217,13 +217,16 @@ pub(crate) fn parse_html(html: &str) -> (Meta, String) {
 
   remove_by_sel(&mut doc, &SEL_STRIP);
 
-  let mut text = doc
+  let text = doc
     .select(&*SEL_MAIN_ARTICLE)
     .next()
     .or_else(|| doc.select(&*SEL_BODY).next())
     .map(|elem| element_to_text(elem, false))
-    .unwrap_or_default();
-  text.truncate(64 * 1024);
+    .unwrap_or_default()
+    // Don't just use .truncate(), that panics if not on a char boundary.
+    .chars()
+    .take(64 * 1024)
+    .collect::<String>();
   remove_by_sel(&mut doc, &SEL_SNIPPET_STRIP);
   meta.snippet = Some(text.chars().take(251).collect());
 
