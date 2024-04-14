@@ -1,4 +1,5 @@
 import assertExists from "@xtjs/lib/js/assertExists";
+import withoutUndefined from "@xtjs/lib/js/withoutUndefined";
 import { ConfigFileAuthenticationDetailsProvider } from "oci-common";
 import { ContainerInstanceClient } from "oci-containerinstances";
 import { ContainerInstance } from "oci-containerinstances/lib/model";
@@ -55,11 +56,12 @@ cli
               {
                 displayName: "main",
                 imageUrl: "docker.io/wilsonzlin/hndr-rust-base",
-                environmentVariables: {
+                environmentVariables: withoutUndefined({
                   DB_RPC_API_KEY: assertExists(process.env["DB_RPC_API_KEY"]),
                   MAIN: "crawler",
                   QUEUED_API_KEY: assertExists(process.env["QUEUED_API_KEY"]),
-                },
+                  USER_AGENT: process.env["USER_AGENT"],
+                }),
               },
               // https://docs.oracle.com/en/learn/manage-oci-container-instances/#introduction:~:text=When%20you%20have,as%20configured%20above.
               // > When you have multiple containers within a container instance, they share the compute resources like the CPU and memory that is available to the container instance. They also share the networking namespace, which is why the WordPress container can connect to the MySQL container over localhost or the loopback address 127.0.0.1 as configured above.

@@ -218,6 +218,7 @@ async fn main() {
     .connect_timeout(Duration::from_secs(20))
     .timeout(Duration::from_secs(60))
     .tcp_keepalive(None)
+    .user_agent(std::env::var("USER_AGENT").unwrap_or_else(|_| "hndr".to_string()))
     .build()
     .unwrap();
 
