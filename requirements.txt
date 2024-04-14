@@ -1,4 +1,3 @@
-FlagEmbedding
 implicit
 msgpipe
 numpy
@@ -7,6 +6,7 @@ pyarrow
 requests
 scikit-learn
 scipy
+sentence_transformers
 service-toolkit
 statsd
 umap-learn

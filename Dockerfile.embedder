@@ -2,7 +2,8 @@
 # This is because some RunPod Community Cloud hosts have older NVIDIA driver versions. What matters on the host is the NVIDIA driver version, not the CUDA version. NVIDIA drivers are only compatible up to a certain version of CUDA.
 FROM runpod/pytorch:2.1.0-py3.10-cuda11.8.0-devel-ubuntu22.04
 
-COPY --from=wilsonzlin/pkg-bge-m3:5a212480c9a75bb651bcb894978ed409e4c47b82 /pkg /model
+RUN pip install sentence_transformers
+RUN python -c 'from sentence_transformers import SentenceTransformer; SentenceTransformer("jinaai/jina-embeddings-v2-small-en")'
 
 RUN curl -fLSs --output /usr/bin/runpodctl https://github.com/runpod/runpodctl/releases/download/v1.14.2/runpodctl-linux-amd64
 RUN chmod +x /usr/bin/runpodctl
@@ -18,8 +19,6 @@ WORKDIR /app
 
 COPY requirements.txt .
 RUN pip install -r requirements.txt
-# TODO HACK to disable TQDM from trashing our logs. (TQDM_DISABLE=1 doesn't seem to work.)
-RUN sed -i 's%tqdm(%(lambda x, **o: x)(%' /usr/local/lib/python3.10/dist-packages/FlagEmbedding/bge_m3.py
 
 COPY package.json .
 RUN npm i
@@ -29,11 +28,10 @@ COPY common common
 COPY embedder embedder
 RUN npx tsc
 
-ENV HF_DATASETS_OFFLINE=1
 # For StatsD prefix.
 ENV MAIN=embedder
 ENV NODE_NO_WARNINGS=1
 ENV NODE_OPTIONS='--max-old-space-size=16384 --stack-trace-limit=1024'
+ENV PYTHONUNBUFFERED=0
 ENV TQDM_DISABLE=1
-ENV TRANSFORMERS_OFFLINE=1
 CMD bash embedder/docker.entrypoint.sh

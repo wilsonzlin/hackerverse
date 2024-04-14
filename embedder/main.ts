@@ -1,4 +1,4 @@
-import { decode, encode } from "@msgpack/msgpack";
+import { decode } from "@msgpack/msgpack";
 import { setUpUncaughtExceptionHandler } from "@wzlin/service-toolkit";
 import {
   VDate,
@@ -22,6 +22,7 @@ import {
   QUEUE_EMBED,
   db,
   getKvRow,
+  statsd,
   upsertKvRow,
   vQueueEmbedTask,
 } from "../common/res";
@@ -109,7 +110,7 @@ const pageFetcher = new Batcher(async (urlIds: number[]) => {
   }));
 });
 
-new WorkerPool(__filename, 128)
+new WorkerPool(__filename, 256)
   .leaderState(async () => {
     const embedWorker = await createEmbedWorker();
     const embedBatcher = new Batcher((texts: string[]) =>
@@ -141,8 +142,9 @@ new WorkerPool(__filename, 128)
         const fetchState = await mapExists(urlId, (id) =>
           urlFetchStateFetcher.execute(id),
         );
-        if (!fetchState?.ts || fetchState.err) {
+        if (!fetchState?.ts) {
           // The item hasn't been fetched yet. Do not delete queue task. Do not update queue task, let the existing visibility timeout postpone its processing. Do not continue.
+          statsd.increment("skipped");
           continue;
         }
         const { text, meta } =
@@ -154,20 +156,13 @@ new WorkerPool(__filename, 128)
             meta?.description ?? "",
           )
           .replace("<<<REPLACE_WITH_PAGE_TEXT>>>", text ?? "");
-        const textEmb = await pool.execute("embed", embInput);
-        const keyPfx = task.outputKey;
-        await Promise.all([
-          upsertKvRow.execute({
-            k: `${keyPfx}/dense`,
-            v: rawBytes(new Float32Array(textEmb.dense)),
-          }),
-          upsertKvRow.execute({
-            k: `${keyPfx}/sparse`,
-            v: encode(textEmb.sparse),
-          }),
-        ]);
-        await QUEUE_EMBED.deleteMessages([msg]);
       }
+      const textEmb = await pool.execute("embed", embInput);
+      await upsertKvRow.execute({
+        k: task.outputKey,
+        v: textEmb,
+      });
+      await QUEUE_EMBED.deleteMessages([msg]);
     }
   })
   .go();
