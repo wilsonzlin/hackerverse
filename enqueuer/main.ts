@@ -8,7 +8,6 @@ import { VInteger, VString, VStruct, VUtf8Bytes, Valid } from "@wzlin/valid";
 import Batcher from "@xtjs/lib/js/Batcher";
 import WorkerPool from "@xtjs/lib/js/WorkerPool";
 import assertExists from "@xtjs/lib/js/assertExists";
-import defined from "@xtjs/lib/js/defined";
 import encodeUtf8 from "@xtjs/lib/js/encodeUtf8";
 import mapExists from "@xtjs/lib/js/mapExists";
 import mapNonEmpty from "@xtjs/lib/js/mapNonEmpty";
@@ -175,24 +174,21 @@ const processItem = async (item: Item) => {
       url = undefined;
     }
     const title = parsePostTitle(item.title ?? "");
-    embInput = (
-      url
-        ? [
-            title,
-            urlNoProto,
-            "<<<REPLACE_WITH_PAGE_TITLE>>>",
-            "<<<REPLACE_WITH_PAGE_DESCRIPTION>>>",
-            "<<<REPLACE_WITH_PAGE_TEXT>>>",
-          ]
-        : [title, extractText(item.text ?? "")]
-    )
-      .filter(defined)
+    embInput = [
+      title,
+      urlNoProto,
+      extractText(item.text ?? ""),
+      "<<<REPLACE_WITH_PAGE_TITLE>>>",
+      "<<<REPLACE_WITH_PAGE_DESCRIPTION>>>",
+      "<<<REPLACE_WITH_PAGE_TEXT>>>",
+    ]
+      .filter((l) => l)
       .join("\n\n");
     let addedSep = false;
     const topComments = item.kids?.slice() ?? [];
     const MAX_LEN = 1024 * 64; // 64 KiB.
     while (topComments.length && embInput.length < MAX_LEN) {
-      // Embelish with top-level top comments (item.children are ranked already). This is useful if the page isn't primarily text, could not be fetched, etc.
+      // Embelish with top-level top comments (`item.kids` are ranked already). This is useful if the page isn't primarily text, could not be fetched, etc.
       const i = await fetchItem(topComments.shift()!);
       // We don't want to include negative comments as part of the post's text representation.
       if (!i || i.type !== "comment" || i.dead || i.deleted || i.score! < 0) {
