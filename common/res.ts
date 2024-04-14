@@ -85,7 +85,7 @@ export const getKvRow = new Batcher(async (keys: string[]) => {
     `select k, v from kv where k in (${keys.map(() => "?").join(",")})`,
     [...keys],
     new VStruct({
-      k: new VString(),
+      k: new VUtf8Bytes(new VString()),
       v: new VBytes(),
     }),
   );

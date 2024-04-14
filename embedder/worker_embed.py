@@ -32,8 +32,8 @@ def embed_handler(x: EmbedReq):
     global last_embed_time
     now = time.time()
     statsd.timing("idle_gpu_ms", (now - last_embed_time) * 1000)
-    # Batch size of 16 tends to cause OOM on 24 GB NVIDIA RTX A5000.
-    out = model.encode(x.texts, return_dense=True, return_sparse=True, batch_size=8)
+    # Batch size of 1 is fastest (according to bench.wilsonl.in) likely due to the long inputs, and least likely to cause OOM on 24 GB VRAM GPUs.
+    out = model.encode(x.texts, return_dense=True, return_sparse=True, batch_size=1)
     last_embed_time = now
     return {
         "embeddings": [

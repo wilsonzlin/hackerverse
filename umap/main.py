@@ -27,8 +27,8 @@ mapper = umap.UMAP(
     # Do not set a random state, it prevents parallelisation.
     n_components=2,
     metric="cosine",
-    n_neighbors=50,
-    min_dist=0.1,
+    n_neighbors=300,
+    min_dist=0.25,
     low_memory=False,
     # The default spectral init fails after a very long time, and just falls back to random anyway. The error:
     # > UserWarning: Spectral initialisation failed! The eigenvector solver failed. This is likely due to too small an eigengap. Consider adding some noise or jitter to your data. Falling back to random initialisation!

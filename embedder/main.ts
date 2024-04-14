@@ -11,7 +11,6 @@ import {
   ValuePath,
 } from "@wzlin/valid";
 import Batcher from "@xtjs/lib/js/Batcher";
-import Pipeline from "@xtjs/lib/js/Pipeline";
 import UnreachableError from "@xtjs/lib/js/UnreachableError";
 import assertExists from "@xtjs/lib/js/assertExists";
 import decodeUtf8 from "@xtjs/lib/js/decodeUtf8";
@@ -24,6 +23,7 @@ import {
   getKvRow,
   lg,
   measureMs,
+  statsd,
   upsertKvRow,
   vQueueEmbedTask,
 } from "../common/res";
@@ -114,22 +114,18 @@ const vMeta = new VStruct({
     }));
   });
 
-  await Pipeline.from(async () => {
-    const [msg] = await QUEUE_EMBED.pollMessages(
-      1,
-      Duration.fromObject({ minutes: 30 }).as("seconds"),
-    );
-    if (!msg) {
-      return;
-    }
-    const task = vQueueEmbedTask.parseRoot(msg.contents);
-    return { msg, task };
-  })
-    .then({
-      concurrency: 512,
-      costBuffer: 1024,
-      inputCost: () => 1,
-      handler: async ({ msg, task }) => {
+  const CONCURRENCY = 8;
+  await Promise.all(
+    Array.from({ length: CONCURRENCY }, async () => {
+      while (true) {
+        const [msg] = await QUEUE_EMBED.pollMessages(
+          1,
+          Duration.fromObject({ minutes: 30 }).as("seconds"),
+        );
+        if (!msg) {
+          break;
+        }
+        const task = vQueueEmbedTask.parseRoot(msg.contents);
         let embInput = decodeUtf8(await getKvRow.execute(task.inputKey));
         if (embInput.includes("<<<REPLACE_WITH_PAGE_TITLE>>>")) {
           const postId = parseInteger(
@@ -141,7 +137,7 @@ const vMeta = new VStruct({
           );
           if (!fetchState?.ts || fetchState.err) {
             // The item hasn't been fetched yet. Do not delete queue task. Do not update queue task, let the existing visibility timeout postpone its processing. Do not continue.
-            return;
+            continue;
           }
           const { text, meta } =
             (await mapExists(urlId, (id) => pageFetcher.execute(id))) ?? {};
@@ -152,27 +148,26 @@ const vMeta = new VStruct({
               meta?.description ?? "",
             )
             .replace("<<<REPLACE_WITH_PAGE_TEXT>>>", text ?? "");
+          const textEmb = await measureMs("embed_text_ms", () =>
+            embedBatcher.execute(embInput),
+          );
+          statsd.increment("embed_text_char_count", embInput.length);
+          const keyPfx = task.outputKey;
+          await Promise.all([
+            upsertKvRow.execute({
+              k: `${keyPfx}/dense`,
+              v: rawBytes(new Float32Array(textEmb.dense)),
+            }),
+            upsertKvRow.execute({
+              k: `${keyPfx}/sparse`,
+              v: encode(textEmb.sparse),
+            }),
+          ]);
+          await QUEUE_EMBED.deleteMessages([msg]);
         }
-        return { msg, task, embInput };
-      },
-    })
-    .finally(async ({ embInput, msg, task }) => {
-      const textEmb = await measureMs("embed_text", () =>
-        embedBatcher.execute(embInput),
-      );
-      const keyPfx = task.outputKey;
-      await Promise.all([
-        upsertKvRow.execute({
-          k: `${keyPfx}/dense`,
-          v: rawBytes(new Float32Array(textEmb.dense)),
-        }),
-        upsertKvRow.execute({
-          k: `${keyPfx}/sparse`,
-          v: encode(textEmb.sparse),
-        }),
-      ]);
-      await QUEUE_EMBED.deleteMessages([msg]);
-    });
+      }
+    }),
+  );
 
   // Don't idle with an expensive GPU.
   lg.info("no more tasks, stopping");
