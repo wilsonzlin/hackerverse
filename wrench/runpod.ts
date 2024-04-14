@@ -1,7 +1,8 @@
+import { VArray, VString, VStruct } from "@wzlin/valid";
 import PromiseQueue from "@xtjs/lib/js/PromiseQueue";
 import { Command } from "sacli";
 
-const req = async (query: string) => {
+const req = async (query: string, variables?: any) => {
   const res = await fetch(
     "https://api.runpod.io/graphql?api_key=" +
       encodeURIComponent(process.env["RUNPOD_API_KEY"]!),
@@ -10,7 +11,7 @@ const req = async (query: string) => {
       headers: {
         "content-type": "application/json",
       },
-      body: JSON.stringify({ query }),
+      body: JSON.stringify({ query, variables }),
     },
   );
   const raw = await res.json();
@@ -123,5 +124,48 @@ cli
       ),
     );
   });
+
+cli.subcommand("terminate").action(async () => {
+  const raw = await req(
+    `
+      query myself {
+        myself {
+          pods {
+            id
+          }
+        }
+      }
+    `,
+  );
+  const pods = new VStruct({
+    myself: new VStruct({
+      pods: new VArray(
+        new VStruct({
+          id: new VString(),
+        }),
+      ),
+    }),
+  }).parseRoot(raw).myself.pods;
+  console.log("Found", pods.length, "pods");
+  const q = new PromiseQueue(100);
+  await Promise.all(
+    pods.map((p) =>
+      q.add(async () => {
+        await req(
+          `
+            mutation podTerminate($input: PodTerminateInput!) {
+              podTerminate(input: $input)
+            }
+          `,
+          {
+            input: {
+              podId: p.id,
+            },
+          },
+        );
+      }),
+    ),
+  );
+});
 
 cli.eval(process.argv.slice(2));
