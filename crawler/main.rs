@@ -1,3 +1,4 @@
+mod origin;
 mod parse;
 
 use cadence::Counted;
@@ -9,8 +10,10 @@ use chrono::Utc;
 use common::create_db_client;
 use common::create_queue_client;
 use common::create_statsd;
+use dashmap::DashMap;
 use db_rpc_client_rs::DbRpcDbClient;
 use itertools::Itertools;
+use origin::Origin;
 use parse::parse_html;
 use queued_client_rs::QueuedQueueClient;
 use rand::thread_rng;
@@ -91,6 +94,7 @@ async fn make_request(client: &Client, url: impl AsRef<str>) -> Result<String, S
 }
 
 async fn worker_loop(
+  origins: Arc<DashMap<String, Origin>>,
   client: Client,
   db: DbRpcDbClient,
   queue: QueuedQueueClient,
@@ -98,7 +102,7 @@ async fn worker_loop(
 ) {
   loop {
     let Some(t) = queue
-      .poll_messages(1, std::time::Duration::from_secs(60 * 20))
+      .poll_messages(1, Duration::from_secs(60 * 20))
       .await
       .unwrap()
       .messages
@@ -107,6 +111,20 @@ async fn worker_loop(
       break;
     };
     let CrawlTask { id, proto, url } = rmp_serde::from_slice(&t.contents).unwrap();
+
+    let origin = url.split_once('/').unwrap().0;
+    if !origins.entry(origin.to_string()).or_default().can_request() {
+      statsd
+        .incr_with_tags("fetch_err")
+        .with_tag("error", "rate_limit")
+        .send();
+      let delay = thread_rng().gen_range(0..60 * 120);
+      queue
+        .update_message(t.message(), Duration::from_secs(delay))
+        .await
+        .unwrap();
+      continue;
+    }
 
     let fetch_started = Utc::now();
     let fetch_started_i = Instant::now();
@@ -151,12 +169,26 @@ async fn worker_loop(
           .incr_with_tags("fetch_err")
           .with_tag("error", &err)
           .send();
+        // Release lock on DashMap ASAP to avoid deadlocking across await.
+        {
+          let mut origin = origins.get_mut(origin).unwrap();
+          if err == "connect"
+            || err == "request"
+            || err == "timeout"
+            || err == "status:429"
+            || err.starts_with("status:5")
+          {
+            origin.incr_failures();
+          } else {
+            origin.decr_failures();
+          };
+        };
         if err == "status:429" {
           // Don't update the DB row, we're not finished.
           // Don't instead create a new message, as that could cause exponential explosion if two workers polled the same message somehow.
           let delay = thread_rng().gen_range(0..60 * 15);
           queue
-            .update_message(t.message(), std::time::Duration::from_secs(delay))
+            .update_message(t.message(), Duration::from_secs(delay))
             .await
             .unwrap();
           continue;
@@ -178,6 +210,7 @@ async fn worker_loop(
 async fn main() {
   set_up_panic_hook();
 
+  let origins = Arc::new(DashMap::new());
   let db = create_db_client();
   let queue = create_queue_client("hndr:crawl");
   let statsd = create_statsd("crawler");
@@ -191,6 +224,7 @@ async fn main() {
   let workers = (0..CONTENT_CRAWL_CONCURRENCY)
     .map(|_| {
       spawn(worker_loop(
+        origins.clone(),
         client.clone(),
         db.clone(),
         queue.clone(),
