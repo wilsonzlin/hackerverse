@@ -128,6 +128,10 @@ fn remove_by_sel<'a>(doc: &mut Html, sel: &Selector) {
     let Some(mut n) = doc.tree.get_mut(id) else {
       continue;
     };
+    // TODO WORKAROUND This is to prevent a panic in `n.detach()` on the `parent.children.unwrap()` call inside it.
+    if !n.parent().is_some_and(|p| p.has_children()) {
+      continue;
+    };
     n.detach();
   }
 }

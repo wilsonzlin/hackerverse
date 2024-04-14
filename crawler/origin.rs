@@ -43,3 +43,24 @@ impl Origin {
     self.failures = max(0, self.failures - 1);
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::Origin;
+  use crate::origin::ORIGIN_REQ_COUNT_WINDOW_MAX;
+
+  #[test]
+  fn test_origin_rate_limiting() {
+    let mut origin = Origin::default();
+    // We get 200 crawl tasks, all with URLs pointing to the same origin.
+    // We send the requests before any of them receive their response.
+    for i in 0..200 {
+      let can_req = origin.can_request();
+      if i <= ORIGIN_REQ_COUNT_WINDOW_MAX {
+        assert!(can_req);
+      } else {
+        assert!(!can_req);
+      };
+    }
+  }
+}
