@@ -45,9 +45,14 @@ pub fn get_content_type(res: &Response) -> Option<String> {
     .and_then(|v| v.to_str().map(|v| v.to_string()).ok())
 }
 
-// If Content-Type is omitted, that's fine, but if it exists, it must be text/html* or text/xhtml*.
+// If Content-Type is omitted, that's fine, but if it exists, it must be application/xhtml* or text/html* or text/xhtml*.
 pub fn is_valid_content_type(ct: Option<&String>) -> bool {
-  ct.is_none() || ct.is_some_and(|ct| ct.starts_with("text/html") || ct.starts_with("text/xhtml"))
+  ct.is_none()
+    || ct.is_some_and(|ct| {
+      ct.starts_with("application/xhtml")
+        || ct.starts_with("text/html")
+        || ct.starts_with("text/xhtml")
+    })
 }
 
 pub struct ProcessCrawlArgs {

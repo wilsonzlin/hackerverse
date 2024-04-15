@@ -195,8 +195,8 @@ pub struct RateLimiter {
 impl RateLimiter {
   pub fn incr(&mut self) {
     self.count = min(8, self.count + 1);
-    self.until =
-      Utc::now() + chrono::Duration::milliseconds(thread_rng().gen_range(0..((1 << self.count) * 1000)));
+    self.until = Utc::now()
+      + chrono::Duration::milliseconds(thread_rng().gen_range(0..((1 << self.count) * 1000)));
   }
 
   pub fn decr(&mut self) {
@@ -230,8 +230,8 @@ async fn worker_loop(
   queue: QueuedQueueClient,
   statsd: Arc<StatsdClient>,
 ) {
-  let mut rate_limiter_ia = RateLimiter::default();
   let mut rate_limiter_at = RateLimiter::default();
+  let mut rate_limiter_ia = RateLimiter::default();
   loop {
     let Some(t) = queue
       .poll_messages(1, Duration::from_secs(60 * 20))
@@ -263,21 +263,18 @@ async fn worker_loop(
     } else {
       let url_with_proto = format!("{}//{}", proto, url);
       let fetch_started = Utc::now();
-      let use_at = thread_rng().gen_bool(0.5);
-      let (rl, typ, res) = if use_at {
-        // Use Internet Archive.
-        (
-          rate_limiter_ia.sleep_until_ok().await,
-          "internet_archive",
-          try_internet_archive(&statsd, &client, url_with_proto).await,
-        )
-      } else {
-        // Use Archive Today.
-        (
-          rate_limiter_at.sleep_until_ok().await,
-          "archive_today",
-          try_archive_today(&statsd, &client, url_with_proto).await,
-        )
+      let (typ, rl) = [
+        ("archive_today", &mut rate_limiter_at),
+        ("internet_archive", &mut rate_limiter_ia),
+      ]
+      .into_iter()
+      .min_by_key(|m| m.1.until)
+      .unwrap();
+      rl.sleep_until_ok().await;
+      let res = match typ {
+        "archive_today" => try_archive_today(&statsd, &client, url_with_proto).await,
+        "internet_archive" => try_internet_archive(&statsd, &client, url_with_proto).await,
+        _ => unreachable!(),
       };
       match res {
         Ok(Some(html)) => {
