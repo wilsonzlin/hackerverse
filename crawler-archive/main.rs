@@ -196,7 +196,7 @@ impl RateLimiter {
   pub fn incr(&mut self) {
     self.count = min(8, self.count + 1);
     self.until =
-      Utc::now() + chrono::Duration::seconds(thread_rng().gen_range(0..((1 << self.count) * 1000)));
+      Utc::now() + chrono::Duration::milliseconds(thread_rng().gen_range(0..((1 << self.count) * 1000)));
   }
 
   pub fn decr(&mut self) {
