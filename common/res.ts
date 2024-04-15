@@ -83,13 +83,15 @@ export type KvRow = {
 export const getKvRow = new Batcher(async (keys: string[]) => {
   const rows = await db.query(
     `select k, v from kv where k in (${keys.map(() => "?").join(",")})`,
-    [...keys],
+    keys,
     new VStruct({
       k: new VUtf8Bytes(new VString()),
       v: new VBytes(),
     }),
   );
-  const map = Object.fromEntries(rows.map((r) => [r.k, r.v]));
+  const map: Record<string, Uint8Array | undefined> = Object.fromEntries(
+    rows.map((r) => [r.k, r.v]),
+  );
   return keys.map((k) => map[k]);
 });
 

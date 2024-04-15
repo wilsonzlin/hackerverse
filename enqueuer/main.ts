@@ -174,14 +174,18 @@ const processItem = async (item: Item) => {
       url = undefined;
     }
     const title = parsePostTitle(item.title ?? "");
-    embInput = [
-      title,
-      urlNoProto,
-      extractText(item.text ?? ""),
-      "<<<REPLACE_WITH_PAGE_TITLE>>>",
-      "<<<REPLACE_WITH_PAGE_DESCRIPTION>>>",
-      "<<<REPLACE_WITH_PAGE_TEXT>>>",
-    ]
+    // Don't put placeholders if there's no URL, as otherwise the embedder will have to do a lookup for every single post to see if it has a URL.
+    embInput = (
+      url
+        ? [
+            title,
+            urlNoProto,
+            "<<<REPLACE_WITH_PAGE_TITLE>>>",
+            "<<<REPLACE_WITH_PAGE_DESCRIPTION>>>",
+            "<<<REPLACE_WITH_PAGE_TEXT>>>",
+          ]
+        : [title, extractText(item.text ?? "")]
+    )
       .filter((l) => l)
       .join("\n\n");
     let addedSep = false;

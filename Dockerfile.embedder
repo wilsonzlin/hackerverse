@@ -31,7 +31,7 @@ RUN npx tsc
 # For StatsD prefix.
 ENV MAIN=embedder
 ENV NODE_NO_WARNINGS=1
-ENV NODE_OPTIONS='--max-old-space-size=16384 --stack-trace-limit=1024'
+ENV NODE_OPTIONS='--enable-source-maps --max-old-space-size=16384 --stack-trace-limit=1024'
 ENV PYTHONUNBUFFERED=0
 ENV TQDM_DISABLE=1
 CMD bash embedder/docker.entrypoint.sh

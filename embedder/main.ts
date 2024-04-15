@@ -40,9 +40,6 @@ const vMeta = new VStruct({
   title: new VOptional(new VString()),
 });
 
-const rawBytes = (t: ArrayBufferView) =>
-  Buffer.from(t.buffer, t.byteOffset, t.byteLength);
-
 const postUrlIdFetcher = new Batcher(async (ids: number[]) => {
   const rows = await db.query(
     `
@@ -89,6 +86,9 @@ const pageFetcher = new Batcher(async (urlIds: number[]) => {
   const texts: Record<number, string | undefined> = {};
   const metas: Record<number, Valid<typeof vMeta> | undefined> = {};
   for (const [k, v] of rows) {
+    if (!v) {
+      continue;
+    }
     const [_, idRaw, typ] = assertExists(
       /^url\/([0-9]+)\/(text|meta)$/.exec(k),
     );
@@ -133,7 +133,9 @@ new WorkerPool(__filename, 256)
         break;
       }
       const task = vQueueEmbedTask.parseRoot(msg.contents);
-      let embInput = decodeUtf8(await getKvRow.execute(task.inputKey));
+      let embInput = decodeUtf8(
+        assertExists(await getKvRow.execute(task.inputKey)),
+      );
       if (embInput.includes("<<<REPLACE_WITH_PAGE_TITLE>>>")) {
         const postId = parseInteger(
           /^post\/([0-9]+)\/emb_input$/.exec(task.inputKey)![1],
@@ -142,18 +144,19 @@ new WorkerPool(__filename, 256)
         const fetchState = await mapExists(urlId, (id) =>
           urlFetchStateFetcher.execute(id),
         );
-        if (!fetchState?.ts) {
-          // The item hasn't been fetched yet. Do not delete queue task. Do not update queue task, let the existing visibility timeout postpone its processing. Do not continue.
+        const { text, meta } =
+          (await mapExists(urlId, (id) => pageFetcher.execute(id))) ?? {};
+        // The item hasn't been fetched yet. For now, we also skip if the fetch failed or the text/meta is (partially) missing. This ensures we can decide whether to fix the input to ensure high quality embeddings, or just go ahead anyway and create potentially poor embeddings with little to no input.
+        // Do not delete queue task. Do not update queue task, let the existing visibility timeout postpone its processing. Do not continue.
+        if (!fetchState?.ts || fetchState.err || !text || !meta) {
           statsd.increment("skipped");
           continue;
         }
-        const { text, meta } =
-          (await mapExists(urlId, (id) => pageFetcher.execute(id))) ?? {};
         embInput = embInput
-          .replace("<<<REPLACE_WITH_PAGE_TITLE>>>", meta?.title ?? "")
+          .replace("<<<REPLACE_WITH_PAGE_TITLE>>>", meta.title ?? "")
           .replace(
             "<<<REPLACE_WITH_PAGE_DESCRIPTION>>>",
-            meta?.description ?? "",
+            meta.description ?? "",
           )
           .replace("<<<REPLACE_WITH_PAGE_TEXT>>>", text ?? "");
       }
