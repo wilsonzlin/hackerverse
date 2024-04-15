@@ -27,6 +27,7 @@ cli
         proto: new VUtf8Bytes(new VString()),
         fetched: new VOptional(new VDate()),
         fetch_err: new VOptional(new VUtf8Bytes(new VString())),
+        fetched_via: new VOptional(new VUtf8Bytes(new VString())),
       }),
     );
     if (!row) {

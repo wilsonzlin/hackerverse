@@ -7,7 +7,6 @@ import { Command } from "sacli";
 
 const compartmentId = assertExists(process.env["OCI_COMPARTMENT_OCID"]);
 const availabilityDomain = assertExists(process.env["OCI_AVAILABILITY_DOMAIN"]);
-const displayName = "hndr-crawler";
 
 const ci = new ContainerInstanceClient({
   authenticationDetailsProvider: new ConfigFileAuthenticationDetailsProvider(
@@ -17,33 +16,39 @@ const ci = new ContainerInstanceClient({
 
 const cli = Command.new("crawler");
 
-cli.subcommand("terminate").action(async () => {
-  let page;
-  do {
-    const res = await ci.listContainerInstances({
-      compartmentId,
-      displayName,
-      page,
-    });
-    const insts = res.containerInstanceCollection.items.filter(
-      (i) => i.lifecycleState != "DELETED" && i.lifecycleState != "DELETING",
-    );
-    console.log("Terminating", insts.length);
-    await Promise.all(
-      insts.map((i) =>
-        ci.deleteContainerInstance({
-          containerInstanceId: i.id,
-        }),
-      ),
-    );
-    page = res.opcNextPage;
-  } while (page);
-});
+cli
+  .subcommand("terminate")
+  .optional("service", String)
+  .action(async (args) => {
+    const service = args.service ?? "crawler";
+    let page;
+    do {
+      const res = await ci.listContainerInstances({
+        compartmentId,
+        displayName: `hndr-${service}`,
+        page,
+      });
+      const insts = res.containerInstanceCollection.items.filter(
+        (i) => i.lifecycleState != "DELETED" && i.lifecycleState != "DELETING",
+      );
+      console.log("Terminating", insts.length);
+      await Promise.all(
+        insts.map((i) =>
+          ci.deleteContainerInstance({
+            containerInstanceId: i.id,
+          }),
+        ),
+      );
+      page = res.opcNextPage;
+    } while (page);
+  });
 
 cli
   .subcommand("launch")
   .required("count", Number, { default: true })
+  .optional("service", String)
   .action(async (args) => {
+    const service = args.service ?? "crawler";
     await Promise.all(
       Array.from({ length: args.count }, () =>
         ci.createContainerInstance({
@@ -58,7 +63,7 @@ cli
                 imageUrl: "docker.io/wilsonzlin/hndr-rust-base",
                 environmentVariables: withoutUndefined({
                   DB_RPC_API_KEY: assertExists(process.env["DB_RPC_API_KEY"]),
-                  MAIN: "crawler",
+                  MAIN: service,
                   QUEUED_API_KEY: assertExists(process.env["QUEUED_API_KEY"]),
                   USER_AGENT: process.env["USER_AGENT"],
                 }),
@@ -76,7 +81,7 @@ cli
                 },
               },
             ],
-            displayName,
+            displayName: `hndr-${service}`,
             shape: "CI.Standard.A1.Flex",
             shapeConfig: {
               ocpus: 1,
