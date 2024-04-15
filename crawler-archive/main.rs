@@ -201,7 +201,6 @@ impl RateLimiter {
 
   pub fn decr(&mut self) {
     self.count = max(0, self.count - 1);
-    self.until = Utc::now();
   }
 
   pub async fn sleep_until_ok(&mut self) -> &mut Self {
