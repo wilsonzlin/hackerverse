@@ -28,6 +28,7 @@ use serde_with::serde_as;
 use serde_with::DisplayFromStr;
 use service_toolkit::panic::set_up_panic_hook;
 use std::cmp::max;
+use std::cmp::min;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::spawn;
@@ -193,7 +194,7 @@ pub struct RateLimiter {
 
 impl RateLimiter {
   pub fn incr(&mut self) {
-    self.count = max(8, self.count + 1);
+    self.count = min(8, self.count + 1);
     self.until =
       Utc::now() + chrono::Duration::seconds(thread_rng().gen_range(0..((1 << self.count) * 1000)));
   }
