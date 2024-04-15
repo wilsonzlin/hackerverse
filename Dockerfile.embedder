@@ -8,10 +8,12 @@ RUN python -c 'from sentence_transformers import SentenceTransformer; SentenceTr
 RUN curl -fLSs --output /usr/bin/runpodctl https://github.com/runpod/runpodctl/releases/download/v1.14.2/runpodctl-linux-amd64
 RUN chmod +x /usr/bin/runpodctl
 
+ENV MAIN=embedder
+
 COPY --from=telegraf /usr/bin/telegraf /telegraf
 COPY embedder/telegraf.conf /
 COPY --from=grafana/promtail /usr/bin/promtail /promtail
-COPY embedder/promtail.yaml /
+COPY promtail.yaml /
 
 RUN curl -fLSs https://deb.nodesource.com/setup_21.x | bash - && apt install -yq nodejs
 
@@ -28,8 +30,6 @@ COPY common common
 COPY embedder embedder
 RUN npx tsc
 
-# For StatsD prefix.
-ENV MAIN=embedder
 ENV NODE_NO_WARNINGS=1
 ENV NODE_OPTIONS='--enable-source-maps --max-old-space-size=16384 --stack-trace-limit=1024'
 ENV PYTHONUNBUFFERED=0

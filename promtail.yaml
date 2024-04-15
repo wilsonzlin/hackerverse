@@ -21,3 +21,4 @@ scrape_configs:
     static_configs:
       - labels:
           __path__: /app.log
+          service: ${MAIN}
