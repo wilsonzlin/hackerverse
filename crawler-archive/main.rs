@@ -290,9 +290,13 @@ async fn worker_loop(
           .await;
         }
         Err(err)
-          if err
-            .status()
-            .is_some_and(|s| s.is_server_error() || s == StatusCode::TOO_MANY_REQUESTS) =>
+          if err.is_connect()
+            || err.is_timeout()
+            || err.is_request()
+            || err.is_decode()
+            || err
+              .status()
+              .is_some_and(|s| s.is_server_error() || s == StatusCode::TOO_MANY_REQUESTS) =>
         {
           rl.incr();
           // Don't delete queue message or decrement rate limit hit count.

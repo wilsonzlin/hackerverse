@@ -131,8 +131,10 @@ promtail -config.file /promtail.yaml -config.expand-env=true &
 # Wait for log collector to start, as it won't export existing log entries before it starts.
 sleep 5
 
+# Use host networking for StatsD.
 docker run \\
   --name hndr \\
+  --net host \\
   -d \\
   -e ARCHIVE_TODAY_USER_AGENT='${process.env["ARCHIVE_TODAY_USER_AGENT"]}' \\
   -e DB_RPC_API_KEY='${process.env["DB_RPC_API_KEY"]}' \\
