@@ -62,6 +62,8 @@ cli
                 displayName: "main",
                 imageUrl: "docker.io/wilsonzlin/hndr-rust-base",
                 environmentVariables: withoutUndefined({
+                  ARCHIVE_TODAY_USER_AGENT:
+                    process.env["ARCHIVE_TODAY_USER_AGENT"],
                   DB_RPC_API_KEY: assertExists(process.env["DB_RPC_API_KEY"]),
                   MAIN: service,
                   QUEUED_API_KEY: assertExists(process.env["QUEUED_API_KEY"]),

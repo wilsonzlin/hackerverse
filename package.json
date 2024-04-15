@@ -10,6 +10,7 @@
     "test": "jest"
   },
   "dependencies": {
+    "@aws-sdk/client-ec2": "^3.554.0",
     "@msgpack/msgpack": "^2",
     "@msgpipe/nodejs": "^0.1.0",
     "@types/jest": "^29.5.12",

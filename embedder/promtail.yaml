@@ -13,11 +13,11 @@ scrape_configs:
       - json:
           expressions:
             level: level
-            message: msg
-            timestamp: time
+            message: msg || fields.message
+            timestamp: timestamp
       - timestamp:
           source: timestamp
-          format: UnixMs
+          format: RFC3339
     static_configs:
       - labels:
           __path__: /app.log

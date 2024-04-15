@@ -1,6 +1,7 @@
 use cadence::Counted;
 use cadence::StatsdClient;
 use cadence::Timed;
+use chrono::DateTime;
 use chrono::Utc;
 use common::crawl::get_content_type;
 use common::crawl::is_valid_content_type;
@@ -12,9 +13,14 @@ use common::create_queue_client;
 use common::create_statsd;
 use db_rpc_client_rs::DbRpcDbClient;
 use futures::TryFutureExt;
+use itertools::Itertools;
 use queued_client_rs::QueuedQueueClient;
 use rand::thread_rng;
 use rand::Rng;
+use reqwest::header::ACCEPT;
+use reqwest::header::ACCEPT_ENCODING;
+use reqwest::header::ACCEPT_LANGUAGE;
+use reqwest::header::USER_AGENT;
 use reqwest::Client;
 use reqwest::StatusCode;
 use serde::Deserialize;
@@ -24,6 +30,7 @@ use service_toolkit::panic::set_up_panic_hook;
 use std::cmp::max;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::spawn;
 use tokio::time::sleep;
 use tokio::time::Instant;
 
@@ -114,6 +121,75 @@ async fn try_internet_archive(
   Ok(Some(res))
 }
 
+async fn try_archive_today(
+  statsd: &Arc<StatsdClient>,
+  client: &Client,
+  url: impl AsRef<str>,
+) -> reqwest::Result<Option<String>> {
+  let res_started = Instant::now();
+  let res = client
+    .get(format!("https://archive.is/latest/{}", url.as_ref()))
+    .header(
+      USER_AGENT,
+      std::env::var("ARCHIVE_TODAY_USER_AGENT").unwrap(),
+    )
+    .header(
+      ACCEPT,
+      "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    )
+    .header(ACCEPT_ENCODING, "gzip, deflate, br")
+    .header(ACCEPT_LANGUAGE, "en")
+    .send()
+    .and_then(|res| async { res.error_for_status() })
+    .and_then(|res| async {
+      let ct = get_content_type(&res);
+      res.text().await.map(|text| (ct, text))
+    })
+    .await;
+  statsd
+    .time_with_tags("archive_today_fetch_ms", res_started.elapsed())
+    .with_tag(
+      "error",
+      &res
+        .as_ref()
+        .err()
+        .map(reqwest_error_to_code)
+        .unwrap_or_else(|| "none".to_string()),
+    )
+    .send();
+  let (ct, res) = res?;
+  if !is_valid_content_type(ct.as_ref()) {
+    return Ok(None);
+  };
+  Ok(Some(res))
+}
+
+#[derive(Default)]
+pub struct RateLimiter {
+  count: i64,
+  until: DateTime<Utc>,
+}
+
+impl RateLimiter {
+  pub fn incr(&mut self) {
+    self.count = max(8, self.count + 1);
+    self.until =
+      Utc::now() + chrono::Duration::seconds(thread_rng().gen_range(0..((1 << self.count) * 1000)));
+  }
+
+  pub fn decr(&mut self) {
+    self.count = max(0, self.count - 1);
+    self.until = Utc::now();
+  }
+
+  pub async fn sleep_until_ok(&mut self) -> &mut Self {
+    if let Ok(diff) = (self.until - Utc::now()).to_std() {
+      sleep(diff).await;
+    };
+    self
+  }
+}
+
 #[derive(Deserialize)]
 struct CrawlTask {
   id: u64,
@@ -127,7 +203,8 @@ async fn worker_loop(
   queue: QueuedQueueClient,
   statsd: Arc<StatsdClient>,
 ) {
-  let mut rate_limits = 0u64;
+  let mut rate_limiter_ia = RateLimiter::default();
+  let mut rate_limiter_at = RateLimiter::default();
   loop {
     let Some(t) = queue
       .poll_messages(1, Duration::from_secs(60 * 20))
@@ -157,8 +234,23 @@ async fn worker_loop(
     if already_successful {
       statsd.count("skipped", 1).unwrap();
     } else {
+      let url_with_proto = format!("{}//{}", proto, url);
       let fetch_started = Utc::now();
-      match try_internet_archive(&statsd, &client, format!("{}//{}", proto, url)).await {
+      let use_at = thread_rng().gen_bool(0.5);
+      let (rl, res) = if use_at {
+        // Use Archive Today.
+        (
+          rate_limiter_ia.sleep_until_ok().await,
+          try_archive_today(&statsd, &client, url_with_proto).await,
+        )
+      } else {
+        // Use Internet Archive.
+        (
+          rate_limiter_at.sleep_until_ok().await,
+          try_internet_archive(&statsd, &client, url_with_proto).await,
+        )
+      };
+      match res {
         Ok(Some(html)) => {
           statsd.count("fetch_bytes", html.len() as u64).unwrap();
           process_crawl(ProcessCrawlArgs {
@@ -176,16 +268,14 @@ async fn worker_loop(
             .status()
             .is_some_and(|s| s.is_server_error() || s == StatusCode::TOO_MANY_REQUESTS) =>
         {
-          rate_limits = max(8, rate_limits + 1);
-          let delay_ms = thread_rng().gen_range(0..((1 << rate_limits) * 1000));
-          sleep(std::time::Duration::from_millis(delay_ms)).await;
+          rl.incr();
           // Don't delete queue message or decrement rate limit hit count.
           continue;
         }
         // Errors are already tracked (via StatsD) in the try_internet_archive function, so we don't need to handle them.
         _ => {}
       };
-      rate_limits = rate_limits.saturating_sub(1);
+      rl.decr();
     };
     queue.delete_messages([t.message()]).await.unwrap();
   }
@@ -206,7 +296,19 @@ async fn main() {
     .build()
     .unwrap();
 
-  // IA has very low rate limits, one worker is enough.
-  worker_loop(client.clone(), db.clone(), queue.clone(), statsd.clone()).await;
+  let workers = (0..2)
+    .map(|_| {
+      spawn(worker_loop(
+        client.clone(),
+        db.clone(),
+        queue.clone(),
+        statsd.clone(),
+      ))
+    })
+    .collect_vec();
+
+  for w in workers {
+    w.await.unwrap();
+  }
   println!("All done!");
 }
