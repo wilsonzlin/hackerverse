@@ -27,6 +27,7 @@ create table url (
   proto varchar(20) not null,
   fetched datetime,
   fetch_err varchar(128),
+  fetched_via varchar(128), -- We may have fetched this page via an alternative source, like the Internet Archive.
   primary key (id),
   unique (url)
 );

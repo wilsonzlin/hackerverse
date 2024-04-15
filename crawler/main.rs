@@ -12,6 +12,7 @@ use common::create_queue_client;
 use common::create_statsd;
 use dashmap::DashMap;
 use db_rpc_client_rs::DbRpcDbClient;
+use futures::TryFutureExt;
 use itertools::Itertools;
 use origin::Origin;
 use parse::parse_html;
@@ -22,6 +23,7 @@ use reqwest::header::ACCEPT;
 use reqwest::header::ACCEPT_LANGUAGE;
 use reqwest::header::CONTENT_TYPE;
 use reqwest::Client;
+use reqwest::Response;
 use serde::Deserialize;
 use service_toolkit::panic::set_up_panic_hook;
 use std::sync::Arc;
@@ -50,7 +52,7 @@ fn datetime_to_rmpv(dt: DateTime<Utc>) -> rmpv::Value {
   )
 }
 
-fn reqwest_error_to_code(err: reqwest::Error) -> String {
+fn reqwest_error_to_code(err: &reqwest::Error) -> String {
   if err.is_body() {
     "body".to_string()
   } else if err.is_builder() {
@@ -72,6 +74,18 @@ fn reqwest_error_to_code(err: reqwest::Error) -> String {
   }
 }
 
+// If Content-Type is omitted, that's fine, but if it exists, it must be text/html*.
+fn is_valid_content_type(ct: Option<&String>) -> bool {
+  ct.is_some_and(|ct| !ct.starts_with("text/html"))
+}
+
+fn get_content_type(res: &Response) -> Option<String> {
+  res
+    .headers()
+    .get(CONTENT_TYPE)
+    .and_then(|v| v.to_str().map(|v| v.to_string()).ok())
+}
+
 async fn make_request(client: &Client, url: impl AsRef<str>) -> Result<String, String> {
   let res = client
     .get(url.as_ref())
@@ -80,17 +94,100 @@ async fn make_request(client: &Client, url: impl AsRef<str>) -> Result<String, S
     .send()
     .await
     .and_then(|res| res.error_for_status())
-    .map_err(reqwest_error_to_code)?;
-  let ct = res
-    .headers()
-    .get(CONTENT_TYPE)
-    .and_then(|v| v.to_str().map(|v| v.to_string()).ok());
-  // If Content-Type is omitted, that's fine, but if it exists, it must be text/html*.
-  if ct.as_ref().is_some_and(|ct| !ct.starts_with("text/html")) {
+    .map_err(|err| reqwest_error_to_code(&err))?;
+  let ct = get_content_type(&res);
+  if !is_valid_content_type(ct.as_ref()) {
     return Err(format!("content_type:{}", ct.unwrap()));
   };
-  let raw = res.bytes().await.map_err(reqwest_error_to_code)?;
+  let raw = res
+    .bytes()
+    .await
+    .map_err(|err| reqwest_error_to_code(&err))?;
   String::from_utf8(raw.to_vec()).map_err(|_| "utf8".to_string())
+}
+
+// Return value:
+// - Err(reqwest::Error): something went wrong when interacting with the Internet Archive, either the API or the archived content. Make sure to check we're not being rate limited or the server is down, so as to not continue retrying excessively.
+// - Ok(None): no archived content is available.
+// - Ok(Some(String)): the archived HTML.
+async fn try_internet_archive(
+  statsd: &Arc<StatsdClient>,
+  client: &Client,
+  url: impl AsRef<str>,
+) -> reqwest::Result<Option<String>> {
+  #[derive(Deserialize)]
+  #[allow(unused)]
+  struct AvailableArchivedSnapshotsClosest {
+    status: u16,
+    available: bool,
+    url: String,
+    timestamp: String,
+  }
+  #[derive(Deserialize)]
+  struct AvailableArchivedSnapshots {
+    closest: Option<AvailableArchivedSnapshotsClosest>,
+  }
+  #[derive(Deserialize)]
+  #[allow(unused)]
+  struct Available {
+    url: String,
+    archived_snapshots: AvailableArchivedSnapshots,
+  }
+  let a_started = Instant::now();
+  let a = client
+    .get("https://archive.org/wayback/available")
+    .query(&[("url", url.as_ref())])
+    .send()
+    .and_then(|res| async { res.error_for_status() })
+    .and_then(|res| res.json::<Available>())
+    .await;
+  statsd
+    .time_with_tags(
+      "internet_archive_available_api_call_ms",
+      a_started.elapsed(),
+    )
+    .with_tag(
+      "error",
+      &a.as_ref()
+        .err()
+        .map(reqwest_error_to_code)
+        .unwrap_or_default(),
+    )
+    .send();
+  let a = a?;
+  let Some(c) = a
+    .archived_snapshots
+    .closest
+    .filter(|c| c.available && c.status >= 200 && c.status <= 299)
+  else {
+    return Ok(None);
+  };
+  let res_started = Instant::now();
+  let res = client
+    .get(c.url)
+    .send()
+    .and_then(|res| async { res.error_for_status() })
+    .and_then(|res| async {
+      let ct = get_content_type(&res);
+      res.text().await.map(|text| (ct, text))
+    })
+    .await;
+  statsd
+    .time_with_tags("internet_archive_fetch_ms", res_started.elapsed())
+    .with_tag(
+      "error",
+      &res
+        .as_ref()
+        .err()
+        .map(reqwest_error_to_code)
+        .unwrap_or_default(),
+    )
+    .send();
+  let (ct, res) = res?;
+  if !is_valid_content_type(ct.as_ref()) {
+    return Ok(None);
+  };
+  Ok(Some(res))
 }
 
 async fn worker_loop(
@@ -128,7 +225,8 @@ async fn worker_loop(
 
     let fetch_started = Utc::now();
     let fetch_started_i = Instant::now();
-    let res = make_request(&client, format!("{}//{}", proto, url)).await;
+    let url_with_proto = format!("{}//{}", proto, url);
+    let mut res = make_request(&client, &url_with_proto).await;
     statsd
       .time_with_tags("fetch_ms", fetch_started_i.elapsed())
       .with_tag("result", match res.as_ref().map_err(|v| v.as_str()) {
@@ -137,6 +235,33 @@ async fn worker_loop(
         Err(_) => "error",
       })
       .send();
+    let mut fetched_via = rmpv::Value::Nil;
+    if res.as_ref().is_err_and(|err| {
+      matches!(
+        err.as_str(),
+        "connect"
+          | "request"
+          | "timeout"
+          | "status:401"
+          | "status:403"
+          | "status:404"
+          | "status:429"
+      )
+    }) {
+      // Second chance: try using the Internet Archive.
+      match try_internet_archive(&statsd, &client, &url_with_proto).await {
+        Err(err) => {
+          // TODO
+        }
+        Ok(None) => {
+          // TODO
+        }
+        Ok(Some(html)) => {
+          res = Ok(html);
+          fetched_via = rmpv::Value::String("internet_archive".into());
+        }
+      };
+    };
     match res {
       Ok(html) => {
         statsd.count("fetch_bytes", html.len() as u64).unwrap();
@@ -158,8 +283,8 @@ async fn worker_loop(
         .await
         .unwrap();
         db.exec(
-          "update url set fetched = ?, fetch_err = NULL where url = ?",
-          vec![datetime_to_rmpv(fetch_started), url.into()],
+          "update url set fetched = ?, fetch_err = NULL, fetched_via = ? where url = ?",
+          vec![datetime_to_rmpv(fetch_started), fetched_via, url.into()],
         )
         .await
         .unwrap();
@@ -195,7 +320,7 @@ async fn worker_loop(
         };
         // Do not overwrite or delete existing text/meta in the KV table if this crawl has failed.
         db.exec(
-          "update url set fetched = ?, fetch_err = ? where url = ?",
+          "update url set fetched = ?, fetch_err = ?, fetched_via = NULL where url = ?",
           vec![datetime_to_rmpv(fetch_started), err.into(), url.into()],
         )
         .await
