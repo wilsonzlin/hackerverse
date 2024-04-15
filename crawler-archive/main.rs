@@ -63,6 +63,10 @@ async fn try_internet_archive(
     url: String,
     archived_snapshots: AvailableArchivedSnapshots,
   }
+  tracing::info!(
+    url = url.as_ref(),
+    "checking for Internet Archive availability"
+  );
   let a_started = Instant::now();
   let a = client
     .get("https://archive.org/wayback/available")
@@ -71,18 +75,15 @@ async fn try_internet_archive(
     .and_then(|res| async { res.error_for_status() })
     .and_then(|res| res.text())
     .await;
+  let a_dur = a_started.elapsed();
+  let a_err = a
+    .as_ref()
+    .err()
+    .map(reqwest_error_to_code)
+    .unwrap_or_else(|| "none".to_string());
   statsd
-    .time_with_tags(
-      "internet_archive_available_api_call_ms",
-      a_started.elapsed(),
-    )
-    .with_tag(
-      "error",
-      &a.as_ref()
-        .err()
-        .map(reqwest_error_to_code)
-        .unwrap_or_else(|| "none".to_string()),
-    )
+    .time_with_tags("internet_archive_available_api_call_ms", a_dur)
+    .with_tag("error", &a_err)
     .send();
   let a = a?;
   let Some(c) = serde_json::from_str::<Available>(&a)
@@ -93,6 +94,15 @@ async fn try_internet_archive(
   else {
     return Ok(None);
   };
+  tracing::info!(
+    url = url.as_ref(),
+    err = a_err,
+    ms = a_dur.as_millis(),
+    available = c.available,
+    status = c.status,
+    ts = c.timestamp,
+    "received Internet Archive availability response, fetching"
+  );
   let res_started = Instant::now();
   let res = client
     .get(c.url)
@@ -103,16 +113,21 @@ async fn try_internet_archive(
       res.text().await.map(|text| (ct, text))
     })
     .await;
+  let res_dur = res_started.elapsed();
+  let res_err = res
+    .as_ref()
+    .err()
+    .map(reqwest_error_to_code)
+    .unwrap_or_else(|| "none".to_string());
+  tracing::info!(
+    url = url.as_ref(),
+    err = res_err,
+    ms = res_dur.as_millis(),
+    "fetched from Internet Archive"
+  );
   statsd
-    .time_with_tags("internet_archive_fetch_ms", res_started.elapsed())
-    .with_tag(
-      "error",
-      &res
-        .as_ref()
-        .err()
-        .map(reqwest_error_to_code)
-        .unwrap_or_else(|| "none".to_string()),
-    )
+    .time_with_tags("internet_archive_fetch_ms", res_dur)
+    .with_tag("error", &res_err)
     .send();
   let (ct, res) = res?;
   if !is_valid_content_type(ct.as_ref()) {
@@ -126,6 +141,7 @@ async fn try_archive_today(
   client: &Client,
   url: impl AsRef<str>,
 ) -> reqwest::Result<Option<String>> {
+  tracing::info!(url = url.as_ref(), "fetching from archive.today");
   let res_started = Instant::now();
   let res = client
     .get(format!("https://archive.is/latest/{}", url.as_ref()))
@@ -146,16 +162,21 @@ async fn try_archive_today(
       res.text().await.map(|text| (ct, text))
     })
     .await;
+  let fetch_dur = res_started.elapsed();
+  let fetch_err = res
+    .as_ref()
+    .err()
+    .map(reqwest_error_to_code)
+    .unwrap_or_else(|| "none".to_string());
+  tracing::info!(
+    url = url.as_ref(),
+    err = fetch_err,
+    ms = fetch_dur.as_millis(),
+    "fetched from archive.today"
+  );
   statsd
-    .time_with_tags("archive_today_fetch_ms", res_started.elapsed())
-    .with_tag(
-      "error",
-      &res
-        .as_ref()
-        .err()
-        .map(reqwest_error_to_code)
-        .unwrap_or_else(|| "none".to_string()),
-    )
+    .time_with_tags("archive_today_fetch_ms", fetch_dur)
+    .with_tag("error", &fetch_err)
     .send();
   let (ct, res) = res?;
   if !is_valid_content_type(ct.as_ref()) {
@@ -184,6 +205,11 @@ impl RateLimiter {
 
   pub async fn sleep_until_ok(&mut self) -> &mut Self {
     if let Ok(diff) = (self.until - Utc::now()).to_std() {
+      tracing::info!(
+        hits = self.count,
+        ms = diff.as_millis(),
+        "sleeping due to rate limit hits"
+      );
       sleep(diff).await;
     };
     self
@@ -237,17 +263,19 @@ async fn worker_loop(
       let url_with_proto = format!("{}//{}", proto, url);
       let fetch_started = Utc::now();
       let use_at = thread_rng().gen_bool(0.5);
-      let (rl, res) = if use_at {
-        // Use Archive Today.
-        (
-          rate_limiter_ia.sleep_until_ok().await,
-          try_archive_today(&statsd, &client, url_with_proto).await,
-        )
-      } else {
+      let (rl, typ, res) = if use_at {
         // Use Internet Archive.
         (
-          rate_limiter_at.sleep_until_ok().await,
+          rate_limiter_ia.sleep_until_ok().await,
+          "internet_archive",
           try_internet_archive(&statsd, &client, url_with_proto).await,
+        )
+      } else {
+        // Use Archive Today.
+        (
+          rate_limiter_at.sleep_until_ok().await,
+          "archive_today",
+          try_archive_today(&statsd, &client, url_with_proto).await,
         )
       };
       match res {
@@ -256,7 +284,7 @@ async fn worker_loop(
           process_crawl(ProcessCrawlArgs {
             db: db.clone(),
             fetch_started,
-            fetched_via: Some("internet_archive"),
+            fetched_via: Some(typ),
             html,
             url,
             url_id: id,
@@ -284,6 +312,8 @@ async fn worker_loop(
 #[tokio::main]
 async fn main() {
   set_up_panic_hook();
+
+  tracing_subscriber::fmt().json().init();
 
   let db = create_db_client();
   let queue = create_queue_client("hndr:crawl_archive");
