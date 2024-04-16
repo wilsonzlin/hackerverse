@@ -49,17 +49,6 @@ services:
       MAIN: crawler
       QUEUED_API_KEY: ${QUEUED_API_KEY}
 
-  crawler-archive:
-    image: wilsonzlin/hndr-rust-base
-    init: true
-    build:
-      context: .
-      dockerfile: Dockerfile.rust-base
-    environment:
-      DB_RPC_API_KEY: ${DB_RPC_API_KEY}
-      MAIN: crawler-archive
-      QUEUED_API_KEY: ${QUEUED_API_KEY}
-
   embedder:
     image: wilsonzlin/hndr-embedder
     init: true

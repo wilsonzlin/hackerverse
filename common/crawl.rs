@@ -4,7 +4,15 @@ use chrono::Utc;
 use db_rpc_client_rs::DbRpcDbClient;
 use reqwest::header::CONTENT_TYPE;
 use reqwest::Response;
+use serde::Deserialize;
 use tokio::task::spawn_blocking;
+
+#[derive(Deserialize)]
+pub struct CrawlTask {
+  pub id: u64,
+  pub proto: String,
+  pub url: String,
+}
 
 pub fn datetime_to_rmpv(dt: DateTime<Utc>) -> rmpv::Value {
   rmpv::Value::Ext(

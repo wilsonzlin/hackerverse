@@ -7,13 +7,10 @@ use common::crawl::get_content_type;
 use common::crawl::is_valid_content_type;
 use common::crawl::process_crawl;
 use common::crawl::reqwest_error_to_code;
+use common::crawl::CrawlTask;
 use common::crawl::ProcessCrawlArgs;
-use common::create_db_client;
-use common::create_queue_client;
-use common::create_statsd;
 use db_rpc_client_rs::DbRpcDbClient;
 use futures::TryFutureExt;
-use itertools::Itertools;
 use queued_client_rs::QueuedQueueClient;
 use rand::thread_rng;
 use rand::Rng;
@@ -26,12 +23,10 @@ use reqwest::StatusCode;
 use serde::Deserialize;
 use serde_with::serde_as;
 use serde_with::DisplayFromStr;
-use service_toolkit::panic::set_up_panic_hook;
 use std::cmp::max;
 use std::cmp::min;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::spawn;
 use tokio::time::sleep;
 use tokio::time::Instant;
 
@@ -216,14 +211,7 @@ impl RateLimiter {
   }
 }
 
-#[derive(Deserialize)]
-struct CrawlTask {
-  id: u64,
-  proto: String,
-  url: String,
-}
-
-async fn worker_loop(
+pub(crate) async fn archive_worker_loop(
   client: Client,
   db: DbRpcDbClient,
   queue: QueuedQueueClient,
@@ -308,38 +296,4 @@ async fn worker_loop(
     };
     queue.delete_messages([t.message()]).await.unwrap();
   }
-}
-
-#[tokio::main]
-async fn main() {
-  set_up_panic_hook();
-
-  tracing_subscriber::fmt().json().init();
-
-  let db = create_db_client();
-  let queue = create_queue_client("hndr:crawl_archive");
-  let statsd = create_statsd("crawler_archive");
-  let client = reqwest::Client::builder()
-    .connect_timeout(Duration::from_secs(20))
-    .timeout(Duration::from_secs(60))
-    .tcp_keepalive(None)
-    .user_agent(std::env::var("USER_AGENT").unwrap_or_else(|_| "hndr".to_string()))
-    .build()
-    .unwrap();
-
-  let workers = (0..2)
-    .map(|_| {
-      spawn(worker_loop(
-        client.clone(),
-        db.clone(),
-        queue.clone(),
-        statsd.clone(),
-      ))
-    })
-    .collect_vec();
-
-  for w in workers {
-    w.await.unwrap();
-  }
-  println!("All done!");
 }
