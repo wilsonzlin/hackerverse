@@ -1,9 +1,14 @@
-FROM rust
+FROM rust:1.77-bookworm
 
 WORKDIR /app
 
 COPY . .
-RUN cargo build --release
+ARG MAIN
+RUN cargo build --release --bin $MAIN
+
+FROM debian:bookworm-slim
+
+COPY --from=0 /app/target/release/$MAIN /app
 
 ENV RUST_BACKTRACE=1
-CMD target/release/$MAIN
+CMD /app

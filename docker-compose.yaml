@@ -39,11 +39,13 @@ services:
       - "${DOCKER_VOLUME_DIR}:/hndr-data"
 
   crawler:
-    image: wilsonzlin/hndr-rust-base
+    image: wilsonzlin/hndr-crawler
     init: true
     build:
       context: .
       dockerfile: Dockerfile.rust-base
+      args:
+        MAIN: crawler
     environment:
       DB_RPC_API_KEY: ${DB_RPC_API_KEY}
       MAIN: crawler

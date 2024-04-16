@@ -10,6 +10,7 @@ use common::create_statsd;
 use dashmap::DashMap;
 use itertools::Itertools;
 use service_toolkit::panic::set_up_panic_hook;
+use tracing_subscriber::EnvFilter;
 use std::sync::Arc;
 use std::time::Duration;
 use sysinfo::System;
@@ -18,6 +19,11 @@ use tokio::spawn;
 #[tokio::main]
 async fn main() {
   set_up_panic_hook();
+
+  tracing_subscriber::fmt()
+    .with_env_filter(EnvFilter::from_default_env())
+    .json()
+    .init();
 
   let origins = Arc::new(DashMap::new());
   let db = create_db_client();
@@ -36,7 +42,7 @@ async fn main() {
   let mut sys = System::new_all();
   sys.refresh_all();
   // Target around 256 concurrency on a 4 GiB RAM machine.
-  let direct_worker_count = 16 * (sys.total_memory() / 1024 / 1024);
+  let direct_worker_count = sys.total_memory() / 1024 / 1024 / 16;
   let direct_workers = (0..direct_worker_count)
     .map(|_| {
       spawn(direct_worker_loop(

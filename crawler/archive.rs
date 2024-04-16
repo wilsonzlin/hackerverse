@@ -59,7 +59,7 @@ async fn try_internet_archive(
     url: String,
     archived_snapshots: AvailableArchivedSnapshots,
   }
-  tracing::info!(
+  tracing::debug!(
     url = url.as_ref(),
     "checking for Internet Archive availability"
   );
@@ -90,7 +90,7 @@ async fn try_internet_archive(
   else {
     return Ok(None);
   };
-  tracing::info!(
+  tracing::debug!(
     url = url.as_ref(),
     err = a_err,
     ms = a_dur.as_millis(),
@@ -115,7 +115,7 @@ async fn try_internet_archive(
     .err()
     .map(reqwest_error_to_code)
     .unwrap_or_else(|| "none".to_string());
-  tracing::info!(
+  tracing::debug!(
     url = url.as_ref(),
     err = res_err,
     ms = res_dur.as_millis(),
@@ -137,7 +137,7 @@ async fn try_archive_today(
   client: &Client,
   url: impl AsRef<str>,
 ) -> reqwest::Result<Option<String>> {
-  tracing::info!(url = url.as_ref(), "fetching from archive.today");
+  tracing::debug!(url = url.as_ref(), "fetching from archive.today");
   let res_started = Instant::now();
   let res = client
     .get(format!("https://archive.is/latest/{}", url.as_ref()))
@@ -164,7 +164,7 @@ async fn try_archive_today(
     .err()
     .map(reqwest_error_to_code)
     .unwrap_or_else(|| "none".to_string());
-  tracing::info!(
+  tracing::debug!(
     url = url.as_ref(),
     err = fetch_err,
     ms = fetch_dur.as_millis(),
@@ -200,7 +200,7 @@ impl RateLimiter {
 
   pub async fn sleep_until_ok(&mut self) -> &mut Self {
     if let Ok(diff) = (self.until - Utc::now()).to_std() {
-      tracing::info!(
+      tracing::debug!(
         hits = self.count,
         ms = diff.as_millis(),
         "sleeping due to rate limit hits"
