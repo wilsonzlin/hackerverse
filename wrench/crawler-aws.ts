@@ -70,7 +70,7 @@ cli
       `${__dirname}/../promtail.yaml`,
       "utf-8",
     );
-    await client.runInstances({
+    const res = await client.runInstances({
       ImageId: assertExists(image.ImageId),
       InstanceInitiatedShutdownBehavior: "terminate",
       InstanceType: "t4g.nano",
@@ -141,13 +141,13 @@ docker run \\
   -e MAIN="$MAIN" \\
   -e QUEUED_API_KEY='${process.env["QUEUED_API_KEY"]}' \\
   -e USER_AGENT='${process.env["USER_AGENT"]}' \\
-  wilsonzlin/hndr-rust-base
+  wilsonzlin/hndr-crawler
 
 docker logs -f hndr &> /app.log
         `.trim(),
       ).toString("base64"),
     });
-    console.log("Launched", args.count, "instances");
+    console.log("Launched", res.Instances?.length, "instances");
   });
 
 cli.eval(process.argv.slice(2));

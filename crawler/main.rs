@@ -10,11 +10,11 @@ use common::create_statsd;
 use dashmap::DashMap;
 use itertools::Itertools;
 use service_toolkit::panic::set_up_panic_hook;
-use tracing_subscriber::EnvFilter;
 use std::sync::Arc;
 use std::time::Duration;
 use sysinfo::System;
 use tokio::spawn;
+use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() {

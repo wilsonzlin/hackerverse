@@ -63,6 +63,22 @@ pub fn is_valid_content_type(ct: Option<&String>) -> bool {
     })
 }
 
+pub async fn check_if_already_crawled(db: &DbRpcDbClient, id: u64) -> bool {
+  #[derive(Deserialize)]
+  struct Row {
+    fetch_err: Option<String>,
+  }
+  let existing: Option<Row> = db
+    .query(
+      "select fetch_err from url where id = ? and fetched is not null",
+      vec![id.into()],
+    )
+    .await
+    .unwrap()
+    .pop();
+  existing.is_some_and(|e| e.fetch_err.is_none())
+}
+
 pub struct ProcessCrawlArgs {
   pub db: DbRpcDbClient,
   pub fetch_started: DateTime<Utc>,

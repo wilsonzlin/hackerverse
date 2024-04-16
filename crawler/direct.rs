@@ -4,6 +4,7 @@ use cadence::CountedExt;
 use cadence::StatsdClient;
 use cadence::Timed;
 use chrono::Utc;
+use common::crawl::check_if_already_crawled;
 use common::crawl::datetime_to_rmpv;
 use common::crawl::get_content_type;
 use common::crawl::is_valid_content_type;
@@ -19,7 +20,6 @@ use rand::Rng;
 use reqwest::header::ACCEPT;
 use reqwest::header::ACCEPT_LANGUAGE;
 use reqwest::Client;
-use serde::Deserialize;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -62,20 +62,7 @@ pub(crate) async fn direct_worker_loop(
     };
     let CrawlTask { id, proto, url } = rmp_serde::from_slice(&t.contents).unwrap();
 
-    #[derive(Deserialize)]
-    struct Row {
-      fetch_err: Option<String>,
-    }
-    let existing: Option<Row> = db
-      .query(
-        "select fetch_err from url where id = ? and fetched is not null",
-        vec![id.into()],
-      )
-      .await
-      .unwrap()
-      .pop();
-    let already_successful = existing.is_some_and(|e| e.fetch_err.is_none());
-    if already_successful {
+    if check_if_already_crawled(&db, id).await {
       // We've already fetched, either by another crawl task or by a crawl_archive task.
       statsd.count("skipped", 1).unwrap();
     } else {

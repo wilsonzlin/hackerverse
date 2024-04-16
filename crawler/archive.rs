@@ -3,6 +3,7 @@ use cadence::StatsdClient;
 use cadence::Timed;
 use chrono::DateTime;
 use chrono::Utc;
+use common::crawl::check_if_already_crawled;
 use common::crawl::get_content_type;
 use common::crawl::is_valid_content_type;
 use common::crawl::process_crawl;
@@ -231,21 +232,8 @@ pub(crate) async fn archive_worker_loop(
     };
     let CrawlTask { id, proto, url } = rmp_serde::from_slice(&t.contents).unwrap();
 
-    #[derive(Deserialize)]
-    struct Row {
-      fetch_err: Option<String>,
-    }
-    let existing: Option<Row> = db
-      .query(
-        "select fetch_err from url where id = ? and fetched is not null",
-        vec![id.into()],
-      )
-      .await
-      .unwrap()
-      .pop();
     // If we eventually managed to crawl it directly from the original site in the end, then we can skip this.
-    let already_successful = existing.is_some_and(|e| e.fetch_err.is_none());
-    if already_successful {
+    if check_if_already_crawled(&db, id).await {
       statsd.count("skipped", 1).unwrap();
     } else {
       let url_with_proto = format!("{}//{}", proto, url);
