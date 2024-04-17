@@ -6,7 +6,8 @@ import reversedComparator from "@xtjs/lib/js/reversedComparator";
 import { readFile } from "fs/promises";
 import { Command } from "sacli";
 
-const client = new EC2();
+const createClients = () =>
+  process.env["AWS_REGIONS"]!.split(",").map((region) => new EC2({ region }));
 
 const cli = Command.new("crawler");
 
@@ -15,20 +16,27 @@ cli
   .optional("service", String)
   .action(async (args) => {
     const service = args.service ?? "crawler";
-    const res = await client.describeInstances({
-      Filters: [
-        { Name: "instance-state-name", Values: ["pending", "running"] },
-        { Name: "tag:hndr", Values: [service] },
-      ],
-    });
-    const instIds =
-      res.Reservations?.flatMap(
-        (r) => r.Instances?.map((i) => i.InstanceId) ?? [],
-      ).filter(defined) ?? [];
-    console.log("Terminating", instIds.length);
-    await client.terminateInstances({
-      InstanceIds: instIds,
-    });
+    await Promise.all(
+      createClients().map(async (client) => {
+        const res = await client.describeInstances({
+          Filters: [
+            { Name: "instance-state-name", Values: ["pending", "running"] },
+            { Name: "tag:hndr", Values: [service] },
+          ],
+        });
+        const instIds =
+          res.Reservations?.flatMap(
+            (r) => r.Instances?.map((i) => i.InstanceId) ?? [],
+          ).filter(defined) ?? [];
+        const region = await client.config.region();
+        if (instIds.length) {
+          console.log("Terminating", instIds.length, "in region", region);
+          await client.terminateInstances({
+            InstanceIds: instIds,
+          });
+        }
+      }),
+    );
   });
 
 cli
@@ -37,56 +45,64 @@ cli
   .optional("service", String)
   .action(async (args) => {
     const service = args.service ?? "crawler";
-    const image = await client
-      .describeImages({
-        Owners: ["amazon"],
-        Filters: [
-          {
-            Name: "name",
-            Values: ["al2023-*"],
+    await Promise.all(
+      createClients().map(async (client) => {
+        const image = await client
+          .describeImages({
+            Owners: ["amazon"],
+            Filters: [
+              {
+                Name: "name",
+                Values: ["al2023-*"],
+              },
+              {
+                Name: "architecture",
+                Values: ["arm64"],
+              },
+              {
+                Name: "state",
+                Values: ["available"],
+              },
+            ],
+          })
+          .then((r) =>
+            assertExists(
+              r.Images?.sort(
+                reversedComparator(derivedComparator((i) => i.CreationDate)),
+              ).at(0),
+            ),
+          );
+        const telegrafConf = await readFile(
+          `${__dirname}/../telegraf/telegraf.conf`,
+          "utf-8",
+        );
+        const promtailConf = await readFile(
+          `${__dirname}/../promtail.yaml`,
+          "utf-8",
+        );
+        const region = await client.config.region();
+        const regionEnv = region.replaceAll("-", "_").toUpperCase();
+        const res = await client.runInstances({
+          ImageId: assertExists(image.ImageId),
+          InstanceInitiatedShutdownBehavior: "terminate",
+          InstanceType: "t4g.nano",
+          KeyName: process.env["AWS_SSH_KEY_NAME"],
+          MaxCount: args.count,
+          MinCount: 1,
+          SecurityGroupIds:
+            process.env[`AWS_SECURITY_GROUP_IDS_${regionEnv}`]?.split(","),
+          SubnetId: assertExists(process.env[`AWS_SUBNET_ID_${regionEnv}`]),
+          IamInstanceProfile: {
+            Arn: process.env["AWS_IAM_INSTANCE_PROFILE_ARN"],
           },
-          {
-            Name: "architecture",
-            Values: ["arm64"],
-          },
-          {
-            Name: "state",
-            Values: ["available"],
-          },
-        ],
-      })
-      .then((r) =>
-        assertExists(
-          r.Images?.sort(
-            reversedComparator(derivedComparator((i) => i.CreationDate)),
-          ).at(0),
-        ),
-      );
-    const telegrafConf = await readFile(
-      `${__dirname}/../telegraf/telegraf.conf`,
-      "utf-8",
-    );
-    const promtailConf = await readFile(
-      `${__dirname}/../promtail.yaml`,
-      "utf-8",
-    );
-    const res = await client.runInstances({
-      ImageId: assertExists(image.ImageId),
-      InstanceInitiatedShutdownBehavior: "terminate",
-      InstanceType: "t4g.nano",
-      KeyName: process.env["AWS_SSH_KEY_NAME"],
-      MaxCount: args.count,
-      MinCount: 1,
-      SecurityGroupIds: process.env["AWS_SECURITY_GROUP_IDS"]?.split(","),
-      SubnetId: assertExists(process.env["AWS_SUBNET_ID"]),
-      IamInstanceProfile: {
-        Arn: process.env["AWS_IAM_INSTANCE_PROFILE_ARN"],
-      },
-      TagSpecifications: [
-        { ResourceType: "instance", Tags: [{ Key: "hndr", Value: service }] },
-      ],
-      UserData: Buffer.from(
-        `
+          TagSpecifications: [
+            {
+              ResourceType: "instance",
+              Tags: [{ Key: "hndr", Value: service }],
+            },
+          ],
+          UserData: Buffer.from(
+            `
 #!/bin/bash
 
 set -Eeuo pipefail
@@ -143,10 +159,17 @@ docker run \\
   wilsonzlin/hndr-crawler
 
 docker logs -f hndr &> /app.log
-        `.trim(),
-      ).toString("base64"),
-    });
-    console.log("Launched", res.Instances?.length, "instances");
+            `.trim(),
+          ).toString("base64"),
+        });
+        console.log(
+          "Launched",
+          res.Instances?.length,
+          "instances in region",
+          region,
+        );
+      }),
+    );
   });
 
 cli.eval(process.argv.slice(2));
