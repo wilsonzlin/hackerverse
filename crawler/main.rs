@@ -1,6 +1,8 @@
 mod archive;
+mod crawl;
 mod direct;
 mod origin;
+mod parse;
 
 use crate::archive::archive_worker_loop;
 use crate::direct::direct_worker_loop;

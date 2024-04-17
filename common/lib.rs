@@ -11,8 +11,6 @@ use std::net::UdpSocket;
 use std::sync::Arc;
 
 pub mod arrow;
-pub mod crawl;
-pub mod parse;
 
 pub fn create_db_client() -> DbRpcDbClient {
   let api_key = std::env::var("DB_RPC_API_KEY").unwrap();

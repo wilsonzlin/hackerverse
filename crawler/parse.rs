@@ -99,7 +99,7 @@ static SEL_STRIP: Lazy<Selector> = Lazy::new(|| {
 // Value stored in the `kv` table at key `url/$ID/meta`.
 #[derive(Serialize, Default)]
 #[serde(rename_all = "camelCase")]
-pub struct Meta {
+pub(crate) struct Meta {
   description: Option<String>,
   image_url: Option<String>,
   lang: Option<String>,
@@ -185,7 +185,7 @@ fn element_to_text<'a>(elem: ElementRef<'a>, emit_link_hrefs: bool) -> String {
     .join("\n\n")
 }
 
-pub fn parse_html(html: &str) -> (Meta, String) {
+pub(crate) fn parse_html(html: &str) -> (Meta, String) {
   let mut doc = Html::parse_document(&html);
 
   let mut meta = Meta::default();

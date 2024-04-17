@@ -1,15 +1,15 @@
+use crate::crawl::check_if_already_crawled;
+use crate::crawl::get_content_type;
+use crate::crawl::is_valid_content_type;
+use crate::crawl::process_crawl;
+use crate::crawl::reqwest_error_to_code;
+use crate::crawl::CrawlTask;
+use crate::crawl::ProcessCrawlArgs;
 use cadence::Counted;
 use cadence::StatsdClient;
 use cadence::Timed;
 use chrono::DateTime;
 use chrono::Utc;
-use common::crawl::check_if_already_crawled;
-use common::crawl::get_content_type;
-use common::crawl::is_valid_content_type;
-use common::crawl::process_crawl;
-use common::crawl::reqwest_error_to_code;
-use common::crawl::CrawlTask;
-use common::crawl::ProcessCrawlArgs;
 use db_rpc_client_rs::DbRpcDbClient;
 use futures::TryFutureExt;
 use queued_client_rs::QueuedQueueClient;
@@ -29,7 +29,7 @@ use tokio::time::Instant;
 
 // Return value:
 // - Err(reqwest::Error): something went wrong when interacting with the Internet Archive, either the API or the archived content. Make sure to check we're not being rate limited or the server is down, so as to not continue retrying excessively.
-// - Ok(None): no archived content is available, or it isn't HTML.
+// - Ok(None): no archived content is available, or it has a non-2xx status, or it isn't HTML.
 // - Ok(Some(String)): the archived HTML.
 async fn try_internet_archive(
   statsd: &Arc<StatsdClient>,

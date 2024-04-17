@@ -8,13 +8,13 @@ use serde::Deserialize;
 use tokio::task::spawn_blocking;
 
 #[derive(Deserialize)]
-pub struct CrawlTask {
+pub(crate) struct CrawlTask {
   pub id: u64,
   pub proto: String,
   pub url: String,
 }
 
-pub fn datetime_to_rmpv(dt: DateTime<Utc>) -> rmpv::Value {
+pub(crate) fn datetime_to_rmpv(dt: DateTime<Utc>) -> rmpv::Value {
   rmpv::Value::Ext(
     -1,
     u32::try_from(dt.timestamp())
@@ -24,7 +24,7 @@ pub fn datetime_to_rmpv(dt: DateTime<Utc>) -> rmpv::Value {
   )
 }
 
-pub fn reqwest_error_to_code(err: &reqwest::Error) -> String {
+pub(crate) fn reqwest_error_to_code(err: &reqwest::Error) -> String {
   if err.is_body() {
     "body".to_string()
   } else if err.is_builder() {
@@ -46,7 +46,7 @@ pub fn reqwest_error_to_code(err: &reqwest::Error) -> String {
   }
 }
 
-pub fn get_content_type(res: &Response) -> Option<String> {
+pub(crate) fn get_content_type(res: &Response) -> Option<String> {
   res
     .headers()
     .get(CONTENT_TYPE)
@@ -54,7 +54,7 @@ pub fn get_content_type(res: &Response) -> Option<String> {
 }
 
 // If Content-Type is omitted, that's fine, but if it exists, it must be application/xhtml* or text/html* or text/xhtml*.
-pub fn is_valid_content_type(ct: Option<&String>) -> bool {
+pub(crate) fn is_valid_content_type(ct: Option<&String>) -> bool {
   ct.is_none()
     || ct.is_some_and(|ct| {
       let ct = ct.to_lowercase();
@@ -64,7 +64,7 @@ pub fn is_valid_content_type(ct: Option<&String>) -> bool {
     })
 }
 
-pub async fn check_if_already_crawled(db: &DbRpcDbClient, id: u64) -> bool {
+pub(crate) async fn check_if_already_crawled(db: &DbRpcDbClient, id: u64) -> bool {
   #[allow(unused)]
   #[derive(Deserialize)]
   struct Row {
@@ -83,7 +83,7 @@ pub async fn check_if_already_crawled(db: &DbRpcDbClient, id: u64) -> bool {
   existing.is_some()
 }
 
-pub struct ProcessCrawlArgs<'a> {
+pub(crate) struct ProcessCrawlArgs<'a> {
   pub db: &'a DbRpcDbClient,
   pub fetch_started: DateTime<Utc>,
   pub fetched_via: Option<&'static str>,
@@ -92,7 +92,7 @@ pub struct ProcessCrawlArgs<'a> {
   pub url: &'a str,
 }
 
-pub async fn process_crawl<'a>(
+pub(crate) async fn process_crawl<'a>(
   ProcessCrawlArgs {
     db,
     fetch_started,
