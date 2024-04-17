@@ -15,10 +15,6 @@ use futures::TryFutureExt;
 use queued_client_rs::QueuedQueueClient;
 use rand::thread_rng;
 use rand::Rng;
-use reqwest::header::ACCEPT;
-use reqwest::header::ACCEPT_ENCODING;
-use reqwest::header::ACCEPT_LANGUAGE;
-use reqwest::header::USER_AGENT;
 use reqwest::Client;
 use reqwest::StatusCode;
 use serde::Deserialize;
@@ -33,7 +29,7 @@ use tokio::time::Instant;
 
 // Return value:
 // - Err(reqwest::Error): something went wrong when interacting with the Internet Archive, either the API or the archived content. Make sure to check we're not being rate limited or the server is down, so as to not continue retrying excessively.
-// - Ok(None): no archived content is available.
+// - Ok(None): no archived content is available, or it isn't HTML.
 // - Ok(Some(String)): the archived HTML.
 async fn try_internet_archive(
   statsd: &Arc<StatsdClient>,
@@ -133,55 +129,6 @@ async fn try_internet_archive(
   Ok(Some(res))
 }
 
-async fn try_archive_today(
-  statsd: &Arc<StatsdClient>,
-  client: &Client,
-  url: impl AsRef<str>,
-) -> reqwest::Result<Option<String>> {
-  tracing::debug!(url = url.as_ref(), "fetching from archive.today");
-  let res_started = Instant::now();
-  let res = client
-    .get(format!("https://archive.is/latest/{}", url.as_ref()))
-    .header(
-      USER_AGENT,
-      std::env::var("ARCHIVE_TODAY_USER_AGENT").unwrap(),
-    )
-    .header(
-      ACCEPT,
-      "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-    )
-    .header(ACCEPT_ENCODING, "gzip, deflate, br")
-    .header(ACCEPT_LANGUAGE, "en")
-    .send()
-    .and_then(|res| async { res.error_for_status() })
-    .and_then(|res| async {
-      let ct = get_content_type(&res);
-      res.text().await.map(|text| (ct, text))
-    })
-    .await;
-  let fetch_dur = res_started.elapsed();
-  let fetch_err = res
-    .as_ref()
-    .err()
-    .map(reqwest_error_to_code)
-    .unwrap_or_else(|| "none".to_string());
-  tracing::debug!(
-    url = url.as_ref(),
-    err = fetch_err,
-    ms = fetch_dur.as_millis(),
-    "fetched from archive.today"
-  );
-  statsd
-    .time_with_tags("archive_today_fetch_ms", fetch_dur)
-    .with_tag("error", &fetch_err)
-    .send();
-  let (ct, res) = res?;
-  if !is_valid_content_type(ct.as_ref()) {
-    return Ok(None);
-  };
-  Ok(Some(res))
-}
-
 #[derive(Default)]
 pub struct RateLimiter {
   count: i64,
@@ -218,8 +165,7 @@ pub(crate) async fn archive_worker_loop(
   queue: QueuedQueueClient,
   statsd: Arc<StatsdClient>,
 ) {
-  let mut rate_limiter_at = RateLimiter::default();
-  let mut rate_limiter_ia = RateLimiter::default();
+  let mut rate_limiter = RateLimiter::default();
   loop {
     let timeout = thread_rng().gen_range(60 * 4..60 * 6);
     let Some(t) = queue
@@ -240,49 +186,47 @@ pub(crate) async fn archive_worker_loop(
     } else {
       let url_with_proto = format!("{}//{}", proto, url);
       let fetch_started = Utc::now();
-      let (typ, rl) = [
-        ("archive_today", &mut rate_limiter_at),
-        ("internet_archive", &mut rate_limiter_ia),
-      ]
-      .into_iter()
-      .min_by_key(|m| m.1.until)
-      .unwrap();
-      rl.sleep_until_ok().await;
-      let res = match typ {
-        "archive_today" => try_archive_today(&statsd, &client, url_with_proto).await,
-        "internet_archive" => try_internet_archive(&statsd, &client, url_with_proto).await,
-        _ => unreachable!(),
-      };
+      rate_limiter.sleep_until_ok().await;
+      let res = try_internet_archive(&statsd, &client, url_with_proto).await;
       match res {
-        Ok(Some(html)) => {
-          statsd.count("fetch_bytes", html.len() as u64).unwrap();
-          process_crawl(ProcessCrawlArgs {
-            db: db.clone(),
-            fetch_started,
-            fetched_via: Some(typ),
-            html,
-            url,
-            url_id: id,
-          })
-          .await;
+        Ok(html) => {
+          let found_in_archive = html.is_some();
+          if let Some(html) = html {
+            statsd.count("fetch_bytes", html.len() as u64).unwrap();
+            process_crawl(ProcessCrawlArgs {
+              db: &db,
+              fetch_started,
+              fetched_via: Some("internet_archive"),
+              html,
+              url_id: id,
+              url: &url,
+            })
+            .await;
+          };
+          db.exec("update url set found_in_archive = ? where url = ?", vec![
+            found_in_archive.into(),
+            url.into(),
+          ])
+          .await
+          .unwrap();
         }
-        Err(err)
+        Err(err) => {
           if err.is_connect()
             || err.is_timeout()
             || err.is_request()
             || err.is_decode()
             || err
               .status()
-              .is_some_and(|s| s.is_server_error() || s == StatusCode::TOO_MANY_REQUESTS) =>
-        {
-          rl.incr();
+              .is_some_and(|s| s.is_server_error() || s == StatusCode::TOO_MANY_REQUESTS)
+          {
+            rate_limiter.incr();
+          };
+          // Do not update row, fetching from the IA is just an optional bonus if it exists.
           // Don't delete queue message or decrement rate limit hit count.
           continue;
         }
-        // Errors are already tracked (via StatsD) in the try_internet_archive function, so we don't need to handle them.
-        _ => {}
       };
-      rl.decr();
+      rate_limiter.decr();
     };
     queue.delete_messages([t.message()]).await.unwrap();
   }

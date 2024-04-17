@@ -96,12 +96,12 @@ pub(crate) async fn direct_worker_loop(
         Ok(html) => {
           statsd.count("fetch_bytes", html.len() as u64).unwrap();
           process_crawl(ProcessCrawlArgs {
-            db: db.clone(),
+            db: &db,
             fetch_started,
             fetched_via: None,
             html,
             url_id: id,
-            url: url.clone(),
+            url: &url,
           })
           .await;
         }

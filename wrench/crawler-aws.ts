@@ -136,7 +136,6 @@ docker run \\
   --name hndr \\
   --net host \\
   -d \\
-  -e ARCHIVE_TODAY_USER_AGENT='${process.env["ARCHIVE_TODAY_USER_AGENT"]}' \\
   -e DB_RPC_API_KEY='${process.env["DB_RPC_API_KEY"]}' \\
   -e MAIN="$MAIN" \\
   -e QUEUED_API_KEY='${process.env["QUEUED_API_KEY"]}' \\

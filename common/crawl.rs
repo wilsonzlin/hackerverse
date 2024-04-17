@@ -83,16 +83,16 @@ pub async fn check_if_already_crawled(db: &DbRpcDbClient, id: u64) -> bool {
   existing.is_some()
 }
 
-pub struct ProcessCrawlArgs {
-  pub db: DbRpcDbClient,
+pub struct ProcessCrawlArgs<'a> {
+  pub db: &'a DbRpcDbClient,
   pub fetch_started: DateTime<Utc>,
   pub fetched_via: Option<&'static str>,
   pub html: String,
   pub url_id: u64,
-  pub url: String,
+  pub url: &'a str,
 }
 
-pub async fn process_crawl(
+pub async fn process_crawl<'a>(
   ProcessCrawlArgs {
     db,
     fetch_started,
@@ -100,7 +100,7 @@ pub async fn process_crawl(
     html,
     url_id,
     url,
-  }: ProcessCrawlArgs,
+  }: ProcessCrawlArgs<'a>,
 ) {
   let fetched_via = match fetched_via {
     Some(v) => rmpv::Value::String(v.into()),
