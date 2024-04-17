@@ -5,8 +5,10 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
-COPY . .
+ARG MAIN
+COPY common common
+COPY $MAIN $MAIN
 
 # Otherwise nothing is printed.
 ENV PYTHONUNBUFFERED=0
-CMD python $MAIN
+CMD python $MAIN/main.py

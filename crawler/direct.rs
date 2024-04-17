@@ -51,8 +51,9 @@ pub(crate) async fn direct_worker_loop(
   statsd: Arc<StatsdClient>,
 ) {
   loop {
+    let timeout = thread_rng().gen_range(60 * 4..60 * 6);
     let Some(t) = queue
-      .poll_messages(1, Duration::from_secs(60 * 20))
+      .poll_messages(1, Duration::from_secs(timeout))
       .await
       .unwrap()
       .messages
@@ -72,11 +73,7 @@ pub(crate) async fn direct_worker_loop(
           .incr_with_tags("fetch_err")
           .with_tag("error", "rate_limit")
           .send();
-        let delay = thread_rng().gen_range(0..60 * 120);
-        queue
-          .update_message(t.message(), Duration::from_secs(delay))
-          .await
-          .unwrap();
+        // Don't delete queue message. Let current timeout delay its processing.
         continue;
       }
 
@@ -143,12 +140,7 @@ pub(crate) async fn direct_worker_loop(
 
           if err == "status:429" {
             // Don't instead create a new message, as that could cause exponential explosion if two workers polled the same message somehow.
-            let delay = thread_rng().gen_range(0..60 * 15);
-            queue
-              .update_message(t.message(), Duration::from_secs(delay))
-              .await
-              .unwrap();
-            // Don't delete queue message.
+            // Don't delete queue message. Let current timeout delay its processing.
             continue;
           };
         }

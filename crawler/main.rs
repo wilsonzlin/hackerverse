@@ -73,5 +73,5 @@ async fn main() {
   for w in archive_workers {
     w.await.unwrap();
   }
-  println!("All done!");
+  tracing::info!("all done!");
 }

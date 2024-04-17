@@ -5,7 +5,9 @@ WORKDIR /app
 COPY package.json .
 RUN npm i
 
-COPY . .
+ARG MAIN
+COPY common common
+COPY $MAIN $MAIN
 RUN npx tsc
 
 ENV NODE_NO_WARNINGS=1

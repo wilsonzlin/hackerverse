@@ -57,6 +57,7 @@ pub fn get_content_type(res: &Response) -> Option<String> {
 pub fn is_valid_content_type(ct: Option<&String>) -> bool {
   ct.is_none()
     || ct.is_some_and(|ct| {
+      let ct = ct.to_lowercase();
       ct.starts_with("application/xhtml")
         || ct.starts_with("text/html")
         || ct.starts_with("text/xhtml")
@@ -64,19 +65,20 @@ pub fn is_valid_content_type(ct: Option<&String>) -> bool {
 }
 
 pub async fn check_if_already_crawled(db: &DbRpcDbClient, id: u64) -> bool {
+  #[allow(unused)]
   #[derive(Deserialize)]
   struct Row {
-    fetch_err: Option<String>,
+    exists: bool,
   }
   let existing: Option<Row> = db
     .query(
-      "select fetch_err from url where id = ? and fetched is not null",
+      "select true as exists from url where id = ? and fetched is not null and fetch_err is null",
       vec![id.into()],
     )
     .await
     .unwrap()
     .pop();
-  existing.is_some_and(|e| e.fetch_err.is_none())
+  existing.is_some()
 }
 
 pub struct ProcessCrawlArgs {
@@ -120,6 +122,7 @@ pub async fn process_crawl(
   )
   .await
   .unwrap();
+
   db.exec(
     "update url set fetched = ?, fetch_err = NULL, fetched_via = ? where url = ?",
     vec![datetime_to_rmpv(fetch_started), fetched_via, url.into()],

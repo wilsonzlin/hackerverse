@@ -221,8 +221,9 @@ pub(crate) async fn archive_worker_loop(
   let mut rate_limiter_at = RateLimiter::default();
   let mut rate_limiter_ia = RateLimiter::default();
   loop {
+    let timeout = thread_rng().gen_range(60 * 4..60 * 6);
     let Some(t) = queue
-      .poll_messages(1, Duration::from_secs(60 * 20))
+      .poll_messages(1, Duration::from_secs(timeout))
       .await
       .unwrap()
       .messages
