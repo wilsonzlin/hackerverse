@@ -68,11 +68,13 @@ pub async fn check_if_already_crawled(db: &DbRpcDbClient, id: u64) -> bool {
   #[allow(unused)]
   #[derive(Deserialize)]
   struct Row {
-    exists: bool,
+    e: i8,
   }
+  // Don't select `true` as it'll return as a number `1`.
+  // Don't select as `exists` as that's a reserved keyword.
   let existing: Option<Row> = db
     .query(
-      "select true as exists from url where id = ? and fetched is not null and fetch_err is null",
+      "select 1 as e from url where id = ? and fetched is not null and fetch_err is null",
       vec![id.into()],
     )
     .await

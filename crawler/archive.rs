@@ -229,7 +229,8 @@ pub(crate) async fn archive_worker_loop(
       .messages
       .pop()
     else {
-      break;
+      sleep(Duration::from_secs(3)).await;
+      continue;
     };
     let CrawlTask { id, proto, url } = rmp_serde::from_slice(&t.contents).unwrap();
 

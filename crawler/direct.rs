@@ -22,6 +22,7 @@ use reqwest::header::ACCEPT_LANGUAGE;
 use reqwest::Client;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::time::sleep;
 
 async fn make_request(client: &Client, url: impl AsRef<str>) -> Result<String, String> {
   let res = client
@@ -59,7 +60,8 @@ pub(crate) async fn direct_worker_loop(
       .messages
       .pop()
     else {
-      break;
+      sleep(Duration::from_secs(3)).await;
+      continue;
     };
     let CrawlTask { id, proto, url } = rmp_serde::from_slice(&t.contents).unwrap();
 
