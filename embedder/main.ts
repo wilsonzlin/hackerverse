@@ -146,17 +146,23 @@ new WorkerPool(__filename, 256)
         );
         const { text, meta } =
           (await mapExists(urlId, (id) => pageFetcher.execute(id))) ?? {};
-        // The item hasn't been fetched yet. For now, we also skip if the fetch failed or the text/meta is (partially) missing. This ensures we can decide whether to fix the input to ensure high quality embeddings, or just go ahead anyway and create potentially poor embeddings with little to no input.
+        // The item hasn't been fetched yet.
         // Do not delete queue task. Do not update queue task, let the existing visibility timeout postpone its processing. Do not continue.
-        if (!fetchState?.ts || fetchState.err || !text || !meta) {
+        if (!fetchState?.ts) {
           statsd.increment("skipped");
           continue;
         }
+        // We mark if the fetch failed or the text/meta is (partially) missing. This ensures we can decide whether to fix the input and regenerate to ensure high quality embeddings, or just go ahead anyway and use the potentially poor embeddings with little to no input.
+        const embMissingPage = !!(fetchState.err || !text || !meta);
+        await db.exec("update post set emb_missing_page = ? where id = ?", [
+          embMissingPage,
+          postId,
+        ]);
         embInput = embInput
-          .replace("<<<REPLACE_WITH_PAGE_TITLE>>>", meta.title ?? "")
+          .replace("<<<REPLACE_WITH_PAGE_TITLE>>>", meta?.title ?? "")
           .replace(
             "<<<REPLACE_WITH_PAGE_DESCRIPTION>>>",
-            meta.description ?? "",
+            meta?.description ?? "",
           )
           .replace("<<<REPLACE_WITH_PAGE_TEXT>>>", text ?? "");
       }

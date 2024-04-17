@@ -60,7 +60,9 @@ pub(crate) async fn direct_worker_loop(
       .messages
       .pop()
     else {
-      sleep(Duration::from_secs(3)).await;
+      // Use randomness to avoid cluster-wide synchronisation.
+      let sleep_ms = thread_rng().gen_range(0..5 * 1000);
+      sleep(Duration::from_millis(sleep_ms)).await;
       continue;
     };
     let CrawlTask { id, proto, url } = rmp_serde::from_slice(&t.contents).unwrap();

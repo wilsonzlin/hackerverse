@@ -50,6 +50,8 @@ create table post (
   ts datetime,
   url bigint,
 
+  emb_missing_page boolean not null default false, -- The embedding for this URL (i.e. not text-based) post was generated without the crawled page as part of the input, likely because the crawl was missing/failed at the time.
+
   primary key (id)
 );
 create index post_author on post (author);
