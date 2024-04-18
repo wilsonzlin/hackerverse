@@ -204,8 +204,8 @@ pub(crate) fn parse_html(html: &str) -> (Meta, String) {
     };
     #[rustfmt::skip]
     match k {
-      "article:modified_time" => meta.timestamp_modified = DateTime::parse_from_rfc3339(v).map(|v| v.to_utc()).ok(),
-      "article:published_time" => meta.timestamp = DateTime::parse_from_rfc3339(v).map(|v| v.to_utc()).ok(),
+      "article:modified_time" => meta.timestamp_modified = DateTime::parse_from_rfc3339(v).map(|v| v.with_timezone(&Utc)).ok(),
+      "article:published_time" => meta.timestamp = DateTime::parse_from_rfc3339(v).map(|v| v.with_timezone(&Utc)).ok(),
       "description" => meta.description = Some(v.to_string()),
       "og:description" => meta.description = Some(v.to_string()),
       "og:image" => meta.image_url = Some(v.to_string()),

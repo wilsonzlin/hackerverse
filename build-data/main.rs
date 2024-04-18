@@ -614,7 +614,7 @@ async fn main() {
           image_url: Option<String>,
           lang: Option<String>,
           snippet: Option<String>,
-          // Timestamps are encoded as ext(-1) by rmp_serde, but can't be decoded back to a timestamp, so we must manually do so.
+          // Due to inconsistencies (original crawler was written in JavaScript but later changed to Rust), timestamps could be either ext(-1) by rmp_serde or an ISO 8601 string.
           timestamp: Option<rmpv::Value>,
           timestamp_modified: Option<rmpv::Value>,
           title: Option<String>,
@@ -628,11 +628,11 @@ async fn main() {
           snippet: meta.snippet.unwrap_or_default(),
           timestamp: meta
             .timestamp
-            .map(decode_msgpack_timestamp)
+            .map(|ts| decode_msgpack_timestamp(ts).unwrap())
             .unwrap_or_default(),
           timestamp_modified: meta
             .timestamp_modified
-            .map(decode_msgpack_timestamp)
+            .map(|ts| decode_msgpack_timestamp(ts).unwrap())
             .unwrap_or_default(),
           title: meta.title.unwrap_or_default(),
         });

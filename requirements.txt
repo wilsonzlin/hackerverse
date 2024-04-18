@@ -1,4 +1,5 @@
 implicit
+joblib
 msgpipe
 numpy
 pandas
