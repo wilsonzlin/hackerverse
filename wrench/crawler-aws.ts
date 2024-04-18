@@ -1,8 +1,8 @@
 import { EC2 } from "@aws-sdk/client-ec2";
-import assertExists from "@xtjs/lib/js/assertExists";
-import defined from "@xtjs/lib/js/defined";
-import derivedComparator from "@xtjs/lib/js/derivedComparator";
-import reversedComparator from "@xtjs/lib/js/reversedComparator";
+import assertExists from "@xtjs/lib/assertExists";
+import defined from "@xtjs/lib/defined";
+import derivedComparator from "@xtjs/lib/derivedComparator";
+import reversedComparator from "@xtjs/lib/reversedComparator";
 import { readFile } from "fs/promises";
 import { Command } from "sacli";
 

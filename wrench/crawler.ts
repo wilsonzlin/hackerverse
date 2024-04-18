@@ -1,5 +1,5 @@
-import assertExists from "@xtjs/lib/js/assertExists";
-import withoutUndefined from "@xtjs/lib/js/withoutUndefined";
+import assertExists from "@xtjs/lib/assertExists";
+import withoutUndefined from "@xtjs/lib/withoutUndefined";
 import { ConfigFileAuthenticationDetailsProvider } from "oci-common";
 import { ContainerInstanceClient } from "oci-containerinstances";
 import { ContainerInstance } from "oci-containerinstances/lib/model";

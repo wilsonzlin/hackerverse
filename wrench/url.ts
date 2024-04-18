@@ -8,7 +8,7 @@ import {
   VStruct,
   VUtf8Bytes,
 } from "@wzlin/valid";
-import mapExists from "@xtjs/lib/js/mapExists";
+import mapExists from "@xtjs/lib/mapExists";
 import { Command } from "sacli";
 import { db } from "../common/res";
 

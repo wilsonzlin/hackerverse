@@ -10,13 +10,13 @@ import {
   Valid,
   ValuePath,
 } from "@wzlin/valid";
-import Batcher from "@xtjs/lib/js/Batcher";
-import UnreachableError from "@xtjs/lib/js/UnreachableError";
-import WorkerPool from "@xtjs/lib/js/WorkerPool";
-import assertExists from "@xtjs/lib/js/assertExists";
-import decodeUtf8 from "@xtjs/lib/js/decodeUtf8";
-import mapExists from "@xtjs/lib/js/mapExists";
-import parseInteger from "@xtjs/lib/js/parseInteger";
+import Batcher from "@xtjs/lib/Batcher";
+import UnreachableError from "@xtjs/lib/UnreachableError";
+import WorkerPool from "@xtjs/lib/WorkerPool";
+import assertExists from "@xtjs/lib/assertExists";
+import decodeUtf8 from "@xtjs/lib/decodeUtf8";
+import mapExists from "@xtjs/lib/mapExists";
+import parseInteger from "@xtjs/lib/parseInteger";
 import { Duration } from "luxon";
 import {
   QUEUE_EMBED,
@@ -39,6 +39,15 @@ const vMeta = new VStruct({
   timestampModified: new VOptional(new VDate()),
   title: new VOptional(new VString()),
 });
+
+const postEmbMissingPageUpdater = new Batcher(
+  async (rows: Array<{ id: number; embMissingPage: boolean }>) => {
+    return await db.batch(
+      "update post set emb_missing_page = ? where id = ?",
+      rows.map((r) => [r.embMissingPage, r.id]),
+    );
+  },
+);
 
 const postUrlIdFetcher = new Batcher(async (ids: number[]) => {
   const rows = await db.query(
@@ -153,11 +162,10 @@ new WorkerPool(__filename, 256)
           continue;
         }
         // We mark if the fetch failed or the text/meta is (partially) missing. This ensures we can decide whether to fix the input and regenerate to ensure high quality embeddings, or just go ahead anyway and use the potentially poor embeddings with little to no input.
-        const embMissingPage = !!(fetchState.err || !text || !meta);
-        await db.exec("update post set emb_missing_page = ? where id = ?", [
-          embMissingPage,
-          postId,
-        ]);
+        await postEmbMissingPageUpdater.execute({
+          id: postId,
+          embMissingPage: !!(fetchState.err || !text || !meta),
+        });
         embInput = embInput
           .replace("<<<REPLACE_WITH_PAGE_TITLE>>>", meta?.title ?? "")
           .replace(

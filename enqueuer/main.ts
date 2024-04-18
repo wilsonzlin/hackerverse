@@ -5,12 +5,12 @@ import {
   normaliseUrlToParts,
 } from "@wzlin/crawler-toolkit-web";
 import { VInteger, VString, VStruct, VUtf8Bytes, Valid } from "@wzlin/valid";
-import Batcher from "@xtjs/lib/js/Batcher";
-import WorkerPool from "@xtjs/lib/js/WorkerPool";
-import assertExists from "@xtjs/lib/js/assertExists";
-import encodeUtf8 from "@xtjs/lib/js/encodeUtf8";
-import mapExists from "@xtjs/lib/js/mapExists";
-import mapNonEmpty from "@xtjs/lib/js/mapNonEmpty";
+import Batcher from "@xtjs/lib/Batcher";
+import WorkerPool from "@xtjs/lib/WorkerPool";
+import assertExists from "@xtjs/lib/assertExists";
+import encodeUtf8 from "@xtjs/lib/encodeUtf8";
+import mapExists from "@xtjs/lib/mapExists";
+import mapNonEmpty from "@xtjs/lib/mapNonEmpty";
 import { load } from "cheerio";
 import { decode } from "html-entities";
 import { Duration } from "luxon";

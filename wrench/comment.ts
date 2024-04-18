@@ -8,8 +8,8 @@ import {
   VStruct,
   VUtf8Bytes,
 } from "@wzlin/valid";
-import decodeUtf8 from "@xtjs/lib/js/decodeUtf8";
-import mapExists from "@xtjs/lib/js/mapExists";
+import decodeUtf8 from "@xtjs/lib/decodeUtf8";
+import mapExists from "@xtjs/lib/mapExists";
 import chalk from "chalk";
 import { Command } from "sacli";
 import { db } from "../common/res";

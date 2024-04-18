@@ -6,8 +6,8 @@ import {
   VUtf8Bytes,
   Validator,
 } from "@wzlin/valid";
-import Batcher from "@xtjs/lib/js/Batcher";
-import mapExists from "@xtjs/lib/js/mapExists";
+import Batcher from "@xtjs/lib/Batcher";
+import mapExists from "@xtjs/lib/mapExists";
 import { DbRpcClient, MsgPackValue } from "db-rpc-client-js";
 import { StatsD } from "hot-shots";
 import pino from "pino";

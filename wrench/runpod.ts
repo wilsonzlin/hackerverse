@@ -1,5 +1,5 @@
 import { VArray, VString, VStruct } from "@wzlin/valid";
-import PromiseQueue from "@xtjs/lib/js/PromiseQueue";
+import Semaphore from "@xtjs/lib/Semaphore";
 import { Command } from "sacli";
 
 const req = async (query: string, variables?: any) => {
@@ -75,7 +75,7 @@ cli
     if (!templateId) {
       throw new Error(`Template not found: ${args.template}`);
     }
-    const q = new PromiseQueue(100);
+    const q = new Semaphore(100);
     await Promise.all(
       Array.from({ length: args.count }, () =>
         q.add(async () => {
@@ -146,8 +146,8 @@ cli.subcommand("terminate").action(async () => {
       ),
     }),
   }).parseRoot(raw).myself.pods;
-  console.log("Found", pods.length, "pods");
-  const q = new PromiseQueue(100);
+  console.log("Terminating", pods.length, "pods");
+  const q = new Semaphore(100);
   await Promise.all(
     pods.map((p) =>
       q.add(async () => {
