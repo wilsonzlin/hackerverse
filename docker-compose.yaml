@@ -67,7 +67,9 @@ services:
         MAIN: embedder
     environment:
       DB_RPC_API_KEY: ${DB_RPC_API_KEY}
+      INFLUXDB_BUCKET: ${INFLUXDB_BUCKET}
       INFLUXDB_ENDPOINT: ${INFLUXDB_ENDPOINT}
+      INFLUXDB_ORGANIZATION: ${INFLUXDB_ORGANIZATION}
       INFLUXDB_TOKEN: ${INFLUXDB_TOKEN}
       LOKI_BASICAUTH_PASSWORD: ${LOKI_BASICAUTH_PASSWORD}
       LOKI_BASICAUTH_USER: ${LOKI_BASICAUTH_USER}
@@ -125,6 +127,25 @@ services:
       dockerfile: Dockerfile.hnsw-server
     volumes:
       - "${DOCKER_VOLUME_DIR}:/hndr-data"
+
+  sentiment-analyser:
+    image: wilsonzlin/hndr-sentiment-analyser
+    init: true
+    build:
+      context: .
+      dockerfile: Dockerfile.runpod-base
+      args:
+        MAIN: sentiment-analyser
+    environment:
+      DB_RPC_API_KEY: ${DB_RPC_API_KEY}
+      INFLUXDB_BUCKET: ${INFLUXDB_BUCKET}
+      INFLUXDB_ENDPOINT: ${INFLUXDB_ENDPOINT}
+      INFLUXDB_ORGANIZATION: ${INFLUXDB_ORGANIZATION}
+      INFLUXDB_TOKEN: ${INFLUXDB_TOKEN}
+      LOKI_BASICAUTH_PASSWORD: ${LOKI_BASICAUTH_PASSWORD}
+      LOKI_BASICAUTH_USER: ${LOKI_BASICAUTH_USER}
+      LOKI_ENDPOINT: ${LOKI_ENDPOINT}
+      QUEUED_API_KEY: ${QUEUED_API_KEY}
 
   telegraf:
     image: wilsonzlin/hndr-telegraf

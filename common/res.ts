@@ -155,3 +155,9 @@ export const vQueueEmbedTask = new VStruct({
   inputKey: new VString(),
   outputKey: new VString(),
 });
+
+export const QUEUE_ANALYSE_SENTIMENT = queued.queue("hndr:analyse_sentiment");
+
+export const vQueueAnalyseSentimentTask = new VStruct({
+  comment: new VInteger(1),
+});
