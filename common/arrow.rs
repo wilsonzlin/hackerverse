@@ -3,12 +3,16 @@ use arrow::array::RecordBatch;
 use arrow::datatypes::Schema;
 use arrow::ipc::writer::FileWriter;
 use itertools::Itertools;
+use std::fs::rename;
 use std::fs::File;
+use std::path::Path;
 use std::sync::Arc;
 
 const FLUSH_THRESHOLD: usize = 100_000;
 
 pub struct ArrowIpcOutput<R> {
+  temp_file_name: String,
+  dest_file_name: String,
   buf: Vec<R>,
   schema: Schema,
   to_columnar: fn(Vec<R>) -> Vec<ArrayRef>,
@@ -16,15 +20,23 @@ pub struct ArrowIpcOutput<R> {
 }
 
 impl<R> ArrowIpcOutput<R> {
-  pub fn new(name: &str, schema: Schema, to_columnar: fn(Vec<R>) -> Vec<ArrayRef>) -> Self {
-    let out = File::create(format!("/hndr-data/{name}.arrow")).unwrap();
+  pub fn new(name: &str, schema: Schema, to_columnar: fn(Vec<R>) -> Vec<ArrayRef>) -> Option<Self> {
+    let dest_file_name = format!("/hndr-data/{}.arrow", name);
+    if Path::new(&dest_file_name).exists() {
+      println!("{name} already exists, skipping");
+      return None;
+    };
+    let temp_file_name = format!("{dest_file_name}.tmp");
+    let out = File::create(&temp_file_name).unwrap();
     let writer = FileWriter::try_new(out, &schema).unwrap();
-    Self {
+    Some(Self {
+      temp_file_name,
+      dest_file_name,
       buf: Vec::new(),
       schema,
       to_columnar,
       writer,
-    }
+    })
   }
 
   fn flush(&mut self) {
@@ -45,5 +57,6 @@ impl<R> ArrowIpcOutput<R> {
       self.flush();
     };
     self.writer.finish().unwrap();
+    rename(&self.temp_file_name, &self.dest_file_name).unwrap();
   }
 }

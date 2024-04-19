@@ -3,13 +3,13 @@ from msgpipe import PyIpc
 from scipy.special import softmax
 from service_toolkit.panic import set_excepthook
 from statsd import StatsClient
-import torch
 from transformers import AutoConfig
 from transformers import AutoModelForSequenceClassification
 from transformers import AutoTokenizer
 from typing import List
 import os
 import time
+import torch
 
 set_excepthook()
 
@@ -26,10 +26,11 @@ model = AutoModelForSequenceClassification.from_pretrained(MODEL).to("cuda")
 # Also, after a certain batch size, the performance does not increase.
 # Therefore, tune batch size well.
 total_vram_bytes = torch.cuda.get_device_properties(0).total_memory
-total_vram_gib = total_vram_bytes / (1024 ** 3)
+total_vram_gib = total_vram_bytes / (1024**3)
 BATCH_SIZE = round(0.75 * total_vram_gib)
 print("VRAM:", total_vram_gib, "GiB")
 print("Batch size:", BATCH_SIZE)
+
 
 @dataclass
 class ModelReq:

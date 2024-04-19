@@ -2,7 +2,6 @@ import { encode } from "@msgpack/msgpack";
 import { elementToText } from "@wzlin/crawler-toolkit-web";
 import { setUpUncaughtExceptionHandler } from "@wzlin/service-toolkit";
 import Batcher from "@xtjs/lib/Batcher";
-import WorkerPool from "@xtjs/lib/WorkerPool";
 import assertExists from "@xtjs/lib/assertExists";
 import decodeUtf8 from "@xtjs/lib/decodeUtf8";
 import { load } from "cheerio";
@@ -22,7 +21,7 @@ setUpUncaughtExceptionHandler();
   // Have two loops so that while one is waiting for the model, the other can fetch from the DB and have some more inputs ready as soon as the GPU is done, to minimise GPU idle time.
   const model = await createModel();
   const modelBatcher = new Batcher((inputs: string[]) => model.execute(inputs));
-  const loop  = async () => {
+  const loop = async () => {
     while (true) {
       const msgs = await QUEUE_ANALYSE_SENTIMENT.pollMessages(
         1024,
@@ -31,26 +30,30 @@ setUpUncaughtExceptionHandler();
       if (!msgs.length) {
         break;
       }
-      await Promise.all(msgs.map(async (msg) => {
-        const task = vQueueAnalyseSentimentTask.parseRoot(msg.contents);
-        const inputHtml = decodeUtf8(
-          assertExists(await getKvRow.execute(`comment/${task.comment}/text`)),
-        );
-        // Use elementToText over .text() to handle block elements properly.
-        // The model was trained with links replaced with "http": https://huggingface.co/cardiffnlp/twitter-roberta-base-sentiment-latest#full-classification-example.
-        const input = elementToText(load(inputHtml)("body")[0], {
-          emitLinkHrefs: false,
-        })
-          .replace(/^https?:\/\/\S+/g, "http")
-          .trim();
-        if (input) {
-          const output = await modelBatcher.execute(input);
-          await upsertKvRow.execute({
-            k: `comment/${task.comment}/sentiment`,
-            v: encode(output),
-          });
-        };
-      }));
+      await Promise.all(
+        msgs.map(async (msg) => {
+          const task = vQueueAnalyseSentimentTask.parseRoot(msg.contents);
+          const inputHtml = decodeUtf8(
+            assertExists(
+              await getKvRow.execute(`comment/${task.comment}/text`),
+            ),
+          );
+          // Use elementToText over .text() to handle block elements properly.
+          // The model was trained with links replaced with "http": https://huggingface.co/cardiffnlp/twitter-roberta-base-sentiment-latest#full-classification-example.
+          const input = elementToText(load(inputHtml)("body")[0], {
+            emitLinkHrefs: false,
+          })
+            .replace(/^https?:\/\/\S+/g, "http")
+            .trim();
+          if (input) {
+            const output = await modelBatcher.execute(input);
+            await upsertKvRow.execute({
+              k: `comment/${task.comment}/sentiment`,
+              v: encode(output),
+            });
+          }
+        }),
+      );
       await QUEUE_ANALYSE_SENTIMENT.deleteMessages(msgs);
     }
   };

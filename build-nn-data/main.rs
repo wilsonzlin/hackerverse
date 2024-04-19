@@ -318,7 +318,8 @@ async fn main() {
       Field::new("post_id", DataType::UInt64, false),
     ]),
     interactions_to_columnar,
-  );
+  )
+  .unwrap();
   let mut out_posts = ArrowIpcOutput::new(
     "nndata_posts",
     Schema::new(vec![
@@ -334,7 +335,8 @@ async fn main() {
       Field::new("day_of_week_cos", DataType::Float32, false),
     ]),
     posts_to_columnar,
-  );
+  )
+  .unwrap();
   let mut user_histories = AHashMap::<String, AvgEmb>::new();
   let mut user_comments = AHashMap::<String, AvgEmb>::new();
 
