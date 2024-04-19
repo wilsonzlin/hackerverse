@@ -17,8 +17,7 @@ import { createModel } from "./model";
 
 setUpUncaughtExceptionHandler();
 
-// This WorkerPool size is basically the GPU model input batch size, so it should be primarily driven by VRAM size.
-new WorkerPool(__filename, 64)
+new WorkerPool(__filename, 128)
   .leaderState(async () => {
     const model = await createModel();
     const modelBatcher = new Batcher((texts: string[]) => model.execute(texts));
