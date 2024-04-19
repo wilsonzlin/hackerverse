@@ -1,3 +1,4 @@
+hnswlib
 implicit
 joblib
 msgpipe
