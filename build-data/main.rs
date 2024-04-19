@@ -1,5 +1,6 @@
 mod common;
 mod export_comment_embs;
+mod export_comment_sentiments;
 mod export_comment_texts;
 mod export_comments;
 mod export_interactions;
@@ -27,6 +28,7 @@ async fn main() {
 
   join! {
     export_comment_embs::export_comment_embs(db.clone()),
+    export_comment_sentiments::export_comment_sentiments(db.clone()),
     export_comment_texts::export_comment_texts(db.clone()),
     export_comments::export_comments(db.clone(), interactions.clone()),
     export_post_embs::export_post_embs(db.clone()),
