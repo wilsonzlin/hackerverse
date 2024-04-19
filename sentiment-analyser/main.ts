@@ -9,7 +9,6 @@ import { load } from "cheerio";
 import { Duration } from "luxon";
 import {
   QUEUE_ANALYSE_SENTIMENT,
-  QUEUE_EMBED,
   getKvRow,
   upsertKvRow,
   vQueueAnalyseSentimentTask,
@@ -18,7 +17,8 @@ import { createModel } from "./model";
 
 setUpUncaughtExceptionHandler();
 
-new WorkerPool(__filename, 256)
+// This WorkerPool size is basically the GPU model input batch size, so it should be primarily driven by VRAM size.
+new WorkerPool(__filename, 64)
   .leaderState(async () => {
     const model = await createModel();
     const modelBatcher = new Batcher((texts: string[]) => model.execute(texts));
@@ -31,7 +31,7 @@ new WorkerPool(__filename, 256)
   })
   .worker(async (pool) => {
     while (true) {
-      const [msg] = await QUEUE_EMBED.pollMessages(
+      const [msg] = await QUEUE_ANALYSE_SENTIMENT.pollMessages(
         1,
         Duration.fromObject({ minutes: 10 }).as("seconds"),
       );
@@ -43,15 +43,19 @@ new WorkerPool(__filename, 256)
         assertExists(await getKvRow.execute(`comment/${task.comment}/text`)),
       );
       // Use elementToText over .text() to handle block elements properly.
-      // The model was trained with links removed.
+      // The model was trained with links replaced with "http": https://huggingface.co/cardiffnlp/twitter-roberta-base-sentiment-latest#full-classification-example.
       const input = elementToText(load(inputHtml)("body")[0], {
         emitLinkHrefs: false,
-      }).replaceAll(/^https?:\/\/\S+/, "http");
-      const output = await pool.execute("model", input);
-      await upsertKvRow.execute({
-        k: `comment/${task.comment}/sentiment`,
-        v: encode(output),
-      });
+      })
+        .replace(/^https?:\/\/\S+/g, "http")
+        .trim();
+      if (input) {
+        const output = await pool.execute("model", input);
+        await upsertKvRow.execute({
+          k: `comment/${task.comment}/sentiment`,
+          v: encode(output),
+        });
+      }
       await QUEUE_ANALYSE_SENTIMENT.deleteMessages([msg]);
     }
   })

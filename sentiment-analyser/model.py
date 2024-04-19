@@ -29,10 +29,10 @@ class ModelReq:
 def model_handler(x: ModelReq):
     started = time.time()
     encoded_input = tokenizer(
-        x.texts, return_tensors="pt", padding=True, truncation=True
-    )
+        x.texts, return_tensors="pt", padding=True, truncation=True, max_length=512
+    ).to("cuda")
     output = model(**encoded_input)
-    scores = output.logits.detach().numpy()
+    scores = output.logits.detach().cpu().numpy()
     scores = [
         {
             config.id2label[i]: score

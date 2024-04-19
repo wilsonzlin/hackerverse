@@ -1,3 +1,4 @@
+import { decode } from "@msgpack/msgpack";
 import {
   VBoolean,
   VBytes,
@@ -86,9 +87,17 @@ cli
         v: new VBytes(),
       }),
     );
-    for (const { k, v } of kvs) {
+    for (const { k, v: vRaw } of kvs) {
       console.log(chalk.bold(k));
-      console.log("  ", decodeUtf8(v));
+      let v;
+      if (k.endsWith("/emb")) {
+        v = vRaw;
+      } else if (k.endsWith("/sentiment")) {
+        v = decode(vRaw);
+      } else {
+        v = decodeUtf8(vRaw);
+      }
+      console.log("  ", v);
     }
   });
 
