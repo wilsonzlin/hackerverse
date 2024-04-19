@@ -115,6 +115,15 @@ services:
     volumes:
       - "${DOCKER_VOLUME_DIR}:/hndr-data"
 
+  hnsw-server:
+    image: wilsonzlin/hndr-hnsw-server
+    init: true
+    build:
+      context: .
+      dockerfile: Dockerfile.hnsw-server
+    volumes:
+      - "${DOCKER_VOLUME_DIR}:/hndr-data"
+
   telegraf:
     image: wilsonzlin/hndr-telegraf
     init: true

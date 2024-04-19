@@ -1,0 +1,18 @@
+FROM python:3.12
+
+RUN pip install sentence_transformers
+RUN python -c 'from sentence_transformers import SentenceTransformer; SentenceTransformer("jinaai/jina-embeddings-v2-small-en")'
+
+ENV MAIN=hnsw-server
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+
+COPY common common
+COPY hnsw-server hnsw-server
+
+WORKDIR /app/hnsw-server
+ENV PYTHONUNBUFFERED=0
+CMD uvicorn main:app
