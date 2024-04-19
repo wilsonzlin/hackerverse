@@ -10,8 +10,7 @@ services:
       args:
         MAIN: als
     environment:
-      MAIN: als
-      # OpenBLAS is configured to use 32 threads. It is highly recommended to disable its internal threadpool by setting the environment variable 'OPENBLAS_NUM_THREADS=1' or by calling 'threadpoolctl.threadpool_limits(1, "blas")'. Having OpenBLAS use a threadpool can lead to severe performance issues here.
+      # > OpenBLAS is configured to use 32 threads. It is highly recommended to disable its internal threadpool by setting the environment variable 'OPENBLAS_NUM_THREADS=1' or by calling 'threadpoolctl.threadpool_limits(1, "blas")'. Having OpenBLAS use a threadpool can lead to severe performance issues here.
       OPENBLAS_NUM_THREADS: "1"
     volumes:
       - "${DOCKER_VOLUME_DIR}:/hndr-data"
@@ -26,7 +25,6 @@ services:
         MAIN: build-data
     environment:
       DB_RPC_API_KEY: ${DB_RPC_API_KEY}
-      MAIN: build-data
     volumes:
       - "${DOCKER_VOLUME_DIR}:/hndr-data"
 
@@ -40,7 +38,6 @@ services:
         MAIN: build-nn-data
     environment:
       DB_RPC_API_KEY: ${DB_RPC_API_KEY}
-      MAIN: build-nn-data
     volumes:
       - "${DOCKER_VOLUME_DIR}:/hndr-data"
 
@@ -54,7 +51,6 @@ services:
         MAIN: crawler
     environment:
       DB_RPC_API_KEY: ${DB_RPC_API_KEY}
-      MAIN: crawler
       QUEUED_API_KEY: ${QUEUED_API_KEY}
 
   embedder:
@@ -86,7 +82,6 @@ services:
         MAIN: enqueuer
     environment:
       DB_RPC_API_KEY: ${DB_RPC_API_KEY}
-      MAIN: enqueuer
       QUEUED_API_KEY: ${QUEUED_API_KEY}
       STATSD_HOST: telegraf
     sysctls:
@@ -101,8 +96,6 @@ services:
       dockerfile: Dockerfile.python-base
       args:
         MAIN: kmeans
-    environment:
-      MAIN: kmeans
     volumes:
       - "${DOCKER_VOLUME_DIR}:/hndr-data"
 
@@ -114,8 +107,6 @@ services:
       dockerfile: Dockerfile.python-base
       args:
         MAIN: hnsw-builder
-    environment:
-      MAIN: hnsw-builder
     volumes:
       - "${DOCKER_VOLUME_DIR}:/hndr-data"
 
@@ -165,7 +156,5 @@ services:
       dockerfile: Dockerfile.python-base
       args:
         MAIN: umap
-    environment:
-      MAIN: umap
     volumes:
       - "${DOCKER_VOLUME_DIR}:/hndr-data"

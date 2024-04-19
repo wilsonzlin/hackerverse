@@ -30,6 +30,7 @@ COPY common common
 COPY $MAIN $MAIN
 RUN npx tsc
 
+ENV MAIN=$MAIN
 ENV NODE_NO_WARNINGS=1
 ENV NODE_OPTIONS='--enable-source-maps --max-old-space-size=16384 --stack-trace-limit=1024'
 ENV PYTHONUNBUFFERED=0

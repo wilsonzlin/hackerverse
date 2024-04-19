@@ -17,6 +17,7 @@ COPY --from=0 /app/target/release/$MAIN /main
 
 RUN apt -y update && apt -yq install ca-certificates openssl && rm -rf /var/lib/apt/lists/*
 
+ENV MAIN=$MAIN
 ENV RUST_BACKTRACE=1
 ENV RUST_LOG=info
 CMD /main
