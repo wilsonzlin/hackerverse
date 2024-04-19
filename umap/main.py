@@ -26,7 +26,8 @@ mapper = umap.UMAP(
     metric="cosine",
     n_neighbors=300,
     min_dist=0.25,
-    low_memory=False,
+    # Not even 1.5 TiB of memory is enough (AWS r7i.metal-48xl) to set this to False.
+    low_memory=True,
     # The default spectral init fails after a very long time, and just falls back to random anyway. The error:
     # > UserWarning: Spectral initialisation failed! The eigenvector solver failed. This is likely due to too small an eigengap. Consider adding some noise or jitter to your data. Falling back to random initialisation!
     init="random",
