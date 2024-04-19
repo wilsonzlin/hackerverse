@@ -111,11 +111,30 @@ services:
       - "${DOCKER_VOLUME_DIR}:/hndr-data"
 
   hnsw-server:
+    network_mode: host
     image: wilsonzlin/hndr-hnsw-server
     init: true
     build:
       context: .
-      dockerfile: Dockerfile.hnsw-server
+      dockerfile: Dockerfile.uvicorn-base
+      args:
+        MAIN: hnsw-server
+    environment:
+      PORT: 7001
+    volumes:
+      - "${DOCKER_VOLUME_DIR}:/hndr-data"
+
+  semantic-analysis-server:
+    network_mode: host
+    image: wilsonzlin/hndr-semantic-analysis-server
+    init: true
+    build:
+      context: .
+      dockerfile: Dockerfile.uvicorn-base
+      args:
+        MAIN: semantic-analysis-server
+    environment:
+      PORT: 7002
     volumes:
       - "${DOCKER_VOLUME_DIR}:/hndr-data"
 
