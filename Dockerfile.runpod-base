@@ -1,17 +1,17 @@
 # Use the image with the oldest version of CUDA while maintaining PyTorch >=2.0.
 # This is because some RunPod Community Cloud hosts have older NVIDIA driver versions. What matters on the host is the NVIDIA driver version, not the CUDA version. NVIDIA drivers are only compatible up to a certain version of CUDA.
 FROM runpod/pytorch:2.1.0-py3.10-cuda11.8.0-devel-ubuntu22.04
+ARG MAIN
 
-RUN pip install sentence_transformers
-RUN python -c 'from sentence_transformers import SentenceTransformer; SentenceTransformer("jinaai/jina-embeddings-v2-small-en")'
+RUN pip install huggingface_hub
+COPY $MAIN/download_model.py /tmp/download_model.py
+RUN python /tmp/download_model.py
 
 RUN curl -fLSs --output /usr/bin/runpodctl https://github.com/runpod/runpodctl/releases/download/v1.14.2/runpodctl-linux-amd64
 RUN chmod +x /usr/bin/runpodctl
 
-ENV MAIN=embedder
-
 COPY --from=telegraf /usr/bin/telegraf /telegraf
-COPY embedder/telegraf.conf /
+COPY runpod/telegraf.conf /
 COPY --from=grafana/promtail /usr/bin/promtail /promtail
 COPY promtail.yaml /
 
@@ -27,11 +27,12 @@ RUN npm i
 
 COPY tsconfig.json .
 COPY common common
-COPY embedder embedder
+COPY $MAIN $MAIN
 RUN npx tsc
 
 ENV NODE_NO_WARNINGS=1
 ENV NODE_OPTIONS='--enable-source-maps --max-old-space-size=16384 --stack-trace-limit=1024'
 ENV PYTHONUNBUFFERED=0
 ENV TQDM_DISABLE=1
-CMD bash embedder/docker.entrypoint.sh
+COPY runpod/docker.entrypoint.sh .
+CMD bash docker.entrypoint.sh

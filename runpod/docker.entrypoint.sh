@@ -35,4 +35,4 @@ service ssh start
 sleep 5
 
 # We cannot use ts-node as it doesn't support node:worker.
-node /app/embedder/main.js |& tee /app.log
+node /app/$MAIN/main.js |& tee /app.log

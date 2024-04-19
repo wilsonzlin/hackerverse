@@ -62,7 +62,9 @@ services:
     init: true
     build:
       context: .
-      dockerfile: Dockerfile.embedder
+      dockerfile: Dockerfile.runpod-base
+      args:
+        MAIN: embedder
     environment:
       DB_RPC_API_KEY: ${DB_RPC_API_KEY}
       INFLUXDB_ENDPOINT: ${INFLUXDB_ENDPOINT}
