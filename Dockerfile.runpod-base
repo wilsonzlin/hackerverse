@@ -33,7 +33,7 @@ RUN npx tsc
 ENV MAIN=$MAIN
 ENV NODE_NO_WARNINGS=1
 ENV NODE_OPTIONS='--enable-source-maps --max-old-space-size=16384 --stack-trace-limit=1024'
-ENV PYTHONUNBUFFERED=0
+ENV PYTHONUNBUFFERED=1
 ENV TQDM_DISABLE=1
 COPY runpod/docker.entrypoint.sh .
 CMD bash docker.entrypoint.sh

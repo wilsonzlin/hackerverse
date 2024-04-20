@@ -3,7 +3,8 @@ from common.emb_data import load_emb_data_with_sampling
 import joblib
 import umap
 
-UMAP_N_NEIGHBORS_MAX = 300
+# Over 100 takes too long (up to several days, even on 96-core machines) and a lot of memory (several hundred gigabytes, possibly terabytes).
+UMAP_N_NEIGHBORS_MAX = 100
 USE_PCA = True
 
 
@@ -23,6 +24,7 @@ def calc_knn():
         n_neighbors=UMAP_N_NEIGHBORS_MAX,
         # Don't use random_state to use parallelism.
         random_state=None,
+        verbose=True,
     )
     print("Saving KNN")
     with open("/hndr-data/umap_prep_knn_train.joblib", "wb") as f:

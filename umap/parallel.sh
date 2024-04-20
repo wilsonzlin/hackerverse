@@ -2,7 +2,7 @@
 
 set -Eeuo pipefail
 
-n_neighbors=(20 50 100 300)
+n_neighbors=(20 50 100)
 min_dist=(0.1 0.25 0.5 0.85)
 
 process_data() {
