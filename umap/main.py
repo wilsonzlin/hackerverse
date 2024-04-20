@@ -1,31 +1,36 @@
+from common.emb_data import load_emb_data_pca
+from common.emb_data import load_emb_data_with_sampling
 import joblib
-import numpy as np
 import os
 import umap
 
-sample_size = int(os.getenv("SAMPLE_SIZE"))
-n_neighbors = int(os.getenv("N_NEIGHBORS"))
-min_dist = float(os.getenv("MIN_DIST"))
 
-LOG_PREFIX = (sample_size, n_neighbors, min_dist)
+def env(name: str):
+    val = os.getenv(name)
+    if val is None:
+        raise ValueError(f"Missing environment variable: {name}")
+    return val
 
-out_name_pfx = f"/hndr-data/umap_{sample_size}_n{n_neighbors}_d{min_dist}"
 
-total_count = int(open("/hndr-data/total_count.txt", "r").read())
+n_neighbors = int(env("N_NEIGHBORS"))
+min_dist = float(env("MIN_DIST"))
 
-fp_emb = np.memmap(
-    "/hndr-data/mat_shuffled_emb.dat",
-    dtype=np.float32,
-    mode="r",
-    shape=(total_count, 512),
-)
-mat_train_emb = fp_emb[0:sample_size]
-assert mat_train_emb.shape == (sample_size, 512)
-mat_rem_emb = fp_emb[sample_size:]
-assert mat_rem_emb.shape == (total_count - sample_size, 512)
+USE_PCA = True
+LOG_PREFIX = (n_neighbors, min_dist)
+
+out_name_pfx = f"/hndr-data/umap_n{n_neighbors}_d{min_dist}"
+
+if USE_PCA:
+    d = load_emb_data_pca()
+else:
+    d = load_emb_data_with_sampling()
+
+with open("/hndr-data/umap_prep_knn_train.joblib", "rb") as f:
+    knn = joblib.load(f)
 
 print(LOG_PREFIX, "Training")
 mapper = umap.UMAP(
+    precomputed_knn=knn,
     # Do not set a random state, it prevents parallelisation.
     n_components=2,
     metric="cosine",
@@ -36,21 +41,15 @@ mapper = umap.UMAP(
     # > UserWarning: Spectral initialisation failed! The eigenvector solver failed. This is likely due to too small an eigengap. Consider adding some noise or jitter to your data. Falling back to random initialisation!
     init="random",
 )
-mapper.fit(mat_train_emb)
+mapper.fit(d.mat_emb[d.sample_rows_filter])
 
 # Save the UMAP model for later use.
-with open(f"{out_name_pfx}.joblib", "wb") as f:
+with open(f"{out_name_pfx}_model.joblib", "wb") as f:
     joblib.dump(mapper, f)
 
-mat_train_umap = mapper.embedding_
-assert mat_train_umap.shape == (sample_size, 2)
-with open(f"{out_name_pfx}_train_umap.dat", "wb") as f:
-    mat_train_umap.tofile(f)
-
 print(LOG_PREFIX, "Inferring")
-mat_rem_umap = mapper.transform(mat_rem_emb)
-assert mat_rem_umap.shape == (total_count - sample_size, 2)
-with open(f"{out_name_pfx}_rem_umap.dat", "wb") as f:
-    mat_rem_umap.tofile(f)
+mat_umap = mapper.transform(d.mat_emb)
+with open(f"{out_name_pfx}_emb.dat", "wb") as f:
+    mat_umap.tofile(f)
 
 print(LOG_PREFIX, "All done!")

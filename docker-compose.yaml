@@ -124,6 +124,17 @@ services:
     volumes:
       - "${DOCKER_VOLUME_DIR}:/hndr-data"
 
+  pca:
+    image: wilsonzlin/hndr-pca
+    init: true
+    build:
+      context: .
+      dockerfile: Dockerfile.python-base
+      args:
+        MAIN: pca
+    volumes:
+      - "${DOCKER_VOLUME_DIR}:/hndr-data"
+
   semantic-analysis-server:
     network_mode: host
     image: wilsonzlin/hndr-semantic-analysis-server
@@ -175,5 +186,16 @@ services:
       dockerfile: Dockerfile.python-base
       args:
         MAIN: umap
+    volumes:
+      - "${DOCKER_VOLUME_DIR}:/hndr-data"
+
+  umap-prepare:
+    image: wilsonzlin/hndr-umap-prepare
+    init: true
+    build:
+      context: .
+      dockerfile: Dockerfile.python-base
+      args:
+        MAIN: umap-prepare
     volumes:
       - "${DOCKER_VOLUME_DIR}:/hndr-data"

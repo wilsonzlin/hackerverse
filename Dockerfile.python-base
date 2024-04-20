@@ -10,6 +10,7 @@ COPY common common
 COPY $MAIN $MAIN
 
 ENV MAIN=$MAIN
+ENV PYTHONPATH=/app
 # Otherwise nothing is printed.
 ENV PYTHONUNBUFFERED=0
 CMD python $MAIN/main.py
