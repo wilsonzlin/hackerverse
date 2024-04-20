@@ -3,7 +3,7 @@ from common.emb_data import load_emb_data_with_sampling
 import joblib
 import umap
 
-# Over 100 takes too long (up to several days, even on 96-core machines) and a lot of memory (several hundred gigabytes, possibly terabytes).
+# Over 100 and/or without PCA takes too long with PyNNDescent (up to several days, even on 96-core machines) and a lot of memory (several hundred gigabytes, possibly terabytes).
 UMAP_N_NEIGHBORS_MAX = 100
 USE_PCA = True
 

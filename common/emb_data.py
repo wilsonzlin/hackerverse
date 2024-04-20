@@ -1,12 +1,10 @@
+from common.data import load_mmap_matrix
+from common.data import load_table
 from dataclasses import dataclass
-from typing import List
-from typing import Optional
-from typing import Tuple
 from typing import TypeVar
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
-import pyarrow.dataset as ds
 
 # We go with 3 million (~75%) posts and an equivalent absolute amount (~10%) of comments.
 # - We are limited in how many inputs we can put into UMAP, before it gets extremely expensive in memory and time to compute, so we must make some decision on what subset of the data we want.
@@ -20,14 +18,6 @@ SAMPLE_SIZE_TOTAL = SAMPLE_SIZE_POSTS + SAMPLE_SIZE_COMMENTS
 PCA_COMPONENTS = 128
 
 
-def load_table(basename: str, columns: Optional[List[str]] = None) -> pd.DataFrame:
-    return (
-        ds.dataset(f"/hndr-data/{basename}.arrow", format="ipc")
-        .to_table(columns=columns)
-        .to_pandas()
-    )
-
-
 T = TypeVar("T", pd.DataFrame, pd.Series)
 
 
@@ -36,26 +26,11 @@ def merge_posts_and_comments(*, posts: T, comments: T) -> T:
     return pd.concat([posts, comments], ignore_index=True)
 
 
-def dump_mmap_matrix(out_basename: str, mat: np.ndarray):
-    print("Exporting matrix:", out_basename)
-    fp = np.memmap(
-        f"/hndr-data/{out_basename}.mmap",
-        dtype=mat.dtype,
-        mode="w+",
-        shape=mat.shape,
-    )
-    fp[:] = mat[:]
-    fp.flush()
-
-
-def load_mmap_matrix(basename: str, shape: Tuple[int, ...], dtype: np.dtype):
-    print("Loading matrix:", basename)
-    return np.memmap(
-        f"/hndr-data/{basename}.mmap",
-        dtype=dtype,
-        mode="r",
-        shape=shape,
-    )
+# Load data built by the build-embs service.
+def load_embs():
+    with open("/hndr-data/embs_count.txt") as f:
+        count = int(f.read())
+    return load_mmap_matrix("embs", (count, 512), np.float32)
 
 
 @dataclass

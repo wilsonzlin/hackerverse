@@ -25,10 +25,11 @@ for name, df in [("posts", df_posts), ("comments", df_comments)]:
     idx = hnswlib.Index(space="ip", dim=512)
 
     print("Initializing index")
+    # As proven by hnsw-eval/main.py, M=48 is good for ef > 100. A high ef is also practical for big K queries.
     idx.init_index(
         max_elements=id_mat.shape[0],
         ef_construction=128,
-        M=64,
+        M=48,
         allow_replace_deleted=True,  # For future updating.
     )
 

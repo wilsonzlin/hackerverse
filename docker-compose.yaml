@@ -15,6 +15,17 @@ services:
     volumes:
       - "${DOCKER_VOLUME_DIR}:/hndr-data"
 
+  build-embs:
+    image: wilsonzlin/hndr-build-embs
+    init: true
+    build:
+      context: .
+      dockerfile: Dockerfile.python-base
+      args:
+        MAIN: build-embs
+    volumes:
+      - "${DOCKER_VOLUME_DIR}:/hndr-data"
+
   build-data:
     image: wilsonzlin/hndr-build-data
     init: true
