@@ -25,9 +25,7 @@ df_comments = (
 print("Comments:", len(df_comments))
 df = pd.concat([df_posts, df_comments], ignore_index=True)
 print("Total:", len(df))
-mat = np.array(
-    [np.frombuffer(buf, dtype=np.float32) for buf in df.pop("emb")], dtype=np.float32
-)
+mat = np.stack(df.pop("emb").apply(np.frombuffer, dtype=np.float32))
 print("Matrix:", mat.shape)
 assert mat.shape == (len(df), 512)
 
