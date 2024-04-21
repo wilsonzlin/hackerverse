@@ -1,6 +1,7 @@
 from common.data import dump_mmap_matrix
 from common.emb_data import load_emb_data_with_sampling
 from common.emb_data import load_embs
+from common.emb_data import load_embs_pca
 import joblib
 import numpy as np
 import os
@@ -17,14 +18,15 @@ def env(name: str):
 n_neighbors = int(env("N_NEIGHBORS"))
 min_dist = float(env("MIN_DIST"))
 
-MODE = "hnsw"  # "hnsw", "hnsw-sampling", "pynndescent-pca-sampling", "pynndescent-sampling"
+MODE = "hnsw"  # "hnsw", "hnsw-pca", "pynndescent-pca-sampling", "pynndescent-sampling"
 LOG_PREFIX = (n_neighbors, min_dist)
 
 out_name_pfx = f"umap_n{n_neighbors}_d{min_dist}"
 
 if MODE == "hnsw":
-    mat_emb = load_embs()
-    mat_emb_train = mat_emb
+    mat_emb = mat_emb_train = load_embs()
+elif MODE == "hnsw-pca":
+    mat_emb = mat_emb_train = load_embs_pca()
 else:
     d = load_emb_data_with_sampling(MODE == "pynndescent-pca-sampling")
     mat_emb = d.mat_emb
@@ -45,15 +47,19 @@ mapper = umap.UMAP(
     # The default spectral init fails after a very long time, and just falls back to random anyway. The error:
     # > UserWarning: Spectral initialisation failed! The eigenvector solver failed. This is likely due to too small an eigengap. Consider adding some noise or jitter to your data. Falling back to random initialisation!
     init="random",
+    verbose=True,
 )
 mapper.fit(mat_emb_train)
+if MODE == "hnsw":
+    # Since we're using external KNN, we cannot reuse this model on new inputs, so there's no point in saving the model, and no need to run .transform (since the training data is the whole dataset already).
+    mat_umap = mapper.embedding_
+else:
+    # Save the UMAP model for later use.
+    with open(f"/hndr-data/{out_name_pfx}_model.joblib", "wb") as f:
+        joblib.dump(mapper, f)
 
-# Save the UMAP model for later use.
-with open(f"/hndr-data/{out_name_pfx}_model.joblib", "wb") as f:
-    joblib.dump(mapper, f)
-
-print(LOG_PREFIX, "Inferring")
-mat_umap = mapper.transform(mat_emb)
+    print(LOG_PREFIX, "Inferring")
+    mat_umap = mapper.transform(mat_emb)
 assert type(mat_umap) == np.ndarray
 assert mat_umap.shape == (mat_emb.shape[0], 2)
 dump_mmap_matrix(f"{out_name_pfx}_emb", mat_umap)

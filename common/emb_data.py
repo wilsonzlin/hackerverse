@@ -33,6 +33,12 @@ def load_embs():
     return load_mmap_matrix("embs", (count, 512), np.float32)
 
 
+def load_embs_pca():
+    with open("/hndr-data/embs_count.txt") as f:
+        count = int(f.read())
+    return load_mmap_matrix("pca_emb", (count, PCA_COMPONENTS), np.float32)
+
+
 @dataclass
 class LoadedEmbTableIds:
     posts: pd.Series
@@ -81,7 +87,7 @@ def load_emb_data_with_sampling(pca=False):
     assert sample_rows_filter.shape == (total_count,)
 
     if pca:
-        mat_emb = load_mmap_matrix("pca_emb", (total_count, PCA_COMPONENTS), np.float32)
+        mat_emb = load_embs_pca()
     else:
         mat_emb = load_embs()
 

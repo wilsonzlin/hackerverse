@@ -3,13 +3,19 @@ from common.emb_data import load_emb_data_with_sampling
 from common.emb_data import PCA_COMPONENTS
 from sklearn.decomposition import PCA
 import joblib
+import os
+
+# Training PCA over the entire dataset may take too long, so set this to true to train it on the sample subset only, which gives approximately the same explained variance.
+TRAIN_ON_SAMPLE_ONLY = os.getenv("PCA_TRAIN_ON_SAMPLE_ONLY", "0") == "1"
 
 
 def calc_pca():
     d = load_emb_data_with_sampling()
-    mat_emb_train = d.mat_emb[d.sample_rows_filter]
+    if TRAIN_ON_SAMPLE_ONLY:
+        mat_emb_train = d.mat_emb[d.sample_rows_filter]
+    else:
+        mat_emb_train = d.mat_emb
 
-    # Training PCA over the entire dataset takes too long, so we train it on the subset sample.
     pca = PCA(n_components=PCA_COMPONENTS)
     print("Fitting PCA", PCA_COMPONENTS, "over training data", mat_emb_train.shape)
     pca.fit(mat_emb_train)
