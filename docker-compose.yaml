@@ -197,6 +197,10 @@ services:
       dockerfile: Dockerfile.python-base
       args:
         MAIN: umap
+    environment:
+      UMAP_LOW_MEMORY: ${UMAP_LOW_MEMORY}
+      UMAP_MIN_DIST: ${UMAP_MIN_DIST}
+      UMAP_N_NEIGHBORS: ${UMAP_N_NEIGHBORS}
     volumes:
       - "${DOCKER_VOLUME_DIR}:/hndr-data"
 
