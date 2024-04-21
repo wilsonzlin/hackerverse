@@ -1,44 +1,29 @@
+from common.data import deserialize_emb_col
+from common.data import load_table
 from fastapi import FastAPI
 from pydantic import BaseModel
 from sentence_transformers import SentenceTransformer
 import numpy as np
-import pyarrow.dataset as ds
 
 
 # Wrap in function to clean up and release memory at end.
 def load_data():
     print("Loading data")
 
-    df_posts = (
-        ds.dataset(f"/hndr-data/posts.arrow", format="ipc").to_table().to_pandas()
-    )
-    df_post_embs = (
-        ds.dataset(f"/hndr-data/post_embs.arrow", format="ipc").to_table().to_pandas()
-    )
+    df_posts = load_table("posts")
+    df_post_embs = load_table("post_embs.arrow")
     df_posts = df_posts.merge(df_post_embs, on="id", how="inner")
-    mat_post_embs = np.stack(df_posts["emb"].apply(np.frombuffer, dtype=np.float32))
+    mat_post_embs = deserialize_emb_col(df_posts, "emb")
     mat_post_scores = df_posts["score"].values
     mat_post_days = df_posts["ts"].astype("int64").values // (60 * 60 * 24)
     print("Posts:", len(df_posts))
 
-    df_comments = (
-        ds.dataset(f"/hndr-data/comments.arrow", format="ipc").to_table().to_pandas()
-    )
-    df_comment_embs = (
-        ds.dataset(f"/hndr-data/comment_embs.arrow", format="ipc")
-        .to_table()
-        .to_pandas()
-    )
+    df_comments = load_table("comments")
+    df_comment_embs = load_table("comment_embs")
     df_comments = df_comments.merge(df_comment_embs, on="id", how="inner")
-    df_comment_sentiments = (
-        ds.dataset(f"/hndr-data/comment_sentiments.arrow", format="ipc")
-        .to_table()
-        .to_pandas()
-    )
+    df_comment_sentiments = load_table("comment_sentiments")
     df_comments = df_comments.merge(df_comment_sentiments, on="id", how="inner")
-    mat_comment_embs = np.stack(
-        df_comments["emb"].apply(np.frombuffer, dtype=np.float32)
-    )
+    mat_comment_embs = deserialize_emb_col(df_comments, "emb")
     mat_comment_scores = df_comments["score"].values
     mat_comment_days = df_comments["ts"].astype("int64").values // (60 * 60 * 24)
     mat_comment_sentiments = np.where(

@@ -1,22 +1,18 @@
+from common.data import deserialize_emb_col
+from common.data import load_table
 import hnswlib
-import numpy as np
-import pyarrow.dataset as ds
 
 print("Loading data")
 
-df_posts = (
-    ds.dataset(f"/hndr-data/post_embs.arrow", format="ipc").to_table().to_pandas()
-)
+df_posts = load_table("post_embs")
 print("Posts:", len(df_posts))
-df_comments = (
-    ds.dataset(f"/hndr-data/comment_embs.arrow", format="ipc").to_table().to_pandas()
-)
+df_comments = load_table("comment_embs")
 print("Comments:", len(df_comments))
 
 for name, df in [("posts", df_posts), ("comments", df_comments)]:
     print("Processing", name)
 
-    emb_mat = np.stack(df["emb"].apply(np.frombuffer, dtype=np.float32))
+    emb_mat = deserialize_emb_col(df, "emb")
     print("Embedding matrix:", emb_mat.shape)
     # This results in a 1-dimensional (NOT (N, 1)-shaped) NumPy array, which is what we want.
     id_mat = df["id"].values

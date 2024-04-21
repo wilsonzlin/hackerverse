@@ -67,50 +67,23 @@ class LoadedEmbData:
     total_count: int
 
 
-def load_emb_data_with_sampling():
-    print("Loading data")
-    df_posts = load_table("post_embs")
-    print("Posts:", len(df_posts))
-
-    df_comments = load_table("comment_embs")
-    print("Comments:", len(df_comments))
-
-    df_total = merge_posts_and_comments(posts=df_posts, comments=df_comments)
-    total_count = len(df_total)
-    print("Total:", total_count)
-    mat_emb = np.stack(df_total["emb"].apply(np.frombuffer, dtype=np.float32))
-
-    sample = sample_emb_table_ids(
-        LoadedEmbTableIds(
-            posts=df_posts["id"], comments=df_comments["id"], total=df_total["id"]
-        )
-    )
-
-    # Boolean filter to select only sampled rows from the NumPy matrix.
-    sample_rows_filter = df_total["id"].isin(sample).values
-    assert type(sample_rows_filter) == np.ndarray
-    assert sample_rows_filter.dtype == np.bool_
-    assert sample_rows_filter.shape == (total_count,)
-
-    return LoadedEmbData(
-        mat_emb=mat_emb,
-        sample_ids=sample,
-        sample_rows_filter=sample_rows_filter,
-        total_count=total_count,
-    )
-
-
-def load_emb_data_pca() -> LoadedEmbData:
+# If `pca`, this will load the PCA matrix built by the pca service, which was trained on a subset sample but inferred across the entire dataset.
+def load_emb_data_with_sampling(pca=False):
     loaded_table_ids = load_emb_table_ids()
     total_count = len(loaded_table_ids.total)
 
     sample_ids = sample_emb_table_ids(loaded_table_ids)
+
+    # Boolean filter to select only sampled rows from the NumPy matrix.
     sample_rows_filter = loaded_table_ids.total.isin(sample_ids).values
     assert type(sample_rows_filter) == np.ndarray
     assert sample_rows_filter.dtype == np.bool_
     assert sample_rows_filter.shape == (total_count,)
 
-    mat_emb = load_mmap_matrix("pca_emb", (total_count, PCA_COMPONENTS), np.float32)
+    if pca:
+        mat_emb = load_mmap_matrix("pca_emb", (total_count, PCA_COMPONENTS), np.float32)
+    else:
+        mat_emb = load_embs()
 
     return LoadedEmbData(
         mat_emb=mat_emb,

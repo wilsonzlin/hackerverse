@@ -1,4 +1,4 @@
-from common.emb_data import dump_mmap_matrix
+from common.data import dump_mmap_matrix
 from common.emb_data import load_emb_data_with_sampling
 from common.emb_data import PCA_COMPONENTS
 from sklearn.decomposition import PCA
@@ -9,6 +9,7 @@ def calc_pca():
     d = load_emb_data_with_sampling()
     mat_emb_train = d.mat_emb[d.sample_rows_filter]
 
+    # Training PCA over the entire dataset takes too long, so we train it on the subset sample.
     pca = PCA(n_components=PCA_COMPONENTS)
     print("Fitting PCA", PCA_COMPONENTS, "over training data", mat_emb_train.shape)
     pca.fit(mat_emb_train)

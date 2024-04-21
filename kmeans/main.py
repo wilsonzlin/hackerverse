@@ -1,9 +1,9 @@
+from common.data import deserialize_emb_col
+from common.data import load_table
 from sklearn.cluster import MiniBatchKMeans
 import multiprocessing as mp
-import numpy as np
 import os
 import pandas as pd
-import pyarrow.dataset as ds
 
 nt = int(os.getenv("OPENBLAS_NUM_THREADS", mp.cpu_count()))
 if nt > 64:
@@ -15,17 +15,14 @@ if nt > 64:
 
 
 print("Loading data")
-df_posts = (
-    ds.dataset(f"/hndr-data/post_embs.arrow", format="ipc").to_table().to_pandas()
-)
+df_posts = load_table("post_embs")
 print("Posts:", len(df_posts))
-df_comments = (
-    ds.dataset(f"/hndr-data/comment_embs.arrow", format="ipc").to_table().to_pandas()
-)
+df_comments = load_table("comment_embs")
 print("Comments:", len(df_comments))
 df = pd.concat([df_posts, df_comments], ignore_index=True)
 print("Total:", len(df))
-mat = np.stack(df.pop("emb").apply(np.frombuffer, dtype=np.float32))
+mat = deserialize_emb_col(df, "emb")
+df.pop("emb")
 print("Matrix:", mat.shape)
 assert mat.shape == (len(df), 512)
 

@@ -16,7 +16,6 @@ def load_table(basename: str, columns: Optional[List[str]] = None) -> pd.DataFra
 
 
 def dump_mmap_matrix(out_basename: str, mat: np.ndarray):
-    print("Exporting matrix:", out_basename)
     fp = np.memmap(
         f"/hndr-data/{out_basename}.mmap",
         dtype=mat.dtype,
@@ -28,7 +27,6 @@ def dump_mmap_matrix(out_basename: str, mat: np.ndarray):
 
 
 def load_mmap_matrix(basename: str, shape: Tuple[int, ...], dtype: np.dtype):
-    print("Loading matrix:", basename)
     return np.memmap(
         f"/hndr-data/{basename}.mmap",
         dtype=dtype,
