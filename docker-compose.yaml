@@ -15,6 +15,24 @@ services:
     volumes:
       - "${DOCKER_VOLUME_DIR}:/hndr-data"
 
+  api:
+    network_mode: host
+    image: wilsonzlin/hndr-api
+    init: true
+    build:
+      context: .
+      dockerfile: Dockerfile.nodejs-base
+      args:
+        MAIN: api
+    environment:
+      API_SSL_CA_BASE64: ${API_SSL_CA_BASE64}
+      API_SSL_CERT_BASE64: ${API_SSL_CERT_BASE64}
+      API_SSL_KEY_BASE64: ${API_SSL_KEY_BASE64}
+      DB_RPC_API_KEY: ${DB_RPC_API_KEY}
+      PORT: 7000
+      QUEUED_API_KEY: ${QUEUED_API_KEY}
+      STATSD_HOST: telegraf
+
   build-embs:
     image: wilsonzlin/hndr-build-embs
     init: true
@@ -95,9 +113,6 @@ services:
       DB_RPC_API_KEY: ${DB_RPC_API_KEY}
       QUEUED_API_KEY: ${QUEUED_API_KEY}
       STATSD_HOST: telegraf
-    sysctls:
-      net.ipv4.ip_local_port_range: "10000 65535"
-      net.core.somaxconn: "1048576"
 
   kmeans:
     image: wilsonzlin/hndr-kmeans

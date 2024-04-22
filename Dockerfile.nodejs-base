@@ -8,6 +8,7 @@ RUN npm i
 ARG MAIN
 COPY common common
 COPY $MAIN $MAIN
+COPY tsconfig.json .
 RUN npx tsc
 
 ENV MAIN=$MAIN

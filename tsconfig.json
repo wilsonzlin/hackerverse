@@ -1,5 +1,5 @@
 {
-  "exclude": ["**/*.spec.ts", "node_modules/"],
+  "exclude": ["**/*.spec.ts", "dist/", "node_modules/"],
   "compilerOptions": {
     "allowJs": false,
     "allowSyntheticDefaultImports": true,
@@ -8,12 +8,12 @@
     "esModuleInterop": true,
     "isolatedModules": true,
     "lib": ["ESNext", "DOM"], // TODO DOM is for broken @msgpack/msgpack types.
+    "jsx": "react-jsx",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "noErrorTruncation": true,
     "noFallthroughCasesInSwitch": true,
     "noImplicitAny": true,
-    "noImplicitReturns": true,
     "noImplicitThis": true,
     "sourceMap": true,
     "strict": true,

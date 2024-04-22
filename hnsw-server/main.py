@@ -30,7 +30,9 @@ def search(dataset: str, query: str, limit: int):
     else:
         raise ValueError("Invalid dataset")
     emb = model.encode([query], convert_to_numpy=True, normalize_embeddings=True)
+    # `ids` and `dists` are matrices of shape (query_count, limit).
     ids, dists = idx.knn_query(emb, k=limit)
     return [
-        {"id": id, "distance": dist} for id, dist in zip(ids.tolist(), dists.tolist())
+        {"id": id, "distance": dist}
+        for id, dist in zip(ids[0].tolist(), dists[0].tolist())
     ]

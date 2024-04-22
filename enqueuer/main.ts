@@ -140,28 +140,32 @@ const processItem = async (item: Item) => {
   let root: number | undefined;
   let url: ReturnType<typeof normaliseUrlToParts> | undefined;
   if (item?.type === "comment") {
-    const chain = ["# Reply", extractText(item.text ?? "")];
-    // All comments have a parent.
-    let parentId = assertExists(item.parent);
-    while (true) {
-      const p = await fetchItem(parentId);
-      if (p?.type === "story") {
-        chain.unshift(
-          "# Post",
-          parsePostTitle(p.title ?? ""),
-          normaliseUrl(p.url ?? "")?.replace(/^https?:\/\//, "") ?? "",
-        );
-        root = p.id;
-        break;
-      } else if (p?.type === "comment") {
-        chain.unshift("# Comment", extractText(p.text ?? ""));
-        parentId = assertExists(p.parent);
-      } else {
-        // We are likely in a dead post or comment subtree, but let's still keep the chain.
-        break;
+    // Make sure to filter out empty comments, as otherwise the embedding basically becomes the same as the parent.
+    const text = extractText(item.text ?? "").trim();
+    if (text) {
+      const chain = ["# Reply", text];
+      // All comments have a parent.
+      let parentId = assertExists(item.parent);
+      while (true) {
+        const p = await fetchItem(parentId);
+        if (p?.type === "story") {
+          chain.unshift(
+            "# Post",
+            parsePostTitle(p.title ?? ""),
+            normaliseUrl(p.url ?? "")?.replace(/^https?:\/\//, "") ?? "",
+          );
+          root = p.id;
+          break;
+        } else if (p?.type === "comment") {
+          chain.unshift("# Comment", extractText(p.text ?? ""));
+          parentId = assertExists(p.parent);
+        } else {
+          // We are likely in a dead post or comment subtree, but let's still keep the chain.
+          break;
+        }
       }
+      embInput = chain.join("\n\n");
     }
-    embInput = chain.join("\n\n");
   }
   // Skip fetching and/or generating embedding if post is dead or deleted. Low scores (including negative) are fine; they may just be controversial (spam are usually marked as dead).
   if (item?.type === "story" && !item.dead && !item.deleted) {
@@ -210,6 +214,7 @@ const processItem = async (item: Item) => {
     }
     embInput = embInput.slice(0, MAX_LEN);
   }
+  embInput = embInput?.trim();
 
   let keyPfx: string | undefined;
   if (item?.type === "comment") {
