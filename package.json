@@ -7,8 +7,8 @@
   },
   "author": "Wilson Lin <npm@wilsonl.in>",
   "scripts": {
-    "build-app": "esbuild --bundle --legal-comments=none --minify --outdir=app/dist app/index.tsx",
-    "dev-app": "esbuild --bundle --outdir=app/dist --servedir=app --watch app/index.tsx",
+    "build-app": "esbuild --bundle --legal-comments=none --minify --outdir=app/dist app/index.tsx app/worker.PointMap.ts",
+    "dev-app": "esbuild --bundle --outdir=app/dist --servedir=app --watch app/index.tsx app/worker.PointMap.ts",
     "test": "jest"
   },
   "dependencies": {
@@ -21,7 +21,7 @@
     "@wzlin/crawler-toolkit-hn": "^0.13.2",
     "@wzlin/crawler-toolkit-web": "^0.14.0",
     "@wzlin/service-toolkit": "^0.0.1",
-    "@wzlin/valid": "^0.4.2",
+    "@wzlin/valid": "^0.4.3",
     "@xtjs/lib": "^0.57.1",
     "chalk": "^4",
     "cheerio": "^1.0.0-rc.12",

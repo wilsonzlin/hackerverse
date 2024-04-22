@@ -1,8 +1,13 @@
 .PointMap {
   > .window {
-    width: 100%;
     height: 100%;
-    overflow: scroll;
+    overflow: hidden;
     border: 1px solid black;
+    touch-action: none;
+    position: relative;
+
+    > .canvas {
+      position: absolute;
+    }
   }
 }
