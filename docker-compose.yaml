@@ -57,6 +57,17 @@ services:
     volumes:
       - "${DOCKER_VOLUME_DIR}:/hndr-data"
 
+  build-map:
+    image: wilsonzlin/hndr-build-map
+    init: true
+    build:
+      context: .
+      dockerfile: Dockerfile.python-base
+      args:
+        MAIN: build-map
+    volumes:
+      - "${DOCKER_VOLUME_DIR}:/hndr-data"
+
   build-nn-data:
     image: wilsonzlin/hndr-build-nn-data
     init: true

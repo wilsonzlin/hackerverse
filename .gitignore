@@ -1,4 +1,5 @@
 .env
+.venv/
 Cargo.lock
 dist/
 node_modules/

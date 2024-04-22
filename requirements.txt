@@ -1,3 +1,4 @@
+brotli
 fastapi
 hnswlib
 implicit
@@ -7,6 +8,7 @@ numpy
 pandas
 pyarrow
 requests
+rtree
 scikit-learn
 scipy
 sentence_transformers
