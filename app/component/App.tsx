@@ -4,6 +4,7 @@ import mapExists from "@xtjs/lib/mapExists";
 import { useEffect, useState } from "react";
 import { useRequest } from "../util/fetch";
 import "./App.css";
+import { PointMap } from "./PointMap";
 
 export const App = () => {
   const [queryInput, setQueryInput] = useState("");
@@ -90,6 +91,8 @@ export const App = () => {
           </div>
         ))}
       </div>
+
+      <PointMap />
     </div>
   );
 };

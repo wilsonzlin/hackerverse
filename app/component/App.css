@@ -1,4 +1,9 @@
 .App {
   position: fixed;
   inset: 0;
+  overflow: auto;
+
+  > .PointMap {
+    height: 60vh;
+  }
 }
