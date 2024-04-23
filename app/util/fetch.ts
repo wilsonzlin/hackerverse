@@ -18,6 +18,7 @@ export const useRequest = <T>(endpoint: string, response: Validator<T>) => {
   const go = useCallback(
     async (requestBody: any) => {
       clear();
+      setLoading(true);
       const ac = (cur.current = new AbortController());
       try {
         const res = await fetch("https://api-hndr.wilsonl.in/" + endpoint, {
@@ -35,7 +36,6 @@ export const useRequest = <T>(endpoint: string, response: Validator<T>) => {
         }
         const raw = await res.arrayBuffer();
         const data = await decode(new Uint8Array(raw));
-        console.log(data);
         setData(response.parseRoot(data));
       } catch (err) {
         if (!ac.signal.aborted) {

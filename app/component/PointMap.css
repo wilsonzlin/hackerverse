@@ -2,6 +2,7 @@
   position: relative;
 
   > .canvas {
+    display: block;
     touch-action: none;
   }
 

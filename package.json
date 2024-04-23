@@ -7,8 +7,8 @@
   },
   "author": "Wilson Lin <npm@wilsonl.in>",
   "scripts": {
-    "build-app": "esbuild --bundle --legal-comments=none --minify --outdir=app/dist app/index.tsx app/worker.PointMap.ts",
-    "dev-app": "esbuild --bundle --outdir=app/dist --servedir=app --watch app/index.tsx app/worker.PointMap.ts",
+    "build-app": "esbuild --bundle --legal-comments=none --loader:.gif=dataurl --minify --outdir=app/dist app/index.tsx app/worker.PointMap.ts",
+    "dev-app": "esbuild --bundle --loader:.gif=dataurl --outdir=app/dist --servedir=app --watch app/index.tsx app/worker.PointMap.ts",
     "test": "jest"
   },
   "dependencies": {

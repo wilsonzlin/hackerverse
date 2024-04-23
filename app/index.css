@@ -1,5 +1,6 @@
 * {
   box-sizing: border-box;
+  outline: 0;
 }
 
 :root {
@@ -21,20 +22,40 @@
   user-select: none;
 }
 
-input {
+a {
+  color: inherit;
   font: inherit;
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
 }
 
-p {
+button,
+select {
+  cursor: pointer;
+}
+
+button,
+input {
+  background: transparent;
+  border-radius: 0;
+  border: 0;
+  font: inherit;
   margin: 0;
+  min-width: 0;
+  padding: 0;
 }
 
-.flex-row {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-}
-
-.grow {
-  flex-grow: 1;
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+  font: inherit;
+  margin: 0;
+  padding: 0;
 }

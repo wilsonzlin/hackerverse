@@ -15,5 +15,6 @@ COPY common common
 COPY $MAIN $MAIN
 
 WORKDIR /app/$MAIN
+ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 CMD uvicorn main:app --host 0.0.0.0 --log-level warning --port $PORT

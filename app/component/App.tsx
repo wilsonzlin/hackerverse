@@ -1,25 +1,34 @@
 import { Item, vItem } from "@wzlin/crawler-toolkit-hn";
 import { VArray, VFiniteNumber, VInteger, VStruct } from "@wzlin/valid";
+import assertInstanceOf from "@xtjs/lib/assertInstanceOf";
 import mapExists from "@xtjs/lib/mapExists";
+import { DateTime } from "luxon";
 import { useEffect, useState } from "react";
 import { useMeasure } from "../util/dom";
 import { useRequest } from "../util/fetch";
 import "./App.css";
+import { Ico } from "./Ico";
+import { Loading } from "./Loading";
 import { PointMap } from "./PointMap";
 
 export const App = () => {
   const [$root, setRootElem] = useState<HTMLDivElement | null>(null);
   const rootDim = useMeasure($root);
 
-  const [queryInput, setQueryInput] = useState("");
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState<{
+    query: string;
+    weightSimilarity: number;
+    weightScore: number;
+    weightTimestamp: number;
+    decayTimestamp: number;
+  }>();
   const results = useRequest(
     "search",
     new VStruct({
       results: new VArray(
         new VStruct({
           id: new VInteger(1),
-          distance: new VFiniteNumber(),
+          score: new VFiniteNumber(),
         }),
       ),
     }),
@@ -30,7 +39,7 @@ export const App = () => {
     } else {
       const timeout = setTimeout(() => {
         results.go({
-          query,
+          ...query,
           limit: 10,
           dataset: "posts",
         });
@@ -69,35 +78,126 @@ export const App = () => {
         className="search"
         onSubmit={(e) => {
           e.preventDefault();
-          setQuery(queryInput.trim());
+          const form = e.currentTarget;
+          const elems = form.elements;
+          const getInput = (name: string) =>
+            assertInstanceOf(elems.namedItem(name), HTMLInputElement);
+          setQuery({
+            query: getInput("query").value.trim(),
+            weightSimilarity: getInput("w_sim").valueAsNumber,
+            weightScore: getInput("w_score").valueAsNumber,
+            weightTimestamp: getInput("w_ts").valueAsNumber,
+            decayTimestamp: getInput("decay_ts").valueAsNumber,
+          });
         }}
       >
-        <input
-          placeholder="Search or ask"
-          value={queryInput}
-          onChange={(e) => setQueryInput(e.currentTarget.value)}
-        />
-        <button type="submit">Search</button>
+        <div className="main">
+          <input name="query" placeholder="Search or ask" />
+          <button disabled={results.loading} type="submit">
+            {results.loading ? <Loading size={24} /> : <Ico i="search" />}
+          </button>
+        </div>
+        <div className="params">
+          <label>
+            <span>
+              W<sub>sim</sub>
+            </span>
+            <input
+              name="w_sim"
+              type="number"
+              defaultValue={0.4}
+              step={0.00001}
+            />
+          </label>
+          <label>
+            <span>
+              W<sub>score</sub>
+            </span>
+            <input
+              name="w_score"
+              type="number"
+              defaultValue={0.4}
+              step={0.00001}
+            />
+          </label>
+          <label>
+            <span>
+              W<sub>ts</sub>
+            </span>
+            <input
+              name="w_ts"
+              type="number"
+              defaultValue={0.2}
+              step={0.00001}
+            />
+          </label>
+          <label>
+            <span>
+              λ<sub>ts</sub>
+            </span>
+            <input
+              name="decay_ts"
+              type="number"
+              defaultValue={0.1}
+              step={0.00001}
+            />
+          </label>
+        </div>
       </form>
 
       <div className="results">
-        {results.loading && <p>Loading...</p>}
-
         {mapExists(results.error, (error) => (
           <p className="err">{error}</p>
         ))}
 
-        {results.data?.results.map((r) => (
-          <div key={r.id}>
-            <p>{r.id}</p>
-            <p>{r.distance}</p>
-            {mapExists(items[r.id], (item) => (
-              <div>
+        {results.data?.results.map((r) => {
+          const item = items[r.id];
+          if (!item || !item.time || !item.by || !item.title) {
+            return;
+          }
+          const hnUrl = `https://news.ycombinator.com/item?id=${item.id}`;
+          let url, site;
+          if (item.url) {
+            try {
+              const parsed = new URL(item.url);
+              url = item.url;
+              site = parsed.hostname.replace(/^www\./, "");
+            } catch {
+              return;
+            }
+          } else {
+            url = hnUrl;
+            site = "news.ycombinator.com";
+          }
+          const ts = DateTime.fromJSDate(item.time);
+          const ago = DateTime.now()
+            .diff(ts)
+            .rescale()
+            .toHuman({ unitDisplay: "long" })
+            .split(",")[0];
+          return (
+            <div key={r.id} className="result">
+              <p className="site">{site}</p>
+              <a href={url} target="_blank" rel="noopener noreferrer">
                 <h1 dangerouslySetInnerHTML={{ __html: item.title ?? "" }} />
-              </div>
-            ))}
-          </div>
-        ))}
+              </a>
+              <p>
+                <a href={hnUrl} target="_blank" rel="noopener noreferrer">
+                  {item.score} point{item.score == 1 ? "" : "s"}
+                </a>{" "}
+                by{" "}
+                <a
+                  href={`https://news.ycombinator.com/user?id=${item.by}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {item.by}
+                </a>{" "}
+                {ago} ago
+              </p>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
