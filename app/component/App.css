@@ -1,9 +1,42 @@
 .App {
   position: fixed;
   inset: 0;
-  overflow: auto;
 
-  > .PointMap {
-    height: 60vh;
+  > .search,
+  > .results {
+    position: absolute;
+    background: rgba(255, 255, 255, 0.92);
+    left: 2rem;
+    width: 30rem;
+  }
+
+  > .search {
+    top: 1rem;
+    left: 2rem;
+
+    display: flex;
+    align-items: stretch;
+    gap: 0.5rem;
+
+    > input {
+      flex-grow: 1;
+
+      padding: 0.5rem;
+      border-radius: 0.25rem;
+    }
+
+    > button {
+      flex-shrink: 0;
+    }
+  }
+
+  > .results {
+    bottom: 2rem;
+    max-height: calc(100vh - 8rem);
+    overflow: auto;
+
+    &:not(:empty) {
+      padding: 1rem;
+    }
   }
 }

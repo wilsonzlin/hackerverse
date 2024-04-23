@@ -21,6 +21,14 @@
   user-select: none;
 }
 
+input {
+  font: inherit;
+}
+
+p {
+  margin: 0;
+}
+
 .flex-row {
   display: flex;
   flex-direction: row;

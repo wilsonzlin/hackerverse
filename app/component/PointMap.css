@@ -1,7 +1,22 @@
 .PointMap {
-  > .window {
-    height: 100%;
-    border: 1px solid black;
+  position: relative;
+
+  > .canvas {
     touch-action: none;
+  }
+
+  > .info {
+    position: absolute;
+    bottom: 0.5rem;
+    right: 0.5rem;
+    font-size: 0.75rem;
+    padding: 0.25rem 0.75rem;
+    border-radius: 0.4rem;
+    background: rgba(252, 252, 252, 0.88);
+    color: #333;
+
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
   }
 }

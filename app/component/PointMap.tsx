@@ -1,7 +1,6 @@
 import { VFiniteNumber, VInteger, VStruct, Valid } from "@wzlin/valid";
 import UnreachableError from "@xtjs/lib/UnreachableError";
 import { useEffect, useRef, useState } from "react";
-import { useMeasure } from "../util/dom";
 import {
   LOD_LEVELS,
   ZOOM_PER_LOD,
@@ -22,10 +21,13 @@ const vMapMeta = new VStruct({
 
 const worker = new Worker("/dist/worker.PointMap.js");
 
-export const PointMap = () => {
-  const $window = useRef<HTMLDivElement>(null);
-  const wdwRect = useMeasure($window.current);
-
+export const PointMap = ({
+  height: wdwHeightPx,
+  width: wdwWidthPx,
+}: {
+  height: number;
+  width: number;
+}) => {
   const [meta, setMeta] = useState<Valid<typeof vMapMeta>>();
   const xMaxPt = meta?.x_max ?? 0;
   const xMinPt = meta?.x_min ?? 0;
@@ -49,9 +51,6 @@ export const PointMap = () => {
   const c = mapCalcs({
     zoom,
   });
-  // Subtract border.
-  const wdwWidthPx = (wdwRect?.width ?? 300) - 2;
-  const wdwHeightPx = (wdwRect?.height ?? 150) - 2;
   const wdwWidthPt = c.pxToPt(wdwWidthPx);
   const wdwHeightPt = c.pxToPt(wdwHeightPx);
 
@@ -106,18 +105,9 @@ export const PointMap = () => {
 
   return (
     <div className="PointMap">
-      <div className="controls flex-row">
-        <p>
-          ({wdwXPt.toFixed(2)}, {wdwYPt.toFixed(2)})
-        </p>
-        <div className="grow" />
-        <p>LOD: {lod == LOD_LEVELS - 1 ? "max" : lod}</p>
-        <div className="grow" />
-        <p>Zoom: {zoom.toFixed(2)}</p>
-      </div>
-      <div
-        ref={$window}
-        className="window"
+      <canvas
+        ref={$canvas}
+        className="canvas"
         onPointerDown={(e) => {
           e.currentTarget.setPointerCapture(e.pointerId);
           ptrPos.current = e;
@@ -173,8 +163,14 @@ export const PointMap = () => {
           setWdwXPt(curZoomTgtPosX - nz.pxToPt(relX));
           setWdwYPt(curZoomTgtPosY - nz.pxToPt(relY));
         }}
-      >
-        <canvas ref={$canvas} className="canvas" />
+      />
+
+      <div className="info">
+        <p>
+          ({wdwXPt.toFixed(2)}, {wdwYPt.toFixed(2)})
+        </p>
+        <p>LOD: {lod == LOD_LEVELS - 1 ? "max" : lod}</p>
+        <p>Zoom: {zoom.toFixed(2)}</p>
       </div>
     </div>
   );

@@ -2,11 +2,15 @@ import { Item, vItem } from "@wzlin/crawler-toolkit-hn";
 import { VArray, VFiniteNumber, VInteger, VStruct } from "@wzlin/valid";
 import mapExists from "@xtjs/lib/mapExists";
 import { useEffect, useState } from "react";
+import { useMeasure } from "../util/dom";
 import { useRequest } from "../util/fetch";
 import "./App.css";
 import { PointMap } from "./PointMap";
 
 export const App = () => {
+  const [$root, setRootElem] = useState<HTMLDivElement | null>(null);
+  const rootDim = useMeasure($root);
+
   const [queryInput, setQueryInput] = useState("");
   const [query, setQuery] = useState("");
   const results = useRequest(
@@ -27,7 +31,7 @@ export const App = () => {
       const timeout = setTimeout(() => {
         results.go({
           query,
-          limit: 128,
+          limit: 10,
           dataset: "posts",
         });
       }, 250);
@@ -58,27 +62,31 @@ export const App = () => {
   }, [results.data]);
 
   return (
-    <div className="App">
+    <div ref={setRootElem} className="App">
+      <PointMap height={rootDim?.height ?? 0} width={rootDim?.width ?? 0} />
+
       <form
+        className="search"
         onSubmit={(e) => {
           e.preventDefault();
           setQuery(queryInput.trim());
         }}
       >
         <input
+          placeholder="Search or ask"
           value={queryInput}
           onChange={(e) => setQueryInput(e.currentTarget.value)}
         />
         <button type="submit">Search</button>
       </form>
 
-      {results.loading && <p>Loading...</p>}
+      <div className="results">
+        {results.loading && <p>Loading...</p>}
 
-      {mapExists(results.error, (error) => (
-        <p className="err">{error}</p>
-      ))}
+        {mapExists(results.error, (error) => (
+          <p className="err">{error}</p>
+        ))}
 
-      <div>
         {results.data?.results.map((r) => (
           <div key={r.id}>
             <p>{r.id}</p>
@@ -91,8 +99,6 @@ export const App = () => {
           </div>
         ))}
       </div>
-
-      <PointMap />
     </div>
   );
 };
