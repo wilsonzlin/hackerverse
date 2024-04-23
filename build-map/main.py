@@ -11,21 +11,21 @@ import rtree
 import struct
 
 INCLUDE_COMMENTS = False
-# Each zoom level doubles the amount of information on screen.
-# At zoom level 1, we want points to be at least 0.2 units apart.
-# At zoom level 2, we want points to be at least 0.1 units apart.
-# At zoom level 3, we want points to be at least 0.05 units apart.
-# At zoom level 4, we want points to be at least 0.025 units apart.
+# Each LOD level doubles the amount of information on screen.
+# At LOD level 1, we want points to be at least 0.2 units apart.
+# At LOD level 2, we want points to be at least 0.1 units apart.
+# At LOD level 3, we want points to be at least 0.05 units apart.
+# At LOD level 4, we want points to be at least 0.025 units apart.
 # ...
-# At the maximum zoom level, we show everything, regardless of distance.
-ZOOM_LEVELS = 8
+# At the maximum LOD level, we show everything, regardless of distance.
+LOD_LEVELS = 7
 BASE_DISTANCE = 0.2
-BASE_AXIS_TILES = 1
+BASE_AXIS_TILES = 8
 
 
-def build_map_at_zoom_level(zoom_level: int):
+def build_map_at_lod_level(lod_level: int):
     def lg(*msg):
-        print(f"[zoom={zoom_level}]", *msg)
+        print(f"[lod={lod_level}]", *msg)
 
     lg("Loading data")
     df = DataFrame({"id": load_emb_table_ids().total})
@@ -49,7 +49,7 @@ def build_map_at_zoom_level(zoom_level: int):
     count = len(df)
     lg("Reduced to", count, "entries")
 
-    if zoom_level == ZOOM_LEVELS - 1:
+    if lod_level == LOD_LEVELS - 1:
         lg("No filtering needed")
         x_min, x_max = df["x"].min(), df["x"].max()
         y_min, y_max = df["y"].min(), df["y"].max()
@@ -72,7 +72,7 @@ def build_map_at_zoom_level(zoom_level: int):
         assert mat.shape == (count, 2) and mat.dtype == np.float32
         graph = rtree.index.Index()
 
-        min_dist = BASE_DISTANCE / (2**zoom_level)
+        min_dist = BASE_DISTANCE / (2**lod_level)
         lg("Iterating points")
         filtered = []
         for i in range(count):
@@ -88,7 +88,7 @@ def build_map_at_zoom_level(zoom_level: int):
         assert count == len(filtered)
         lg("Filtered to", count, "points")
 
-    axis_tile_count = BASE_AXIS_TILES * (2**zoom_level)
+    axis_tile_count = BASE_AXIS_TILES * (2**lod_level)
     lg("Tiling to", axis_tile_count * axis_tile_count, "tiles")
     x_min, x_max = df["x"].min(), df["x"].max()
     y_min, y_max = df["y"].min(), df["y"].max()
@@ -115,7 +115,7 @@ def build_map_at_zoom_level(zoom_level: int):
         vec_score = tile_data["score"].to_numpy()
         assert vec_id.shape == vec_x.shape == vec_y.shape == vec_score.shape
         tile_count = vec_id.shape[0]
-        d = f"/hndr-data/map/z{zoom_level}"
+        d = f"/hndr-data/map/z{lod_level}"
         os.makedirs(d, exist_ok=True)
         with open(f"{d}/{tile_x}-{tile_y}.bin", "wb") as f:
             f.write(struct.pack("<I", tile_count))
@@ -133,7 +133,7 @@ def build_map_at_zoom_level(zoom_level: int):
     assert vec_x.dtype == vec_y.dtype == np.float32
     assert vec_score.dtype == np.int16
     lg("Writing")
-    with open(f"/hndr-data/map_z{zoom_level}.bin", "wb") as f:
+    with open(f"/hndr-data/map_z{lod_level}.bin", "wb") as f:
         f.write(struct.pack("<I", count))
         f.write(vec_id.tobytes())
         f.write(vec_x.tobytes())
@@ -142,7 +142,7 @@ def build_map_at_zoom_level(zoom_level: int):
     lg("Done")
 
 
-with Pool(ZOOM_LEVELS) as pool:
-    pool.map(build_map_at_zoom_level, range(ZOOM_LEVELS))
+with Pool(LOD_LEVELS) as pool:
+    pool.map(build_map_at_lod_level, range(LOD_LEVELS))
 
 print("All done!")
