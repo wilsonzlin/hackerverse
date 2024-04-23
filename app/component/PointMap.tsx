@@ -15,6 +15,8 @@ const vMapMeta = new VStruct({
   x_max: new VFiniteNumber(),
   y_min: new VFiniteNumber(),
   y_max: new VFiniteNumber(),
+  score_min: new VInteger(),
+  score_max: new VInteger(),
   count: new VInteger(0),
 });
 
@@ -96,6 +98,8 @@ export const PointMap = () => {
       xMinPt,
       yMaxPt,
       yMinPt,
+      scoreMin: meta.score_min,
+      scoreMax: meta.score_max,
     };
     worker.postMessage(msg, []);
   }, [meta, lod, wdwXPt, wdwYPt, wdwWidthPt, wdwHeightPt]);

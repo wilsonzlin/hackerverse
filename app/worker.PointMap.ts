@@ -38,6 +38,9 @@ const fetchTile = async (
     `https://static.wilsonl.in/hndr/data/map/z${lod}/${x}-${y}.bin`,
     { signal },
   );
+  if (!res.ok) {
+    throw new Error(`Failed to fetch tile ${x}-${y} with status ${res.status}`);
+  }
   const raw = await res.arrayBuffer();
   return parseData(raw);
 };
@@ -50,6 +53,8 @@ let canvas: OffscreenCanvas;
 
 const renderPoints = (msg: {
   zoom: number;
+  scoreMin: number;
+  scoreMax: number;
   x0Pt: number;
   x1Pt: number;
   y0Pt: number;
@@ -62,7 +67,12 @@ const renderPoints = (msg: {
     if (p.x < msg.x0Pt || p.x > msg.x1Pt || p.y < msg.y0Pt || p.y > msg.y1Pt) {
       continue;
     }
-    ctx.fillStyle = `rgba(0, 0, 0, 1)`;
+    const MIN_ALPHA = 0.7;
+    const alpha =
+      ((p.score - msg.scoreMin) / (msg.scoreMax - msg.scoreMin + 1)) *
+        (1 - MIN_ALPHA) +
+      MIN_ALPHA;
+    ctx.fillStyle = `rgba(3, 165, 252, ${alpha})`;
     ctx.beginPath();
     ctx.arc(
       c.ptToPx(p.x - msg.x0Pt),

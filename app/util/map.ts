@@ -35,6 +35,8 @@ export const vWorkerPointMapMessageToWorker = new VTagged("$type", {
     xMinPt: new VFiniteNumber(),
     yMaxPt: new VFiniteNumber(),
     yMinPt: new VFiniteNumber(),
+    scoreMin: new VInteger(),
+    scoreMax: new VInteger(),
   }),
 });
 
