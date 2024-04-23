@@ -53,6 +53,7 @@ def build_map_at_lod_level(lod_level: int):
         lg("No filtering needed")
         x_min, x_max = df["x"].min(), df["x"].max()
         y_min, y_max = df["y"].min(), df["y"].max()
+        score_min, score_max = df["score"].min(), df["score"].max()
         with open("/hndr-data/map.json", "w") as f:
             json.dump(
                 {
@@ -60,6 +61,8 @@ def build_map_at_lod_level(lod_level: int):
                     "x_max": x_max.item(),
                     "y_min": y_min.item(),
                     "y_max": y_max.item(),
+                    "score_min": score_min.item(),
+                    "score_max": score_max.item(),
                     "count": count,
                 },
                 f,

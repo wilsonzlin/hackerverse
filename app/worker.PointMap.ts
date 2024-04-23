@@ -35,7 +35,7 @@ const fetchTile = async (
   y: number,
 ) => {
   const res = await fetch(
-    `http://${location.hostname}:8080/map/z${lod}/${x}-${y}.bin`,
+    `https://static.wilsonl.in/hndr/data/map/z${lod}/${x}-${y}.bin`,
     { signal },
   );
   const raw = await res.arrayBuffer();
@@ -117,7 +117,7 @@ addEventListener("message", async (e) => {
 
     // Ensure all requested tiles are fetched.
     const signal = tilesLoadingAbortController.signal;
-    curPoints = await Promise.all(
+    const newPoints = await Promise.all(
       (function* () {
         for (let x = tileXMin; x <= tileXMax; x++) {
           for (let y = tileYMin; y <= tileYMax; y++) {
@@ -143,6 +143,8 @@ addEventListener("message", async (e) => {
       // This render request is now outdated.
       return;
     }
+    // Only assign AFTER verifying latestRenderRequestId, otherwise multiple requests could write to `curPoints` out of order.
+    curPoints = newPoints;
     // Render the final points.
     renderPoints(msg);
   }

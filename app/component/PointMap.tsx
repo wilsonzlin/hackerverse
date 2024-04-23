@@ -32,8 +32,8 @@ export const PointMap = () => {
   useEffect(() => {
     (async () => {
       const meta = vMapMeta.parseRoot(
-        await fetch(`http://${location.hostname}:8080/map.json`).then((res) =>
-          res.json(),
+        await fetch(`https://static.wilsonl.in/hndr/data/map.json`).then(
+          (res) => res.json(),
         ),
       );
       setMeta(meta);
