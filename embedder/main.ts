@@ -13,7 +13,6 @@ import {
 } from "@wzlin/valid";
 import Batcher from "@xtjs/lib/Batcher";
 import UnreachableError from "@xtjs/lib/UnreachableError";
-import WorkerPool from "@xtjs/lib/WorkerPool";
 import assertExists from "@xtjs/lib/assertExists";
 import decodeUtf8 from "@xtjs/lib/decodeUtf8";
 import mapExists from "@xtjs/lib/mapExists";
@@ -127,88 +126,88 @@ const pageFetcher = new Batcher(async (urlIds: number[]) => {
 
 const queue = MODE == "bgem3" ? QUEUE_EMBED_BGEM3 : QUEUE_EMBED;
 
-new WorkerPool(__filename, 256)
-  .leaderState(async () => {
-    const embedWorker = await createEmbedWorker(
-      assertExists(
-        {
-          bgem3: 1024,
-          jinav2small: 512,
-        }[MODE],
-      ),
-    );
-    const embedBatcher = new Batcher((texts: string[]) =>
-      embedWorker.embed(texts),
-    );
-    return {
-      embedBatcher,
-    };
-  })
-  .leaderTask("embed", async (input: string, ctx) => {
-    return await ctx.state.embedBatcher.execute(input);
-  })
-  .worker(async (pool) => {
+// Do not use WorkerPool where each worker is running one of these poll-parse-infer-upsert loops, as we want to reuse and multiplex DB queries/requests/connections.
+(async () => {
+  // Have two loops so that while one is waiting for the model, the other can fetch from the DB and have some more inputs ready as soon as the GPU is done, to minimise GPU idle time.
+  const embedWorker = await createEmbedWorker(
+    assertExists(
+      {
+        bgem3: 1024,
+        jinav2small: 512,
+      }[MODE],
+    ),
+  );
+  const embedBatcher = new Batcher((texts: string[]) =>
+    embedWorker.embed(texts),
+  );
+  const loop = async () => {
     while (true) {
-      const [msg] = await queue.pollMessages(
-        1,
-        Duration.fromObject({ minutes: 30 }).as("seconds"),
+      const msgs = await queue.pollMessages(
+        // It takes around 500 ms to embed a single input.
+        8,
+        Duration.fromObject({ minutes: 10 }).as("seconds"),
       );
-      if (!msg) {
+      if (!msgs.length) {
         break;
       }
-      const task = vQueueEmbedTask.parseRoot(msg.contents);
-      let embInput = decodeUtf8(
-        assertExists(await getKvRow.execute(task.inputKey)),
+      await Promise.all(
+        msgs.map(async (msg) => {
+          const task = vQueueEmbedTask.parseRoot(msg.contents);
+          let embInput = decodeUtf8(
+            assertExists(await getKvRow.execute(task.inputKey)),
+          );
+          if (embInput.includes("<<<REPLACE_WITH_PAGE_TITLE>>>")) {
+            const postId = parseInteger(
+              /^post\/([0-9]+)\/emb_input$/.exec(task.inputKey)![1],
+            );
+            const urlId = await postUrlIdFetcher.execute(postId);
+            const fetchState = await mapExists(urlId, (id) =>
+              urlFetchStateFetcher.execute(id),
+            );
+            const { text, meta } =
+              (await mapExists(urlId, (id) => pageFetcher.execute(id))) ?? {};
+            // The item hasn't been fetched yet.
+            // Do not delete queue task. Do not update queue task, let the existing visibility timeout postpone its processing. Do not continue.
+            if (!fetchState?.ts) {
+              statsd.increment("skipped");
+              return;
+            }
+            // We mark if the fetch failed or the text/meta is (partially) missing. This ensures we can decide whether to fix the input and regenerate to ensure high quality embeddings, or just go ahead anyway and use the potentially poor embeddings with little to no input.
+            await postEmbMissingPageUpdater.execute({
+              id: postId,
+              embMissingPage: !!(fetchState.err || !text || !meta),
+            });
+            embInput = embInput
+              .replace("<<<REPLACE_WITH_PAGE_TITLE>>>", meta?.title ?? "")
+              .replace(
+                "<<<REPLACE_WITH_PAGE_DESCRIPTION>>>",
+                meta?.description ?? "",
+              )
+              .replace("<<<REPLACE_WITH_PAGE_TEXT>>>", text ?? "");
+          }
+          const textEmb = await embedBatcher.execute(embInput);
+          if (MODE === "bgem3") {
+            const keyPfx = task.outputKey;
+            await Promise.all([
+              upsertKvRow.execute({
+                k: `${keyPfx}/dense`,
+                v: textEmb.dense,
+              }),
+              upsertKvRow.execute({
+                k: `${keyPfx}/sparse`,
+                v: encode(assertExists(textEmb.sparse)),
+              }),
+            ]);
+          } else {
+            await upsertKvRow.execute({
+              k: task.outputKey,
+              v: textEmb.dense,
+            });
+          }
+        }),
       );
-      if (embInput.includes("<<<REPLACE_WITH_PAGE_TITLE>>>")) {
-        const postId = parseInteger(
-          /^post\/([0-9]+)\/emb_input$/.exec(task.inputKey)![1],
-        );
-        const urlId = await postUrlIdFetcher.execute(postId);
-        const fetchState = await mapExists(urlId, (id) =>
-          urlFetchStateFetcher.execute(id),
-        );
-        const { text, meta } =
-          (await mapExists(urlId, (id) => pageFetcher.execute(id))) ?? {};
-        // The item hasn't been fetched yet.
-        // Do not delete queue task. Do not update queue task, let the existing visibility timeout postpone its processing. Do not continue.
-        if (!fetchState?.ts) {
-          statsd.increment("skipped");
-          continue;
-        }
-        // We mark if the fetch failed or the text/meta is (partially) missing. This ensures we can decide whether to fix the input and regenerate to ensure high quality embeddings, or just go ahead anyway and use the potentially poor embeddings with little to no input.
-        await postEmbMissingPageUpdater.execute({
-          id: postId,
-          embMissingPage: !!(fetchState.err || !text || !meta),
-        });
-        embInput = embInput
-          .replace("<<<REPLACE_WITH_PAGE_TITLE>>>", meta?.title ?? "")
-          .replace(
-            "<<<REPLACE_WITH_PAGE_DESCRIPTION>>>",
-            meta?.description ?? "",
-          )
-          .replace("<<<REPLACE_WITH_PAGE_TEXT>>>", text ?? "");
-      }
-      const textEmb = await pool.execute("embed", embInput);
-      if (MODE === "bgem3") {
-        const keyPfx = task.outputKey;
-        await Promise.all([
-          upsertKvRow.execute({
-            k: `${keyPfx}/dense`,
-            v: textEmb.dense,
-          }),
-          upsertKvRow.execute({
-            k: `${keyPfx}/sparse`,
-            v: encode(assertExists(textEmb.sparse)),
-          }),
-        ]);
-      } else {
-        await upsertKvRow.execute({
-          k: task.outputKey,
-          v: textEmb.dense,
-        });
-      }
-      await queue.deleteMessages([msg]);
+      await queue.deleteMessages(msgs);
     }
-  })
-  .go();
+  };
+  await Promise.all([loop(), loop()]);
+})();

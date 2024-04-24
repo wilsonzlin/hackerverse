@@ -68,6 +68,7 @@ cli
   .subcommand("launch")
   .required("template", String)
   .required("count", Number)
+  .boolean("securecloud")
   .action(async (args) => {
     const templateId = await listTemplates().then(
       (res) => res.find((t: any) => t.name === args.template)?.id,
@@ -85,7 +86,7 @@ cli
               mutation {
                 podFindAndDeployOnDemand(
                   input: {
-                    cloudType: COMMUNITY
+                    cloudType: ${args.securecloud ? "SECURE" : "COMMUNITY"}
                     containerDiskInGb: 0
                     dockerArgs: ""
                     env: []
