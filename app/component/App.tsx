@@ -41,7 +41,7 @@ export const App = () => {
         results.go({
           ...query,
           limit: 10,
-          dataset: "posts",
+          dataset: "posts_bgem3",
         });
       }, 250);
       return () => clearTimeout(timeout);

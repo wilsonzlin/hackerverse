@@ -11,7 +11,7 @@ import serialiseToQueryString from "@xtjs/lib/serialiseToQueryString";
 const input = new VStruct({
   query: new VHumanString(1, 512),
   limit: new VInteger(1, 128),
-  dataset: new VMember(["posts", "comments"]),
+  dataset: new VMember(["posts", "posts_bgem3", "comments"]),
   weightSimilarity: new VFiniteNumber(),
   weightScore: new VFiniteNumber(),
   weightTimestamp: new VFiniteNumber(),

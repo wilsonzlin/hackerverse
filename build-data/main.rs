@@ -5,6 +5,7 @@ mod export_comment_texts;
 mod export_comments;
 mod export_interactions;
 mod export_post_embs;
+mod export_post_embs_bgem3_dense;
 mod export_post_texts;
 mod export_post_titles;
 mod export_posts;
@@ -31,6 +32,7 @@ async fn main() {
     export_comment_sentiments::export_comment_sentiments(db.clone()),
     export_comment_texts::export_comment_texts(db.clone()),
     export_comments::export_comments(db.clone(), interactions.clone()),
+    export_post_embs_bgem3_dense::export_post_embs_bgem3_dense(db.clone()),
     export_post_embs::export_post_embs(db.clone()),
     export_post_texts::export_post_texts(db.clone()),
     export_post_titles::export_post_titles(db.clone()),

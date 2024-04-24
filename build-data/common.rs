@@ -1,6 +1,5 @@
 use ::serde::Deserialize;
 use arrow::array::ArrayRef;
-use arrow::array::FixedSizeBinaryArray;
 use arrow::array::StringArray;
 use arrow::array::UInt32Array;
 use arrow::datatypes::DataType;
@@ -67,35 +66,6 @@ impl KvRowsFetcher {
     rows
   }
 }
-
-// Used for comment embeddings, post embeddings.
-pub(crate) struct EmbeddingRow {
-  pub id: u32,
-  pub emb: [u8; 512 * 4],
-}
-
-impl EmbeddingRow {
-  #[rustfmt::skip]
-  pub fn to_columnar(rows: Vec<Self>) -> Vec<ArrayRef> {
-    let mut ids = Vec::new();
-    let mut embs = Vec::new();
-    for r in rows {
-      ids.push(r.id);
-      embs.push(r.emb);
-    };
-    vec![
-      Arc::new(UInt32Array::from(ids)),
-      Arc::new(FixedSizeBinaryArray::try_from_iter(embs.into_iter()).unwrap()),
-    ]
-  }
-}
-
-pub(crate) static EMB_SCHEMA: Lazy<Schema> = Lazy::new(|| {
-  Schema::new(vec![
-    Field::new("id", DataType::UInt32, false),
-    Field::new("emb", DataType::FixedSizeBinary(512 * 4), false),
-  ])
-});
 
 // Used for comment texts, post titles, post texts.
 pub(crate) struct TextRow {

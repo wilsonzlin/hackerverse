@@ -1,10 +1,11 @@
 FROM python:3.12
 
-RUN pip install sentence_transformers
-RUN python -c 'from sentence_transformers import SentenceTransformer; SentenceTransformer("jinaai/jina-embeddings-v2-small-en")'
-
 ARG MAIN
 ENV MAIN=$MAIN
+
+RUN pip install huggingface_hub
+COPY $MAIN/download_model.py /tmp/download_model.py
+RUN python /tmp/download_model.py
 
 WORKDIR /app
 

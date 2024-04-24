@@ -1,5 +1,6 @@
 from common.data import load_table
 from fastapi import FastAPI
+from FlagEmbedding import BGEM3FlagModel
 from sentence_transformers import SentenceTransformer
 import hnswlib
 import numpy as np
@@ -7,9 +8,14 @@ import pandas as pd
 import time
 
 print("Loading model")
-model = SentenceTransformer(
+model_jinav2small = SentenceTransformer(
     "jinaai/jina-embeddings-v2-small-en",
     trust_remote_code=True,
+)
+model_bgem3 = BGEM3FlagModel(
+    "BAAI/bge-m3",
+    use_fp16=False,
+    normalize_embeddings=True,
 )
 
 print("Loading tables")
@@ -23,6 +29,13 @@ print("Loading posts")
 idx_posts = hnswlib.Index(space="ip", dim=512)
 idx_posts.load_index("/hndr-data/hnsw_posts.index", allow_replace_deleted=True)
 idx_posts.set_ef(128)
+
+print("Loading posts (bgem3)")
+idx_posts_bgem3 = hnswlib.Index(space="ip", dim=1024)
+idx_posts_bgem3.load_index(
+    "/hndr-data/hnsw_posts_bgem3.index", allow_replace_deleted=True
+)
+idx_posts_bgem3.set_ef(128)
 
 print("Loading comments")
 idx_comments = hnswlib.Index(space="ip", dim=512)
@@ -45,12 +58,20 @@ def search(
     if dataset == "posts":
         idx = idx_posts
         max_score = max_post_score
+    elif dataset == "posts_bgem3":
+        idx = idx_posts_bgem3
+        max_score = max_post_score
     elif dataset == "comments":
         idx = idx_comments
         max_score = max_comment_score
     else:
         raise ValueError("Invalid dataset")
-    emb = model.encode([query], convert_to_numpy=True, normalize_embeddings=True)
+    if dataset == "posts_bgem3":
+        emb = model_bgem3.encode([query])["dense_vecs"]
+    else:
+        emb = model_jinav2small.encode(
+            [query], convert_to_numpy=True, normalize_embeddings=True
+        )
     # `ids` and `dists` are matrices of shape (query_count, limit).
     ids, dists = idx.knn_query(emb, k=limit)
     res = pd.DataFrame({"id": ids[0], "sim": 1 - dists[0]})

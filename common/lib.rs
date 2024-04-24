@@ -11,6 +11,7 @@ use std::net::UdpSocket;
 use std::sync::Arc;
 
 pub mod arrow;
+pub mod mat;
 pub mod msgpack;
 
 pub fn create_db_client() -> DbRpcDbClient {

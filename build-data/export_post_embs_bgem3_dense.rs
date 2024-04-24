@@ -2,12 +2,12 @@ use crate::common::KvRowsFetcher;
 use common::mat::MatrixFile;
 use db_rpc_client_rs::DbRpcDbClient;
 
-pub async fn export_comment_embs(db: DbRpcDbClient) {
-  let Some(mut out) = MatrixFile::new("comment_embs").await else {
+pub async fn export_post_embs_bgem3_dense(db: DbRpcDbClient) {
+  let Some(mut out) = MatrixFile::new("post_embs_bgem3_dense").await else {
     return;
   };
 
-  let mut fetcher = KvRowsFetcher::new("comment/%/emb");
+  let mut fetcher = KvRowsFetcher::new("post/%/emb_bgem3/dense");
   loop {
     let rows = fetcher.fetch_next(&db).await;
     if rows.is_empty() {

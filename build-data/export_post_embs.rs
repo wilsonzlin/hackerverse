@@ -1,13 +1,9 @@
-use crate::common::EmbeddingRow;
 use crate::common::KvRowsFetcher;
-use crate::common::EMB_SCHEMA;
-use common::arrow::ArrowIpcOutput;
+use common::mat::MatrixFile;
 use db_rpc_client_rs::DbRpcDbClient;
 
 pub async fn export_post_embs(db: DbRpcDbClient) {
-  let Some(mut out_post_embs) =
-    ArrowIpcOutput::new("post_embs", EMB_SCHEMA.clone(), EmbeddingRow::to_columnar)
-  else {
+  let Some(mut out) = MatrixFile::new("post_embs").await else {
     return;
   };
 
@@ -19,12 +15,11 @@ pub async fn export_post_embs(db: DbRpcDbClient) {
     };
 
     for r in rows {
-      out_post_embs.push(EmbeddingRow {
-        id: r.extract_id(),
-        emb: r.v.try_into().unwrap(),
-      });
+      let id = r.extract_id();
+      let emb_raw = r.v;
+      out.push(id, &emb_raw).await;
     }
   }
 
-  out_post_embs.finish();
+  out.finish().await;
 }

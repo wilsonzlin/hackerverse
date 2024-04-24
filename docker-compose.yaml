@@ -168,6 +168,17 @@ services:
     volumes:
       - "${DOCKER_VOLUME_DIR}:/hndr-data"
 
+  hnsw-post-bgem3-builder:
+    image: wilsonzlin/hndr-hnsw-post-bgem3-builder
+    init: true
+    build:
+      context: .
+      dockerfile: Dockerfile.python-base
+      args:
+        MAIN: hnsw-post-bgem3-builder
+    volumes:
+      - "${DOCKER_VOLUME_DIR}:/hndr-data"
+
   hnsw-server:
     network_mode: host
     image: wilsonzlin/hndr-hnsw-server
