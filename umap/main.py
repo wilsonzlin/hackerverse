@@ -1,6 +1,7 @@
 from common.data import dump_mmap_matrix
 from common.emb_data import load_emb_data_with_sampling
 from common.emb_data import load_embs
+from common.emb_data import load_embs_bgem3
 from common.emb_data import load_embs_pca
 import joblib
 import numpy as np
@@ -18,13 +19,15 @@ def env(name: str):
 n_neighbors = int(env("UMAP_N_NEIGHBORS"))
 min_dist = float(env("UMAP_MIN_DIST"))
 
-MODE = "hnsw"  # "hnsw", "hnsw-pca", "pynndescent-pca-sampling", "pynndescent-sampling"
+MODE = "hnsw-bgem3"  # "hnsw", "hnsw-bgem3", "hnsw-pca", "pynndescent-pca-sampling", "pynndescent-sampling"
 LOG_PREFIX = (n_neighbors, min_dist)
 
-out_name_pfx = f"umap_n{n_neighbors}_d{min_dist}"
+out_name_pfx = f"umap_{MODE}_n{n_neighbors}_d{min_dist}"
 
 if MODE == "hnsw":
     mat_emb = mat_emb_train = load_embs()
+elif MODE == "hnsw-bgem3":
+    mat_emb = mat_emb_train = load_embs_bgem3()
 elif MODE == "hnsw-pca":
     mat_emb = mat_emb_train = load_embs_pca()
 else:
@@ -35,7 +38,7 @@ else:
 with open(f"/hndr-data/umap_prep_knn_{MODE}.joblib", "rb") as f:
     knn = joblib.load(f)
 
-print(LOG_PREFIX, "Training")
+print(LOG_PREFIX, "Training on", mat_emb_train.shape)
 mapper = umap.UMAP(
     precomputed_knn=knn,
     # Do not set a random state, it prevents parallelisation.
@@ -51,7 +54,7 @@ mapper = umap.UMAP(
 )
 mapper.fit(mat_emb_train)
 if MODE.endswith("sampling"):
-    print(LOG_PREFIX, "Inferring")
+    print(LOG_PREFIX, "Inferring on", mat_emb.shape)
     mat_umap = mapper.transform(mat_emb)
 else:
     # There's no need to run .transform() since the training data is the whole dataset already.

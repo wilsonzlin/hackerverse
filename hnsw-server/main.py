@@ -42,6 +42,7 @@ idx_comments = hnswlib.Index(space="ip", dim=512)
 idx_comments.load_index("/hndr-data/hnsw_comments.index", allow_replace_deleted=True)
 idx_comments.set_ef(128)
 
+print("All data loaded")
 app = FastAPI()
 
 

@@ -33,6 +33,13 @@ def load_embs():
     return load_mmap_matrix("embs", (count, 512), np.float32)
 
 
+def load_embs_bgem3():
+    pfx = "mat_post_embs_bgem3_dense"
+    with open(f"/hndr-data/{pfx}_count.txt") as f:
+        count = int(f.read())
+    return load_mmap_matrix(f"{pfx}_data", (count, 1024), np.float32)
+
+
 def load_embs_pca():
     with open("/hndr-data/embs_count.txt") as f:
         count = int(f.read())

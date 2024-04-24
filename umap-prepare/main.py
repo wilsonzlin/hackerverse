@@ -1,5 +1,6 @@
 from common.emb_data import load_emb_data_with_sampling
 from common.emb_data import load_embs
+from common.emb_data import load_embs_bgem3
 from common.emb_data import load_embs_pca
 import hnswlib
 import joblib
@@ -7,7 +8,7 @@ import numpy as np
 import umap
 
 # Sampling with HNSW is not possible, since UMAP doesn't support transforming onto new data with external precomputed_knn.
-MODE = "hnsw"  # "hnsw", "hnsw-pca", "pynndescent-pca-sampling", "pynndescent-sampling"
+MODE = "hnsw-bgem3"  # "hnsw", "hnsw-bgem3", "hnsw-pca", "pynndescent-pca-sampling", "pynndescent-sampling"
 # WARNING: Over 100 without PCA takes too long with PyNNDescent (up to several days, even on 96-core machines) and a lot of memory (several hundred gigabytes, possibly terabytes).
 UMAP_N_NEIGHBORS_MAX = 300
 
@@ -16,6 +17,8 @@ def calc_knn():
     if MODE.startswith("hnsw"):
         if MODE == "hnsw":
             mat_emb = load_embs()
+        elif MODE == "hnsw-bgem3":
+            mat_emb = load_embs_bgem3()
         else:
             mat_emb = load_embs_pca()
         (count, dim) = mat_emb.shape

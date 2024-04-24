@@ -4,11 +4,16 @@ from common.emb_data import load_emb_table_ids
 from multiprocessing import Pool
 from pandas import DataFrame
 import json
+import math
 import numpy as np
 import os
 import pandas as pd
 import rtree
 import struct
+
+MODE = "hnsw-bgem3"  # "hnsw", "hnsw-bgem3", "hnsw-pca", "pynndescent-pca-sampling", "pynndescent-sampling"
+base_dir = f"/hndr-data/map-{MODE}"
+os.makedirs(base_dir, exist_ok=True)
 
 INCLUDE_COMMENTS = False
 # Each LOD level doubles the amount of information on screen.
@@ -18,25 +23,46 @@ INCLUDE_COMMENTS = False
 # At LOD level 4, we want points to be at least 0.025 units apart.
 # ...
 # At the maximum LOD level, we show everything, regardless of distance.
-LOD_LEVELS = 7
+BASE_LOD_APPROX_POINTS = 4096
 BASE_DISTANCE = 0.2
 BASE_AXIS_TILES = 8
+
+
+def load_data():
+    if MODE == "hnsw-bgem3":
+        with open("/hndr-data/mat_post_embs_bgem3_dense_count.txt") as f:
+            count = int(f.readline())
+        mat_id = load_mmap_matrix("mat_post_embs_bgem3_dense_ids", (count,), np.uint32)
+        mat_umap = load_mmap_matrix(
+            "umap_hnsw-bgem3_n300_d0.25_emb", (count, 2), np.float32
+        )
+    elif MODE == "hnsw":
+        mat_id = load_emb_table_ids().total.to_numpy()
+        count = mat_id.shape[0]
+        mat_umap = load_mmap_matrix("umap_hnsw_n50_d0.25_emb", (count, 2), np.float32)
+    else:
+        raise NotImplementedError()
+
+    return DataFrame(
+        {
+            "id": mat_id,
+            "x": mat_umap[:, 0],
+            "y": mat_umap[:, 1],
+        }
+    )
+
+
+def calc_lod_levels(count: int) -> int:
+    return max(1, math.floor(math.log2(count / BASE_LOD_APPROX_POINTS)) - 1)
 
 
 def build_map_at_lod_level(lod_level: int):
     def lg(*msg):
         print(f"[lod={lod_level}]", *msg)
 
-    lg("Loading data")
-    df = DataFrame({"id": load_emb_table_ids().total})
-    count = len(df)
-    lg(count, "entries")
-    lg("Loading UMAP coordinates")
-    mat_umap = load_mmap_matrix("umap_n50_d0.25_emb", (count, 2), np.float32)
-    df["x"] = mat_umap[:, 0]
-    df["y"] = mat_umap[:, 1]
+    df = load_data()
+    lod_levels = calc_lod_levels(len(df))
 
-    lg("Loading scores")
     df_posts = load_table("posts", columns=["id", "score"])
     if INCLUDE_COMMENTS:
         df_comments = load_table("comments", columns=["id", "score"])
@@ -44,17 +70,15 @@ def build_map_at_lod_level(lod_level: int):
     else:
         df_scores = df_posts
 
-    lg("Merging scores")
     df = df.merge(df_scores, how="inner", on="id")
     count = len(df)
-    lg("Reduced to", count, "entries")
 
-    if lod_level == LOD_LEVELS - 1:
+    if lod_level == lod_levels - 1:
         lg("No filtering needed")
         x_min, x_max = df["x"].min(), df["x"].max()
         y_min, y_max = df["y"].min(), df["y"].max()
         score_min, score_max = df["score"].min(), df["score"].max()
-        with open("/hndr-data/map.json", "w") as f:
+        with open(f"{base_dir}/meta.json", "w") as f:
             json.dump(
                 {
                     "x_min": x_min.item(),
@@ -118,7 +142,7 @@ def build_map_at_lod_level(lod_level: int):
         vec_score = tile_data["score"].to_numpy()
         assert vec_id.shape == vec_x.shape == vec_y.shape == vec_score.shape
         tile_count = vec_id.shape[0]
-        d = f"/hndr-data/map/z{lod_level}"
+        d = f"{base_dir}/z{lod_level}"
         os.makedirs(d, exist_ok=True)
         with open(f"{d}/{tile_x}-{tile_y}.bin", "wb") as f:
             f.write(struct.pack("<I", tile_count))
@@ -136,16 +160,20 @@ def build_map_at_lod_level(lod_level: int):
     assert vec_x.dtype == vec_y.dtype == np.float32
     assert vec_score.dtype == np.int16
     lg("Writing")
-    with open(f"/hndr-data/map_z{lod_level}.bin", "wb") as f:
+    with open(f"{base_dir}/z{lod_level}/all.bin", "wb") as f:
         f.write(struct.pack("<I", count))
         f.write(vec_id.tobytes())
         f.write(vec_x.tobytes())
         f.write(vec_y.tobytes())
         f.write(vec_score.tobytes())
-    lg("Done")
+    lg("Done;", axis_tile_count * axis_tile_count, "tiles;", count, "points")
 
 
-with Pool(LOD_LEVELS) as pool:
-    pool.map(build_map_at_lod_level, range(LOD_LEVELS))
+total = len(load_data())
+print("Total points:", total)
+lod_levels = calc_lod_levels(total)
+print("LOD levels:", lod_levels)
+with Pool(lod_levels) as pool:
+    pool.map(build_map_at_lod_level, range(lod_levels))
 
 print("All done!")
