@@ -1,5 +1,6 @@
 brotli
 fastapi
+FlagEmbedding
 hnswlib
 implicit
 joblib

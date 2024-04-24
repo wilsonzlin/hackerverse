@@ -1,8 +1,9 @@
-import { decode } from "@msgpack/msgpack";
+import { decode, encode } from "@msgpack/msgpack";
 import { setUpUncaughtExceptionHandler } from "@wzlin/service-toolkit";
 import {
   VDate,
   VInteger,
+  VMember,
   VOptional,
   VString,
   VStruct,
@@ -20,6 +21,7 @@ import parseInteger from "@xtjs/lib/parseInteger";
 import { Duration } from "luxon";
 import {
   QUEUE_EMBED,
+  QUEUE_EMBED_BGEM3,
   db,
   getKvRow,
   statsd,
@@ -29,6 +31,10 @@ import {
 import { createEmbedWorker } from "./worker_embed";
 
 setUpUncaughtExceptionHandler();
+
+const MODE = new VMember(["bgem3", "jinav2small"] as const).parseRoot(
+  process.env["HNDR_EMBEDDER_MODE"],
+);
 
 const vMeta = new VStruct({
   description: new VOptional(new VString()),
@@ -119,9 +125,18 @@ const pageFetcher = new Batcher(async (urlIds: number[]) => {
   }));
 });
 
+const queue = MODE == "bgem3" ? QUEUE_EMBED_BGEM3 : QUEUE_EMBED;
+
 new WorkerPool(__filename, 256)
   .leaderState(async () => {
-    const embedWorker = await createEmbedWorker();
+    const embedWorker = await createEmbedWorker(
+      assertExists(
+        {
+          bgem3: 1024,
+          jinav2small: 512,
+        }[MODE],
+      ),
+    );
     const embedBatcher = new Batcher((texts: string[]) =>
       embedWorker.embed(texts),
     );
@@ -134,7 +149,7 @@ new WorkerPool(__filename, 256)
   })
   .worker(async (pool) => {
     while (true) {
-      const [msg] = await QUEUE_EMBED.pollMessages(
+      const [msg] = await queue.pollMessages(
         1,
         Duration.fromObject({ minutes: 30 }).as("seconds"),
       );
@@ -175,11 +190,25 @@ new WorkerPool(__filename, 256)
           .replace("<<<REPLACE_WITH_PAGE_TEXT>>>", text ?? "");
       }
       const textEmb = await pool.execute("embed", embInput);
-      await upsertKvRow.execute({
-        k: task.outputKey,
-        v: textEmb,
-      });
-      await QUEUE_EMBED.deleteMessages([msg]);
+      if (MODE === "bgem3") {
+        const keyPfx = task.outputKey;
+        await Promise.all([
+          upsertKvRow.execute({
+            k: `${keyPfx}/dense`,
+            v: textEmb.dense,
+          }),
+          upsertKvRow.execute({
+            k: `${keyPfx}/sparse`,
+            v: encode(assertExists(textEmb.sparse)),
+          }),
+        ]);
+      } else {
+        await upsertKvRow.execute({
+          k: task.outputKey,
+          v: textEmb.dense,
+        });
+      }
+      await queue.deleteMessages([msg]);
     }
   })
   .go();

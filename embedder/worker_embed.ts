@@ -1,7 +1,14 @@
 import { createPyIpcQueue, spawnPyIpc } from "@msgpipe/nodejs";
-import { VBytes, VStruct } from "@wzlin/valid";
+import {
+  VArray,
+  VBytes,
+  VFiniteNumber,
+  VObjectMap,
+  VOptional,
+  VStruct,
+} from "@wzlin/valid";
 
-export const createEmbedWorker = async () => {
+export const createEmbedWorker = async (dim: number) => {
   const worker = await spawnPyIpc({
     script: `${__dirname}/worker_embed.py`,
     rootDir: `${__dirname}/../`,
@@ -9,16 +16,26 @@ export const createEmbedWorker = async () => {
   const queue = createPyIpcQueue(worker);
   return {
     embed: async (texts: string[]) => {
-      const embLenRaw = 512 * 4;
+      const embLenRaw = dim * 4;
       const rawLen = embLenRaw * texts.length;
-      const { embeddings_raw: raw } = await queue.request(
+      const res = await queue.request(
         "embed",
         { texts },
         new VStruct({
           embeddings_raw: new VBytes(rawLen, rawLen),
+          lexical_weights: new VOptional(
+            new VArray(
+              new VObjectMap(new VFiniteNumber()),
+              texts.length,
+              texts.length,
+            ),
+          ),
         }),
       );
-      return texts.map((_, i) => raw.slice(i * embLenRaw, (i + 1) * embLenRaw));
+      return texts.map((_, i) => ({
+        dense: res.embeddings_raw.slice(i * embLenRaw, (i + 1) * embLenRaw),
+        sparse: res.lexical_weights?.at(i),
+      }));
     },
   };
 };

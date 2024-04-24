@@ -150,6 +150,7 @@ export const vQueueCrawlTask = new VStruct({
 });
 
 export const QUEUE_EMBED = queued.queue("hndr:embed");
+export const QUEUE_EMBED_BGEM3 = queued.queue("hndr:embed_bgem3");
 
 export const vQueueEmbedTask = new VStruct({
   inputKey: new VString(),

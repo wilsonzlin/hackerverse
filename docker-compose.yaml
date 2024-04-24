@@ -101,6 +101,27 @@ services:
       dockerfile: Dockerfile.runpod-base
       args:
         MAIN: embedder
+        HNDR_EMBEDDER_MODE: jinav2small
+    environment:
+      DB_RPC_API_KEY: ${DB_RPC_API_KEY}
+      INFLUXDB_BUCKET: ${INFLUXDB_BUCKET}
+      INFLUXDB_ENDPOINT: ${INFLUXDB_ENDPOINT}
+      INFLUXDB_ORGANIZATION: ${INFLUXDB_ORGANIZATION}
+      INFLUXDB_TOKEN: ${INFLUXDB_TOKEN}
+      LOKI_BASICAUTH_PASSWORD: ${LOKI_BASICAUTH_PASSWORD}
+      LOKI_BASICAUTH_USER: ${LOKI_BASICAUTH_USER}
+      LOKI_ENDPOINT: ${LOKI_ENDPOINT}
+      QUEUED_API_KEY: ${QUEUED_API_KEY}
+
+  embedder-bgem3:
+    image: wilsonzlin/hndr-embedder-bgem3
+    init: true
+    build:
+      context: .
+      dockerfile: Dockerfile.runpod-base
+      args:
+        MAIN: embedder
+        HNDR_EMBEDDER_MODE: bgem3
     environment:
       DB_RPC_API_KEY: ${DB_RPC_API_KEY}
       INFLUXDB_BUCKET: ${INFLUXDB_BUCKET}

@@ -2,6 +2,8 @@
 # This is because some RunPod Community Cloud hosts have older NVIDIA driver versions. What matters on the host is the NVIDIA driver version, not the CUDA version. NVIDIA drivers are only compatible up to a certain version of CUDA.
 FROM runpod/pytorch:2.1.0-py3.10-cuda11.8.0-devel-ubuntu22.04
 ARG MAIN
+ARG HNDR_EMBEDDER_MODE
+ENV HNDR_EMBEDDER_MODE=$HNDR_EMBEDDER_MODE
 
 RUN pip install huggingface_hub
 COPY $MAIN/download_model.py /tmp/download_model.py
@@ -21,6 +23,8 @@ WORKDIR /app
 
 COPY requirements.txt .
 RUN pip install -r requirements.txt
+# TODO HACK to disable TQDM from trashing our logs. (TQDM_DISABLE=1 doesn't seem to work.)
+RUN sed -i 's%tqdm(%(lambda x, **o: x)(%' /usr/local/lib/python3.10/dist-packages/FlagEmbedding/bge_m3.py
 
 COPY package.json .
 RUN npm i
