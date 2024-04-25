@@ -11,7 +11,6 @@ use reqwest::header::ETAG;
 use reqwest::header::IF_NONE_MATCH;
 use reqwest::StatusCode;
 use rmpv::Value;
-use serde::Deserialize;
 use serde::Serialize;
 use service_toolkit::panic::set_up_panic_hook;
 use service_toolkit::server::build_port_server_with_tls;
@@ -90,7 +89,7 @@ async fn main() {
           .await
         {
           Ok((StatusCode::NOT_MODIFIED, _, _)) => {}
-          Ok((new_etag, raw)) => {
+          Ok((_, new_etag, raw)) => {
             etag = new_etag.clone();
             let v: Value = rmp_serde::from_slice(&raw).unwrap();
             // This is faster than deserializing to the Data enum with serde(untagged).
