@@ -11,6 +11,7 @@ use reqwest::header::IF_NONE_MATCH;
 use reqwest::StatusCode;
 use serde::Deserialize;
 use serde::Serialize;
+use serde_bytes::ByteBuf;
 use service_toolkit::panic::set_up_panic_hook;
 use service_toolkit::server::build_port_server_with_tls;
 use service_toolkit::server::TlsCfg;
@@ -37,7 +38,7 @@ struct MapMeta {
 struct Map {
   meta: MapMeta,
   // One for each LOD level.
-  tiles: Vec<AHashMap<String, Vec<u8>>>,
+  tiles: Vec<AHashMap<String, ByteBuf>>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -96,7 +97,7 @@ async fn get_map_tile(
   let Some(tile) = lod.get(&tile_id) else {
     return Err(axum::http::StatusCode::NOT_FOUND);
   };
-  Ok(tile.clone())
+  Ok(tile.to_vec())
 }
 
 #[tokio::main]
