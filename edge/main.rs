@@ -13,7 +13,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use serde_bytes::ByteBuf;
 use service_toolkit::panic::set_up_panic_hook;
-use service_toolkit::server::build_port_server_with_tls;
+use service_toolkit::server::build_port_server;
 use service_toolkit::server::TlsCfg;
 use std::env::var;
 use std::sync::Arc;
@@ -162,24 +162,8 @@ async fn main() {
     .with_state(ctx.clone());
 
   tracing::info!("server started");
-  build_port_server_with_tls(
-    "0.0.0.0".parse().unwrap(),
-    var("PORT").unwrap().parse().unwrap(),
-    &TlsCfg {
-      ca: Some(
-        BASE64_STANDARD
-          .decode(var("EDGE_SSL_CA_BASE64").unwrap())
-          .unwrap(),
-      ),
-      cert: BASE64_STANDARD
-        .decode(var("EDGE_SSL_CERT_BASE64").unwrap())
-        .unwrap(),
-      key: BASE64_STANDARD
-        .decode(var("EDGE_SSL_KEY_BASE64").unwrap())
-        .unwrap(),
-    },
-  )
-  .serve(app.into_make_service())
-  .await
-  .unwrap();
+  build_port_server("127.0.0.1".parse().unwrap(), 8000)
+    .serve(app.into_make_service())
+    .await
+    .unwrap();
 }

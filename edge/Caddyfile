@@ -1,0 +1,14 @@
+{
+  # Prevent clients from dangerously submitting request data to insecure HTTP port.
+  auto_https disable_redirects
+  email "{$EDGE_CADDY_ACME_EMAIL}"
+  log {
+    output stderr
+    format json
+    level WARN
+  }
+}
+
+{$EDGE_DOMAIN} {
+  reverse_proxy 127.0.0.1:8000
+}

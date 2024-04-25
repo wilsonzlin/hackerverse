@@ -107,6 +107,7 @@ services:
       QUEUED_API_KEY: ${QUEUED_API_KEY}
 
   edge:
+    network_mode: host
     image: wilsonzlin/hndr-edge
     init: true
     build:
@@ -119,6 +120,16 @@ services:
       EDGE_SSL_CERT_BASE64: ${EDGE_SSL_CERT_BASE64}
       EDGE_SSL_KEY_BASE64: ${EDGE_SSL_KEY_BASE64}
       PORT: 443
+
+  edge-caddy:
+    network_mode: host
+    image: wilsonzlin/hndr-edge-caddy
+    init: true
+    build:
+      context: .
+      dockerfile: Dockerfile.edge-caddy
+    environment:
+      EDGE_CADDY_ACME_EMAIL: ${EDGE_CADDY_ACME_EMAIL}
 
   embedder:
     image: wilsonzlin/hndr-embedder

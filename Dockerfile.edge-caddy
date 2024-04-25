@@ -1,0 +1,3 @@
+FROM caddy:2.7
+
+COPY edge/Caddyfile /etc/caddy/Caddyfile
