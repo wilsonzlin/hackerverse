@@ -4,6 +4,7 @@ import UnreachableError from "@xtjs/lib/UnreachableError";
 import { useEffect, useRef, useState } from "react";
 import {
   ZOOM_PER_LOD,
+  calcLod,
   mapCalcs,
   vWorkerPointMapMessageToWorker,
 } from "../util/map";
@@ -82,7 +83,7 @@ export const PointMap = ({
   const [wdwXPt, setWdwXPt] = useState(0);
   const [wdwYPt, setWdwYPt] = useState(0);
   const [zoom, setZoom] = useState(0);
-  const lod = Math.min(lodLevels - 1, Math.floor(zoom / ZOOM_PER_LOD));
+  const lod = calcLod(lodLevels, zoom);
   const c = mapCalcs({
     zoom,
   });
@@ -107,9 +108,10 @@ export const PointMap = ({
   useEffect(() => {
     const msg: Valid<typeof vWorkerPointMapMessageToWorker> = {
       $type: "reset",
+      lodLevels,
     };
     worker.postMessage(msg);
-  }, [lod]);
+  }, [lodLevels]);
   useEffect(() => {
     if (!meta) {
       return;

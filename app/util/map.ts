@@ -14,7 +14,9 @@ export const vWorkerPointMapMessageToWorker = new VTagged("$type", {
   init: new VStruct({
     canvas: new VInstanceOf(OffscreenCanvas),
   }),
-  reset: new VStruct({}),
+  reset: new VStruct({
+    lodLevels: new VInteger(1),
+  }),
   // Render the points at LOD `lod` from (ptX0, ptY0) to (ptX1, ptY1) (inclusive) on the canvas.
   render: new VStruct({
     requestId: new VInteger(0),
@@ -51,3 +53,6 @@ export const mapCalcs = ({ zoom }: { zoom: number }) => {
     ptToPx,
   };
 };
+
+export const calcLod = (lodLevels: number, zoom: number) =>
+  Math.min(lodLevels - 1, Math.floor(zoom / ZOOM_PER_LOD));

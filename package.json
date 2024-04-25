@@ -33,6 +33,7 @@
     "oci-containerinstances": "^2.84.0",
     "pino": "^8.19.0",
     "queued-client-js": "^0.2.3",
+    "rbush": "^3.0.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "sacli": "^4.0.4",
@@ -43,6 +44,7 @@
   "//": "TODO @types/node-fetch is for broken oci-* types.",
   "devDependencies": {
     "@types/node-fetch": "^2.6.11",
+    "@types/rbush": "^3.0.3",
     "@types/react": "^18.2.79",
     "@types/react-dom": "^18.2.25",
     "esbuild": "^0.20.2",

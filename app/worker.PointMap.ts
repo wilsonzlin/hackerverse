@@ -1,5 +1,5 @@
-import Dict from "@xtjs/lib/Dict";
 import assertExists from "@xtjs/lib/assertExists";
+import RBush, { BBox } from "rbush";
 import { mapCalcs, vWorkerPointMapMessageToWorker } from "./util/map";
 
 type Point = { id: number; x: number; y: number; score: number };
@@ -35,6 +35,9 @@ const fetchTile = async (
     `https://${edge}.edge-hndr.wilsonl.in/hnsw/map/${lod}/${x}-${y}`,
     { signal },
   );
+  if (res.status === 404) {
+    return [];
+  }
   if (!res.ok) {
     throw new Error(`Failed to fetch tile ${x}-${y} with status ${res.status}`);
   }
@@ -42,13 +45,31 @@ const fetchTile = async (
   return parseData(raw);
 };
 
-let tilesLoadingAbortController = new AbortController();
-const tiles = new Dict<string, Promise<Point[]>>();
-let curPoints = Array<Point>();
+class MyRBush extends RBush<Point> {
+  toBBox(item: Point): BBox {
+    return {
+      minX: item.x,
+      maxX: item.x,
+      maxY: item.y,
+      minY: item.y,
+    };
+  }
+  compareMinX(a: Point, b: Point): number {
+    return a.x - b.x;
+  }
+  compareMinY(a: Point, b: Point): number {
+    return a.y - b.y;
+  }
+}
+
+let tilesLoadAbortController: AbortController | undefined;
+const tilesLoadStarted = new Set<string>();
+const lodTrees = Array<MyRBush>(); // One for each LOD level.
 let latestRenderRequestId = -1;
 let canvas: OffscreenCanvas;
 
 const renderPoints = (msg: {
+  lod: number;
   zoom: number;
   scoreMin: number;
   scoreMax: number;
@@ -60,10 +81,14 @@ const renderPoints = (msg: {
   const ctx = assertExists(canvas.getContext("2d"));
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   const c = mapCalcs({ zoom: msg.zoom });
-  for (const p of curPoints) {
-    if (p.x < msg.x0Pt || p.x > msg.x1Pt || p.y < msg.y0Pt || p.y > msg.y1Pt) {
-      continue;
-    }
+  const tree = lodTrees[msg.lod];
+  const points = tree.search({
+    minX: msg.x0Pt,
+    maxX: msg.x1Pt,
+    minY: msg.y0Pt,
+    maxY: msg.y1Pt,
+  });
+  for (const p of points) {
     const MIN_ALPHA = 0.7;
     const alpha =
       ((p.score - msg.scoreMin) / (msg.scoreMax - msg.scoreMin + 1)) *
@@ -87,9 +112,14 @@ addEventListener("message", async (e) => {
   if (msg.$type === "init") {
     canvas = msg.canvas;
   } else if (msg.$type === "reset") {
-    tilesLoadingAbortController.abort();
-    tilesLoadingAbortController = new AbortController();
-    tiles.clear();
+    console.warn("Resetting");
+    tilesLoadAbortController?.abort();
+    tilesLoadAbortController = new AbortController();
+    tilesLoadStarted.clear();
+    lodTrees.splice(0);
+    for (let i = 0; i < msg.lodLevels; i++) {
+      lodTrees.push(new MyRBush());
+    }
   } else if (msg.$type === "render") {
     latestRenderRequestId = msg.requestId;
 
@@ -123,35 +153,43 @@ addEventListener("message", async (e) => {
     renderPoints(msg);
 
     // Ensure all requested tiles are fetched.
-    const signal = tilesLoadingAbortController.signal;
-    const newPoints = await Promise.all(
+    await Promise.all(
       (function* () {
         for (let x = tileXMin; x <= tileXMax; x++) {
           for (let y = tileYMin; y <= tileYMax; y++) {
-            const key = `${x}-${y}`;
-            yield tiles.computeIfAbsent(key, async () => {
-              console.log("Fetching tile", x, y);
-              const points = await fetchTile(signal, msg.edge, msg.lod, x, y);
+            const key = `${msg.lod}-${x}-${y}`;
+            if (tilesLoadStarted.has(key)) {
+              continue;
+            }
+            tilesLoadStarted.add(key);
+            yield (async () => {
+              const points = await fetchTile(
+                tilesLoadAbortController!.signal,
+                msg.edge,
+                msg.lod,
+                x,
+                y,
+              );
               console.log(
-                "Fetched tile",
+                "Fetched LOD",
+                msg.lod,
+                "tile",
                 x,
                 y,
                 "with",
                 points.length,
                 "points",
               );
-              return points;
-            });
+              lodTrees[msg.lod].load(points);
+            })();
           }
         }
       })(),
-    ).then((r) => r.flat());
+    );
     if (msg.requestId !== latestRenderRequestId) {
       // This render request is now outdated.
       return;
     }
-    // Only assign AFTER verifying latestRenderRequestId, otherwise multiple requests could write to `curPoints` out of order.
-    curPoints = newPoints;
     // Render the final points.
     renderPoints(msg);
   }
