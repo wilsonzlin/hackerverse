@@ -3,17 +3,17 @@ from common.data import load_table
 from common.emb_data import load_emb_table_ids
 from multiprocessing import Pool
 from pandas import DataFrame
-import json
+from typing import Dict
 import math
+import msgpack
 import numpy as np
 import os
 import pandas as pd
 import rtree
 import struct
 
-MODE = "hnsw-bgem3"  # "hnsw", "hnsw-bgem3", "hnsw-pca", "pynndescent-pca-sampling", "pynndescent-sampling"
-base_dir = f"/hndr-data/map-{MODE}"
-os.makedirs(base_dir, exist_ok=True)
+# "hnsw", "hnsw-bgem3", "hnsw-pca", "pynndescent-pca-sampling", "pynndescent-sampling"
+MODE = os.getenv("MAP_POINT_SET")
 
 INCLUDE_COMMENTS = False
 # Each LOD level doubles the amount of information on screen.
@@ -41,17 +41,26 @@ def load_data():
     else:
         raise NotImplementedError()
 
-    return DataFrame(
+    df = DataFrame(
         {
             "id": mat_id,
             "x": mat_umap[:, 0],
             "y": mat_umap[:, 1],
         }
     )
+    df_posts = load_table("posts", columns=["id", "score"])
+    if INCLUDE_COMMENTS:
+        df_comments = load_table("comments", columns=["id", "score"])
+        df_scores = pd.concat([df_posts, df_comments], ignore_index=True)
+    else:
+        df_scores = df_posts
+    return df.merge(df_scores, how="inner", on="id")
 
 
 def calc_lod_levels(count: int) -> int:
-    return max(1, math.floor(math.log2(count / (BASE_LOD_AXIS_POINTS**2))) - 1)
+    # With each increase in LOD level, the number of points and tiles on each axis doubles, so the number of tiles/points quadruples.
+    # We want to aim for <20 KiB per tile, except for the last level, which can be <100 KiB.
+    return max(1, math.ceil(math.log2(count / (BASE_LOD_AXIS_POINTS**2)) / 2))
 
 
 def build_map_at_lod_level(lod_level: int):
@@ -63,36 +72,11 @@ def build_map_at_lod_level(lod_level: int):
     x_range = x_max - x_min
     y_min, y_max = df["y"].min(), df["y"].max()
     y_range = y_max - y_min
-    lod_levels = calc_lod_levels(len(df))
-
-    df_posts = load_table("posts", columns=["id", "score"])
-    if INCLUDE_COMMENTS:
-        df_comments = load_table("comments", columns=["id", "score"])
-        df_scores = pd.concat([df_posts, df_comments], ignore_index=True)
-    else:
-        df_scores = df_posts
-
-    df = df.merge(df_scores, how="inner", on="id")
     count = len(df)
+    lod_levels = calc_lod_levels(count)
 
     if lod_level == lod_levels - 1:
         lg("No filtering needed")
-        x_min, x_max = df["x"].min(), df["x"].max()
-        y_min, y_max = df["y"].min(), df["y"].max()
-        score_min, score_max = df["score"].min(), df["score"].max()
-        with open(f"{base_dir}/meta.json", "w") as f:
-            json.dump(
-                {
-                    "x_min": x_min.item(),
-                    "x_max": x_max.item(),
-                    "y_min": y_min.item(),
-                    "y_max": y_max.item(),
-                    "score_min": score_min.item(),
-                    "score_max": score_max.item(),
-                    "count": count,
-                },
-                f,
-            )
     else:
         lg("Sorting data")
         df = df.sort_values("score", ascending=False)
@@ -102,10 +86,10 @@ def build_map_at_lod_level(lod_level: int):
         graph = rtree.index.Index()
 
         lg("Iterating points")
-        axis_point_count = BASE_LOD_AXIS_POINTS * (2**lod_level)
         for i in range(count):
             graph.insert(i, mat[i])
         filtered = []
+        axis_point_count = BASE_LOD_AXIS_POINTS * (2**lod_level)
         for ix in range(axis_point_count):
             for iy in range(axis_point_count):
                 x = x_min + x_range / (axis_point_count - 1) * ix
@@ -121,10 +105,8 @@ def build_map_at_lod_level(lod_level: int):
 
     axis_tile_count = 2**lod_level
     lg("Tiling to", axis_tile_count * axis_tile_count, "tiles")
-    x_min, x_max = df["x"].min(), df["x"].max()
-    y_min, y_max = df["y"].min(), df["y"].max()
-    x_tile_width = (x_max - x_min) / axis_tile_count
-    y_tile_width = (y_max - y_min) / axis_tile_count
+    x_tile_width = x_range / axis_tile_count
+    y_tile_width = y_range / axis_tile_count
     # The point that lies at x_max or y_max needs to be clipped to the last tile.
     df["tile_x"] = (
         ((df["x"] - x_min) // x_tile_width)
@@ -137,6 +119,7 @@ def build_map_at_lod_level(lod_level: int):
         .astype("uint32")
     )
 
+    out: Dict[str, bytes] = {}
     for _, tile_data in df.groupby(["tile_x", "tile_y"]):
         tile_x = tile_data["tile_x"].iloc[0]
         tile_y = tile_data["tile_y"].iloc[0]
@@ -145,40 +128,46 @@ def build_map_at_lod_level(lod_level: int):
         vec_y = tile_data["y"].to_numpy()
         vec_score = tile_data["score"].to_numpy()
         assert vec_id.shape == vec_x.shape == vec_y.shape == vec_score.shape
+        assert vec_id.dtype == np.uint32
+        assert vec_x.dtype == vec_y.dtype == np.float32
+        assert vec_score.dtype == np.int16
         tile_count = vec_id.shape[0]
-        d = f"{base_dir}/z{lod_level}"
-        os.makedirs(d, exist_ok=True)
-        with open(f"{d}/{tile_x}-{tile_y}.bin", "wb") as f:
-            f.write(struct.pack("<I", tile_count))
-            f.write(vec_id.tobytes())
-            f.write(vec_x.tobytes())
-            f.write(vec_y.tobytes())
-            f.write(vec_score.tobytes())
+        out[f"{tile_x}-{tile_y}"] = (
+            struct.pack("<I", tile_count)
+            + vec_id.tobytes()
+            + vec_x.tobytes()
+            + vec_y.tobytes()
+            + vec_score.tobytes()
+        )
 
-    vec_id = df["id"].to_numpy()
-    vec_x = df["x"].to_numpy()
-    vec_y = df["y"].to_numpy()
-    vec_score = df["score"].to_numpy()
-    assert vec_id.shape == vec_x.shape == vec_y.shape == vec_score.shape == (count,)
-    assert vec_id.dtype == np.uint32
-    assert vec_x.dtype == vec_y.dtype == np.float32
-    assert vec_score.dtype == np.int16
-    lg("Writing")
-    with open(f"{base_dir}/z{lod_level}/all.bin", "wb") as f:
-        f.write(struct.pack("<I", count))
-        f.write(vec_id.tobytes())
-        f.write(vec_x.tobytes())
-        f.write(vec_y.tobytes())
-        f.write(vec_score.tobytes())
     lg("Done;", axis_tile_count * axis_tile_count, "tiles;", count, "points")
+    return out
 
 
 df = load_data()
-count = len(load_data())
-print("Total points:", count)
+x_min, x_max = df["x"].min(), df["x"].max()
+y_min, y_max = df["y"].min(), df["y"].max()
+score_min, score_max = df["score"].min(), df["score"].max()
+count = len(df)
 lod_levels = calc_lod_levels(count)
+print("Total points:", count)
 print("LOD levels:", lod_levels)
+res = {}
+res["meta"] = {
+    "x_min": x_min.item(),
+    "x_max": x_max.item(),
+    "y_min": y_min.item(),
+    "y_max": y_max.item(),
+    "score_min": score_min.item(),
+    "score_max": score_max.item(),
+    "count": count,
+    "lod_levels": lod_levels,
+}
 with Pool(lod_levels) as pool:
-    pool.map(build_map_at_lod_level, range(lod_levels))
+    keys = list(range(lod_levels))
+    values = pool.map(build_map_at_lod_level, keys)
+    res["tiles"] = dict(zip((str(k) for k in keys), values))
+with open(f"/hndr-data/map-{MODE}.msgpack", "wb") as f:
+    msgpack.dump(res, f)
 
 print("All done!")
