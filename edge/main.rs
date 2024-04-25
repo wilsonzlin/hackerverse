@@ -23,7 +23,7 @@ use tokio::spawn;
 use tokio::time::sleep;
 use tracing_subscriber::EnvFilter;
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize)]
 #[serde(untagged)]
 enum Data {
   Map(AHashMap<String, Box<Data>>),
@@ -31,7 +31,7 @@ enum Data {
 }
 
 struct Ctx {
-  data: parking_lot::RwLock<Data>,
+  data: parking_lot::RwLock<Box<Data>>,
 }
 
 async fn endpoint(
@@ -40,7 +40,7 @@ async fn endpoint(
 ) -> Result<MsgPack<Data>, axum::http::StatusCode> {
   let path = path_raw.split('/').collect_vec();
   let data = ctx.data.read();
-  let mut cur = &*data;
+  let mut cur = &**data;
   for p in path {
     let Data::Map(m) = cur else {
       return Err(axum::http::StatusCode::NOT_FOUND);
@@ -60,7 +60,7 @@ async fn main() {
     .init();
 
   let ctx = Arc::new(Ctx {
-    data: parking_lot::RwLock::new(Data::Map(AHashMap::new())),
+    data: parking_lot::RwLock::new(Box::new(Data::Map(AHashMap::new()))),
   });
 
   spawn({
@@ -76,6 +76,7 @@ async fn main() {
           .and_then(|res| async { res.error_for_status() })
           .and_then(|res| async {
             Ok((
+              res.status(),
               res
                 .headers()
                 .get(ETAG)
@@ -88,12 +89,25 @@ async fn main() {
           })
           .await
         {
+          Ok((StatusCode::NOT_MODIFIED, _, _)) => {}
           Ok((new_etag, raw)) => {
             etag = new_etag.clone();
-            *ctx.data.write() = rmp_serde::from_slice(&raw).unwrap();
+            let v: Value = rmp_serde::from_slice(&raw).unwrap();
+            // This is faster than deserializing to the Data enum with serde(untagged).
+            fn to_data(v: Value) -> Box<Data> {
+              if let Value::Map(m) = v {
+                let mut map = AHashMap::<String, Box<Data>>::new();
+                for (k, v) in m {
+                  map.insert(k.to_string(), to_data(v));
+                }
+                Box::new(Data::Map(map))
+              } else {
+                Box::new(Data::Value(v))
+              }
+            }
+            *ctx.data.write() = to_data(v);
             tracing::info!(new_etag, "updated data");
           }
-          Err(e) if e.status() == Some(StatusCode::NOT_MODIFIED) => {}
           Err(e) => {
             tracing::error!(error = e.to_string(), "failed to fetch data");
           }
