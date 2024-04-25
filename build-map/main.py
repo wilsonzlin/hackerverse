@@ -1,7 +1,6 @@
 from common.data import load_mmap_matrix
 from common.data import load_table
 from common.emb_data import load_emb_table_ids
-from multiprocessing import Pool
 from pandas import DataFrame
 from typing import Dict
 import math
@@ -9,7 +8,6 @@ import msgpack
 import numpy as np
 import os
 import pandas as pd
-import rtree
 import struct
 
 # "hnsw", "hnsw-bgem3", "hnsw-pca", "pynndescent-pca-sampling", "pynndescent-sampling"
@@ -63,64 +61,86 @@ def calc_lod_levels(count: int) -> int:
     return max(1, math.ceil(math.log2(count / (BASE_LOD_AXIS_POINTS**2)) / 2))
 
 
-def build_map_at_lod_level(lod_level: int):
+df = load_data()
+x_min, x_max = df["x"].min(), df["x"].max()
+x_range = x_max - x_min
+y_min, y_max = df["y"].min(), df["y"].max()
+y_range = y_max - y_min
+score_min, score_max = df["score"].min(), df["score"].max()
+count = len(df)
+lod_levels = calc_lod_levels(count)
+print("Total points:", count)
+print("LOD levels:", lod_levels)
+res = {}
+res["meta"] = {
+    "x_min": x_min.item(),
+    "x_max": x_max.item(),
+    "y_min": y_min.item(),
+    "y_max": y_max.item(),
+    "score_min": score_min.item(),
+    "score_max": score_max.item(),
+    "count": count,
+    "lod_levels": lod_levels,
+}
+res["tiles"] = []
+
+for lod_level in range(lod_levels):
     def lg(*msg):
         print(f"[lod={lod_level}]", *msg)
 
-    df = load_data()
-    x_min, x_max = df["x"].min(), df["x"].max()
-    x_range = x_max - x_min
-    y_min, y_max = df["y"].min(), df["y"].max()
-    y_range = y_max - y_min
-    count = len(df)
-    lod_levels = calc_lod_levels(count)
-
+    # How we sample points:
+    # - Split into equal sized grids, then choose the top post from each grid if not empty.
+    #   - By sampling from a grid, instead of randomly picking or following a path, we ensure that there won't be a place that appears empty despite having points.
+    #   - The top post is more interesting, and should have a "random" position. If we simply pick the nearest point to the centre/top-left/bottom-right/etc., the final set of points looks like an exact equidistant grid, which looks weird.
+    #   - Since we want to target a specific amount of points, if there is still remaining capacity, sample uniformly randomly from the set of points, which should follow the background distribution of points.
     if lod_level == lod_levels - 1:
         lg("No filtering needed")
     else:
-        lg("Sorting data")
-        df = df.sort_values("score", ascending=False)
-
-        mat = df[["x", "y"]].to_numpy()
-        assert mat.shape == (count, 2) and mat.dtype == np.float32
-        graph = rtree.index.Index()
-
-        lg("Iterating points")
-        for i in range(count):
-            graph.insert(i, mat[i])
-        filtered = []
         axis_point_count = BASE_LOD_AXIS_POINTS * (2**lod_level)
-        for ix in range(axis_point_count):
-            for iy in range(axis_point_count):
-                x = x_min + x_range / (axis_point_count - 1) * ix
-                y = y_min + y_range / (axis_point_count - 1) * iy
-                for nearest in graph.nearest((x, y), 1):
-                    filtered.append(nearest)
-                    graph.delete(nearest, mat[nearest])
-
-        df = df.iloc[filtered]
-        count = len(df)
-        assert count == len(filtered)
-        lg("Filtered to", count, "points")
+        x_grid_width = x_range / axis_point_count
+        y_grid_width = y_range / axis_point_count
+        df["rect_x"] = (
+            ((df["x"] - x_min) // x_grid_width)
+            .clip(upper=axis_point_count - 1)
+            .astype("uint32")
+        )
+        df["rect_y"] = (
+            ((df["y"] - y_min) // y_grid_width)
+            .clip(upper=axis_point_count - 1)
+            .astype("uint32")
+        )
+        df_subset = (
+            df.sort_values("score", ascending=False)
+            .groupby(["rect_x", "rect_y"])
+            .first()
+            .reset_index(drop=True)
+        )
+        extra = axis_point_count - len(df_subset)
+        if extra:
+            df_extra = df[~df["id"].isin(df_subset["id"])].sample(n=extra)
+            df_subset = pd.concat([df_subset, df_extra], ignore_index=True)
+        lg("Sampled", len(df_subset), "with extra", extra)
+        # Ensure next LOD levels always pick at least these points.
+        df[df["id"].isin(df_subset["id"])]["score"] = 2**15 - 1
 
     axis_tile_count = 2**lod_level
     lg("Tiling to", axis_tile_count * axis_tile_count, "tiles")
     x_tile_width = x_range / axis_tile_count
     y_tile_width = y_range / axis_tile_count
     # The point that lies at x_max or y_max needs to be clipped to the last tile.
-    df["tile_x"] = (
-        ((df["x"] - x_min) // x_tile_width)
+    df_subset["tile_x"] = (
+        ((df_subset["x"] - x_min) // x_tile_width)
         .clip(upper=axis_tile_count - 1)
         .astype("uint32")
     )
-    df["tile_y"] = (
-        ((df["y"] - y_min) // y_tile_width)
+    df_subset["tile_y"] = (
+        ((df_subset["y"] - y_min) // y_tile_width)
         .clip(upper=axis_tile_count - 1)
         .astype("uint32")
     )
 
     out: Dict[str, bytes] = {}
-    for _, tile_data in df.groupby(["tile_x", "tile_y"]):
+    for _, tile_data in df_subset.groupby(["tile_x", "tile_y"]):
         tile_x = tile_data["tile_x"].iloc[0]
         tile_y = tile_data["tile_y"].iloc[0]
         vec_id = tile_data["id"].to_numpy()
@@ -141,30 +161,8 @@ def build_map_at_lod_level(lod_level: int):
         )
 
     lg("Done;", axis_tile_count * axis_tile_count, "tiles;", count, "points")
-    return out
+    res["tiles"].append(out)
 
-
-df = load_data()
-x_min, x_max = df["x"].min(), df["x"].max()
-y_min, y_max = df["y"].min(), df["y"].max()
-score_min, score_max = df["score"].min(), df["score"].max()
-count = len(df)
-lod_levels = calc_lod_levels(count)
-print("Total points:", count)
-print("LOD levels:", lod_levels)
-res = {}
-res["meta"] = {
-    "x_min": x_min.item(),
-    "x_max": x_max.item(),
-    "y_min": y_min.item(),
-    "y_max": y_max.item(),
-    "score_min": score_min.item(),
-    "score_max": score_max.item(),
-    "count": count,
-    "lod_levels": lod_levels,
-}
-with Pool(lod_levels) as pool:
-    res["tiles"] = pool.map(build_map_at_lod_level, range(lod_levels))
 with open(f"/hndr-data/map-{MODE}.msgpack", "wb") as f:
     msgpack.dump(res, f)
 
