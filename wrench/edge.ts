@@ -27,7 +27,7 @@ cli
       createContainerInstanceDetails: {
         availabilityDomain,
         compartmentId,
-        containerRestartPolicy: ContainerInstance.ContainerRestartPolicy.Never,
+        containerRestartPolicy: ContainerInstance.ContainerRestartPolicy.Always, // Restart on OOM.
         containers: [
           {
             displayName: "main",

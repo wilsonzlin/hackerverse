@@ -58,7 +58,7 @@ def load_data():
 def calc_lod_levels(count: int) -> int:
     # With each increase in LOD level, the number of points and tiles on each axis doubles, so the number of tiles/points quadruples.
     # We want to aim for <20 KiB per tile, except for the last level, which can be <100 KiB.
-    return max(1, math.ceil(math.log2(count / (BASE_LOD_AXIS_POINTS**2)) / 2))
+    return max(1, math.ceil(math.log2(count / (BASE_LOD_AXIS_POINTS**2)) / 2) + 1)
 
 
 print("Mode:", MODE)
@@ -85,6 +85,8 @@ res["meta"] = {
 }
 res["tiles"] = []
 
+df["sampled"] = False
+
 for lod_level in range(lod_levels):
 
     def lg(*msg):
@@ -100,6 +102,7 @@ for lod_level in range(lod_levels):
         df_subset = df
     else:
         axis_point_count = BASE_LOD_AXIS_POINTS * (2**lod_level)
+        goal_point_count = axis_point_count**2
         x_grid_width = x_range / axis_point_count
         y_grid_width = y_range / axis_point_count
         lg("Splitting into", axis_point_count, "x", axis_point_count, "grid")
@@ -120,13 +123,25 @@ for lod_level in range(lod_levels):
             .first()
             .reset_index(drop=True)
         )
-        extra = (axis_point_count**2) - len(df_subset)
+        df_rem = df[~df["id"].isin(df_subset["id"])]
+        df_rem_sampled_count = df_rem["sampled"].sum()
+        extra = goal_point_count - len(df_subset)
+        # Extend from previously sampled first. NOTE: This isn't simply the highest scoring in each grid, since we may have sampled extra uniform-randomly.
+        # Check that sampled subset is nonzero as otherwise .sample() throws ValueError.
+        if extra and df_rem_sampled_count:
+            # `n` cannot be bigger than row count or else ValueError is thrown.
+            df_extra = df_rem[df_rem["sampled"]].sample(
+                n=min(df_rem_sampled_count, extra)
+            )
+            df_subset = pd.concat([df_subset, df_extra], ignore_index=True)
+        df_rem = df[~df["id"].isin(df_subset["id"])]
+        extra = goal_point_count - len(df_subset)
         if extra:
             df_extra = df[~df["id"].isin(df_subset["id"])].sample(n=extra)
             df_subset = pd.concat([df_subset, df_extra], ignore_index=True)
         lg("Sampled", len(df_subset), "with extra", extra)
         # Ensure next LOD levels always pick at least these points.
-        df.loc[df["id"].isin(df_subset["id"]), "score"] = 2**15 - 1
+        df.loc[df["id"].isin(df_subset["id"]), "sampled"] = True
 
     axis_tile_count = 2**lod_level
     lg("Tiling to", axis_tile_count * axis_tile_count, "tiles")
