@@ -164,9 +164,7 @@ res["meta"] = {
     "lod_levels": lod_levels,
 }
 with Pool(lod_levels) as pool:
-    keys = list(range(lod_levels))
-    values = pool.map(build_map_at_lod_level, keys)
-    res["tiles"] = dict(zip((str(k) for k in keys), values))
+    res["tiles"] = pool.map(build_map_at_lod_level, range(lod_levels))
 with open(f"/hndr-data/map-{MODE}.msgpack", "wb") as f:
     msgpack.dump(res, f)
 

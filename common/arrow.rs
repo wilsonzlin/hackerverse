@@ -1,12 +1,18 @@
 use arrow::array::ArrayRef;
 use arrow::array::RecordBatch;
 use arrow::datatypes::Schema;
+use arrow::ipc::reader::FileReader;
 use arrow::ipc::writer::FileWriter;
 use itertools::Itertools;
 use std::fs::rename;
 use std::fs::File;
 use std::path::Path;
 use std::sync::Arc;
+
+pub fn load_arrow(name: &str) -> FileReader<File> {
+  let f = File::open(format!("/hndr-data/{name}.arrow")).unwrap();
+  FileReader::try_new(f, None).unwrap()
+}
 
 const FLUSH_THRESHOLD: usize = 100_000;
 

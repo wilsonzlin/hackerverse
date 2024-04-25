@@ -1,8 +1,49 @@
+use itertools::Itertools;
+use std::io::Read;
 use std::path::Path;
 use tokio::fs;
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 use tokio::io::BufWriter;
+
+pub trait Elem {
+  const BYTES_PER_ELEM: usize;
+
+  fn from_le_bytes(raw: &[u8]) -> Self;
+}
+
+impl Elem for f32 {
+  const BYTES_PER_ELEM: usize = 4;
+
+  fn from_le_bytes(raw: &[u8]) -> Self {
+    f32::from_le_bytes(raw.try_into().unwrap())
+  }
+}
+
+impl Elem for u32 {
+  const BYTES_PER_ELEM: usize = 4;
+
+  fn from_le_bytes(raw: &[u8]) -> Self {
+    u32::from_le_bytes(raw.try_into().unwrap())
+  }
+}
+
+pub fn load_mat<E: Copy + Default + Elem>(name: &str, rows: usize, cols: usize) -> Vec<Vec<E>> {
+  let raw_row_len = cols * E::BYTES_PER_ELEM;
+  let raw_len = rows * raw_row_len;
+  let mut f = std::fs::File::open(format!("/hndr-data/{name}.mmap")).unwrap();
+  let mut raw = vec![0u8; raw_len];
+  let n = f.read_to_end(&mut raw).unwrap();
+  assert_eq!(n, raw_len);
+  let mut out = (0..rows).map(|_| vec![E::default(); cols]).collect_vec();
+  for i in 0..rows {
+    for j in 0..cols {
+      let offset = raw_row_len * i + E::BYTES_PER_ELEM * j;
+      out[i][j] = E::from_le_bytes(&raw[offset..offset + E::BYTES_PER_ELEM]);
+    }
+  }
+  out
+}
 
 pub struct MatrixFile {
   count_file_name: String,

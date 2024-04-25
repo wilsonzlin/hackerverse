@@ -6,11 +6,10 @@ use axum::Router;
 use axum_msgpack::MsgPack;
 use base64::prelude::*;
 use futures::TryFutureExt;
-use itertools::Itertools;
 use reqwest::header::ETAG;
 use reqwest::header::IF_NONE_MATCH;
 use reqwest::StatusCode;
-use rmpv::Value;
+use serde::Deserialize;
 use serde::Serialize;
 use service_toolkit::panic::set_up_panic_hook;
 use service_toolkit::server::build_port_server_with_tls;
@@ -22,31 +21,82 @@ use tokio::spawn;
 use tokio::time::sleep;
 use tracing_subscriber::EnvFilter;
 
-#[derive(Clone, Serialize)]
-#[serde(untagged)]
-enum Data {
-  Map(AHashMap<String, Box<Data>>),
-  Value(Value),
+#[derive(Clone, Deserialize, Serialize)]
+struct MapMeta {
+  x_min: f32,
+  x_max: f32,
+  y_min: f32,
+  y_max: f32,
+  score_min: i16,
+  score_max: i16,
+  count: u32,
+  lod_levels: u8,
+}
+
+#[derive(Deserialize, Serialize)]
+struct Map {
+  meta: MapMeta,
+  // One for each LOD level.
+  tiles: Vec<AHashMap<String, Vec<u8>>>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+struct Point {
+  x: f32,
+  y: f32,
+}
+
+#[derive(Deserialize, Serialize)]
+struct Variant {
+  umap: AHashMap<u32, Point>,
+  map: Map,
 }
 
 struct Ctx {
-  data: parking_lot::RwLock<Box<Data>>,
+  data: parking_lot::RwLock<AHashMap<String, Variant>>,
 }
 
-async fn endpoint(
+async fn get_umap_point(
   State(ctx): State<Arc<Ctx>>,
-  Path(path_raw): Path<String>,
-) -> Result<MsgPack<Data>, axum::http::StatusCode> {
-  let path = path_raw.split('/').collect_vec();
+  Path((variant, id)): Path<(String, u32)>,
+) -> Result<MsgPack<Point>, axum::http::StatusCode> {
   let data = ctx.data.read();
-  let mut cur = &**data;
-  for p in path {
-    let Data::Map(m) = cur else {
-      return Err(axum::http::StatusCode::NOT_FOUND);
-    };
-    cur = m.get(p).ok_or(axum::http::StatusCode::NOT_FOUND)?;
-  }
-  Ok(MsgPack(cur.clone()))
+  let Some(variant) = data.get(&variant) else {
+    return Err(axum::http::StatusCode::NOT_FOUND);
+  };
+  let Some(point) = variant.umap.get(&id) else {
+    return Err(axum::http::StatusCode::NOT_FOUND);
+  };
+  Ok(MsgPack(point.clone()))
+}
+
+async fn get_map_meta(
+  State(ctx): State<Arc<Ctx>>,
+  Path(variant): Path<String>,
+) -> Result<MsgPack<MapMeta>, axum::http::StatusCode> {
+  let data = ctx.data.read();
+  let Some(variant) = data.get(&variant) else {
+    return Err(axum::http::StatusCode::NOT_FOUND);
+  };
+  let meta = variant.map.meta.clone();
+  Ok(MsgPack(meta))
+}
+
+async fn get_map_tile(
+  State(ctx): State<Arc<Ctx>>,
+  Path((variant, lod, tile_id)): Path<(String, u8, String)>,
+) -> Result<Vec<u8>, axum::http::StatusCode> {
+  let data = ctx.data.read();
+  let Some(variant) = data.get(&variant) else {
+    return Err(axum::http::StatusCode::NOT_FOUND);
+  };
+  let Some(lod) = variant.map.tiles.get(lod as usize) else {
+    return Err(axum::http::StatusCode::NOT_FOUND);
+  };
+  let Some(tile) = lod.get(&tile_id) else {
+    return Err(axum::http::StatusCode::NOT_FOUND);
+  };
+  Ok(tile.clone())
 }
 
 #[tokio::main]
@@ -59,7 +109,7 @@ async fn main() {
     .init();
 
   let ctx = Arc::new(Ctx {
-    data: parking_lot::RwLock::new(Box::new(Data::Map(AHashMap::new()))),
+    data: Default::default(),
   });
 
   spawn({
@@ -91,20 +141,7 @@ async fn main() {
           Ok((StatusCode::NOT_MODIFIED, _, _)) => {}
           Ok((_, new_etag, raw)) => {
             etag = new_etag.clone();
-            let v: Value = rmp_serde::from_slice(&raw).unwrap();
-            // This is faster than deserializing to the Data enum with serde(untagged).
-            fn to_data(v: Value) -> Box<Data> {
-              if let Value::Map(m) = v {
-                let mut map = AHashMap::<String, Box<Data>>::new();
-                for (k, v) in m {
-                  map.insert(k.to_string(), to_data(v));
-                }
-                Box::new(Data::Map(map))
-              } else {
-                Box::new(Data::Value(v))
-              }
-            }
-            *ctx.data.write() = to_data(v);
+            *ctx.data.write() = rmp_serde::from_slice(&raw).unwrap();
             tracing::info!(new_etag, "updated data");
           }
           Err(e) => {
@@ -118,7 +155,9 @@ async fn main() {
 
   let app = Router::new()
     .route("/healthz", get(|| async { "OK" }))
-    .route("/data/*path", get(endpoint))
+    .route("/:variant/umap/:id", get(get_umap_point))
+    .route("/:variant/map/meta", get(get_map_meta))
+    .route("/:variant/map/:lod/:tile_id", get(get_map_tile))
     .with_state(ctx.clone());
 
   tracing::info!("server started");
