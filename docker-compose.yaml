@@ -115,11 +115,6 @@ services:
       dockerfile: Dockerfile.rust-base
       args:
         MAIN: edge
-    environment:
-      EDGE_SSL_CA_BASE64: ${EDGE_SSL_CA_BASE64}
-      EDGE_SSL_CERT_BASE64: ${EDGE_SSL_CERT_BASE64}
-      EDGE_SSL_KEY_BASE64: ${EDGE_SSL_KEY_BASE64}
-      PORT: 443
 
   edge-caddy:
     network_mode: host
