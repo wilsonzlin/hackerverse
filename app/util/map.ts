@@ -7,9 +7,7 @@ import {
 } from "@wzlin/valid";
 
 export const PX_PER_PT_BASE = 64;
-export const LOD_LEVELS = 7;
 export const ZOOM_PER_LOD = 3;
-export const BASE_AXIS_TILES = 8;
 
 export const vWorkerPointMapMessageToWorker = new VTagged("$type", {
   init: new VStruct({

@@ -4,7 +4,6 @@ use axum::extract::State;
 use axum::routing::get;
 use axum::Router;
 use axum_msgpack::MsgPack;
-use base64::prelude::*;
 use futures::TryFutureExt;
 use reqwest::header::ETAG;
 use reqwest::header::IF_NONE_MATCH;
@@ -13,13 +12,11 @@ use serde::Deserialize;
 use serde::Serialize;
 use serde_bytes::ByteBuf;
 use service_toolkit::panic::set_up_panic_hook;
-use service_toolkit::server::build_port_server;
-use service_toolkit::server::TlsCfg;
-use std::env::var;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::spawn;
 use tokio::time::sleep;
+use tower_http::cors::CorsLayer;
 use tracing_subscriber::EnvFilter;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -154,16 +151,22 @@ async fn main() {
     }
   });
 
+  let cors = CorsLayer::new()
+    .allow_methods(tower_http::cors::Any)
+    .allow_origin(tower_http::cors::Any)
+    .allow_headers(tower_http::cors::Any);
+
   let app = Router::new()
     .route("/healthz", get(|| async { "OK" }))
     .route("/:variant/umap/:id", get(get_umap_point))
     .route("/:variant/map/meta", get(get_map_meta))
     .route("/:variant/map/:lod/:tile_id", get(get_map_tile))
+    .layer(cors)
     .with_state(ctx.clone());
 
-  tracing::info!("server started");
-  build_port_server("127.0.0.1".parse().unwrap(), 8000)
-    .serve(app.into_make_service())
+  let listener = tokio::net::TcpListener::bind("127.0.0.1:8000")
     .await
     .unwrap();
+  tracing::info!("server started");
+  axum::serve(listener, app).await.unwrap();
 }

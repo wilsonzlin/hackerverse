@@ -1,8 +1,8 @@
+import { decode } from "@msgpack/msgpack";
 import { VFiniteNumber, VInteger, VStruct, Valid } from "@wzlin/valid";
 import UnreachableError from "@xtjs/lib/UnreachableError";
 import { useEffect, useRef, useState } from "react";
 import {
-  LOD_LEVELS,
   ZOOM_PER_LOD,
   mapCalcs,
   vWorkerPointMapMessageToWorker,
@@ -17,6 +17,7 @@ const vMapMeta = new VStruct({
   score_min: new VInteger(),
   score_max: new VInteger(),
   count: new VInteger(0),
+  lod_levels: new VInteger(0),
 });
 
 const worker = new Worker("/dist/worker.PointMap.js");
@@ -33,13 +34,14 @@ export const PointMap = ({
   const xMinPt = meta?.x_min ?? 0;
   const yMaxPt = meta?.y_max ?? 0;
   const yMinPt = meta?.y_min ?? 0;
+  const lodLevels = meta?.lod_levels ?? 1;
   useEffect(() => {
     (async () => {
-      const meta = vMapMeta.parseRoot(
-        await fetch(`https://static.wilsonl.in/hndr/data/map.json`).then(
-          (res) => res.json(),
-        ),
-      );
+      const meta = await fetch(
+        `https://ap-sydney-1.edge-hndr.wilsonl.in/hnsw/map/meta`,
+      )
+        .then((res) => res.arrayBuffer())
+        .then((res) => vMapMeta.parseRoot(decode(res)));
       setMeta(meta);
     })();
   }, []);
@@ -47,7 +49,7 @@ export const PointMap = ({
   const [wdwXPt, setWdwXPt] = useState(0);
   const [wdwYPt, setWdwYPt] = useState(0);
   const [zoom, setZoom] = useState(0);
-  const lod = Math.min(LOD_LEVELS - 1, Math.floor(zoom / ZOOM_PER_LOD));
+  const lod = Math.min(lodLevels - 1, Math.floor(zoom / ZOOM_PER_LOD));
   const c = mapCalcs({
     zoom,
   });
@@ -169,7 +171,7 @@ export const PointMap = ({
         <p>
           ({wdwXPt.toFixed(2)}, {wdwYPt.toFixed(2)})
         </p>
-        <p>LOD: {lod == LOD_LEVELS - 1 ? "max" : lod}</p>
+        <p>LOD: {lod == lodLevels - 1 ? "max" : lod}</p>
         <p>Zoom: {zoom.toFixed(2)}</p>
       </div>
     </div>

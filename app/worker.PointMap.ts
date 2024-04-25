@@ -1,10 +1,6 @@
 import Dict from "@xtjs/lib/Dict";
 import assertExists from "@xtjs/lib/assertExists";
-import {
-  BASE_AXIS_TILES,
-  mapCalcs,
-  vWorkerPointMapMessageToWorker,
-} from "./util/map";
+import { mapCalcs, vWorkerPointMapMessageToWorker } from "./util/map";
 
 type Point = { id: number; x: number; y: number; score: number };
 
@@ -35,7 +31,7 @@ const fetchTile = async (
   y: number,
 ) => {
   const res = await fetch(
-    `https://static.wilsonl.in/hndr/data/map/z${lod}/${x}-${y}.bin`,
+    `https://ap-sydney-1.edge-hndr.wilsonl.in/hnsw/map/${lod}/${x}-${y}`,
     { signal },
   );
   if (!res.ok) {
@@ -102,7 +98,7 @@ addEventListener("message", async (e) => {
     canvas.width = msg.windowWidthPx;
     canvas.height = msg.windowHeightPx;
 
-    const axisTileCount = BASE_AXIS_TILES * 2 ** msg.lod;
+    const axisTileCount = 2 ** msg.lod;
     const xRangePt = xMaxPt - xMinPt;
     const yRangePt = yMaxPt - yMinPt;
     const tileWidthPt = xRangePt / axisTileCount;
