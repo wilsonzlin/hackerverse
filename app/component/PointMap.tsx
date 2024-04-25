@@ -22,6 +22,13 @@ const vMapMeta = new VStruct({
 
 const worker = new Worker("/dist/worker.PointMap.js");
 
+const EDGES = [
+  "ap-sydney-1",
+  "uk-london-1",
+  "us-ashburn-1",
+  "us-sanjose-1",
+] as const;
+
 export const PointMap = ({
   height: wdwHeightPx,
   width: wdwWidthPx,
@@ -36,14 +43,40 @@ export const PointMap = ({
   const yMinPt = meta?.y_min ?? 0;
   const lodLevels = meta?.lod_levels ?? 1;
   useEffect(() => {
+    const ac = new AbortController();
     (async () => {
       const meta = await fetch(
-        `https://ap-sydney-1.edge-hndr.wilsonl.in/hnsw/map/meta`,
+        `https://us-ashburn-1.edge-hndr.wilsonl.in/hnsw/map/meta`,
+        { signal: ac.signal },
       )
         .then((res) => res.arrayBuffer())
         .then((res) => vMapMeta.parseRoot(decode(res)));
       setMeta(meta);
     })();
+    return () => ac.abort();
+  }, []);
+
+  const edge = useRef("us-ashburn-1");
+  useEffect(() => {
+    const ac = new AbortController();
+    (async () => {
+      const ITERATIONS = 3;
+      // Use Promise.race so we don't wait for the slow ones.
+      edge.current = await Promise.race(
+        EDGES.map(async (edge) => {
+          // Run a few times to avoid potential cold start biases.
+          for (let i = 0; i < ITERATIONS; i++) {
+            await fetch(`https://${edge}.edge-hndr.wilsonl.in/healthz`, {
+              signal: ac.signal,
+            });
+          }
+          return edge;
+        }),
+      );
+      console.log("Closest edge:", edge.current);
+      ac.abort();
+    })();
+    return () => ac.abort();
   }, []);
 
   const [wdwXPt, setWdwXPt] = useState(0);
@@ -84,6 +117,7 @@ export const PointMap = ({
     const msg: Valid<typeof vWorkerPointMapMessageToWorker> = {
       $type: "render",
       requestId: nextRenderReqId.current++,
+      edge: edge.current,
       lod,
       zoom,
 

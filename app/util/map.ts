@@ -2,6 +2,7 @@ import {
   VFiniteNumber,
   VInstanceOf,
   VInteger,
+  VString,
   VStruct,
   VTagged,
 } from "@wzlin/valid";
@@ -17,6 +18,7 @@ export const vWorkerPointMapMessageToWorker = new VTagged("$type", {
   // Render the points at LOD `lod` from (ptX0, ptY0) to (ptX1, ptY1) (inclusive) on the canvas.
   render: new VStruct({
     requestId: new VInteger(0),
+    edge: new VString(),
     lod: new VInteger(0),
     zoom: new VFiniteNumber(0),
 

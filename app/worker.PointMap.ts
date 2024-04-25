@@ -26,12 +26,13 @@ const parseData = (raw: ArrayBuffer) => {
 
 const fetchTile = async (
   signal: AbortSignal,
+  edge: string,
   lod: number,
   x: number,
   y: number,
 ) => {
   const res = await fetch(
-    `https://ap-sydney-1.edge-hndr.wilsonl.in/hnsw/map/${lod}/${x}-${y}`,
+    `https://${edge}.edge-hndr.wilsonl.in/hnsw/map/${lod}/${x}-${y}`,
     { signal },
   );
   if (!res.ok) {
@@ -130,7 +131,7 @@ addEventListener("message", async (e) => {
             const key = `${x}-${y}`;
             yield tiles.computeIfAbsent(key, async () => {
               console.log("Fetching tile", x, y);
-              const points = await fetchTile(signal, msg.lod, x, y);
+              const points = await fetchTile(signal, msg.edge, msg.lod, x, y);
               console.log(
                 "Fetched tile",
                 x,
