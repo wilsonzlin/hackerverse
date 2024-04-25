@@ -26,7 +26,7 @@ def dump_mmap_matrix(out_basename: str, mat: np.ndarray):
     fp.flush()
 
 
-def load_mmap_matrix(basename: str, shape: Tuple[int, ...], dtype: np.dtype):
+def load_mmap_matrix(basename: str, shape: Tuple[int, ...], dtype: npt.DTypeLike):
     return np.memmap(
         f"/hndr-data/{basename}.mmap",
         dtype=dtype,

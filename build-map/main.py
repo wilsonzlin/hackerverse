@@ -23,9 +23,7 @@ INCLUDE_COMMENTS = False
 # At LOD level 4, we want points to be at least 0.025 units apart.
 # ...
 # At the maximum LOD level, we show everything, regardless of distance.
-BASE_LOD_APPROX_POINTS = 4096
-BASE_DISTANCE = 0.2
-BASE_AXIS_TILES = 8
+BASE_LOD_AXIS_POINTS = 32
 
 
 def load_data():
@@ -53,7 +51,7 @@ def load_data():
 
 
 def calc_lod_levels(count: int) -> int:
-    return max(1, math.floor(math.log2(count / BASE_LOD_APPROX_POINTS)) - 1)
+    return max(1, math.floor(math.log2(count / (BASE_LOD_AXIS_POINTS**2))) - 1)
 
 
 def build_map_at_lod_level(lod_level: int):
@@ -61,6 +59,10 @@ def build_map_at_lod_level(lod_level: int):
         print(f"[lod={lod_level}]", *msg)
 
     df = load_data()
+    x_min, x_max = df["x"].min(), df["x"].max()
+    x_range = x_max - x_min
+    y_min, y_max = df["y"].min(), df["y"].max()
+    y_range = y_max - y_min
     lod_levels = calc_lod_levels(len(df))
 
     df_posts = load_table("posts", columns=["id", "score"])
@@ -99,23 +101,25 @@ def build_map_at_lod_level(lod_level: int):
         assert mat.shape == (count, 2) and mat.dtype == np.float32
         graph = rtree.index.Index()
 
-        min_dist = BASE_DISTANCE / (2**lod_level)
         lg("Iterating points")
-        filtered = []
+        axis_point_count = BASE_LOD_AXIS_POINTS * (2**lod_level)
         for i in range(count):
-            for nearest in graph.nearest(mat[i], 1):
-                if np.linalg.norm(mat[i] - mat[nearest]) < min_dist:
-                    break
-            else:
-                graph.insert(i, mat[i])
-                filtered.append(i)
+            graph.insert(i, mat[i])
+        filtered = []
+        for ix in range(axis_point_count):
+            for iy in range(axis_point_count):
+                x = x_min + x_range / (axis_point_count - 1) * ix
+                y = y_min + y_range / (axis_point_count - 1) * iy
+                for nearest in graph.nearest((x, y), 1):
+                    filtered.append(nearest)
+                    graph.delete(nearest, mat[nearest])
 
         df = df.iloc[filtered]
         count = len(df)
         assert count == len(filtered)
         lg("Filtered to", count, "points")
 
-    axis_tile_count = BASE_AXIS_TILES * (2**lod_level)
+    axis_tile_count = 2**lod_level
     lg("Tiling to", axis_tile_count * axis_tile_count, "tiles")
     x_min, x_max = df["x"].min(), df["x"].max()
     y_min, y_max = df["y"].min(), df["y"].max()
@@ -169,9 +173,10 @@ def build_map_at_lod_level(lod_level: int):
     lg("Done;", axis_tile_count * axis_tile_count, "tiles;", count, "points")
 
 
-total = len(load_data())
-print("Total points:", total)
-lod_levels = calc_lod_levels(total)
+df = load_data()
+count = len(load_data())
+print("Total points:", count)
+lod_levels = calc_lod_levels(count)
 print("LOD levels:", lod_levels)
 with Pool(lod_levels) as pool:
     pool.map(build_map_at_lod_level, range(lod_levels))
