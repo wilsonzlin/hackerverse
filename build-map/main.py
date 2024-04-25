@@ -61,6 +61,7 @@ def calc_lod_levels(count: int) -> int:
     return max(1, math.ceil(math.log2(count / (BASE_LOD_AXIS_POINTS**2)) / 2))
 
 
+print("Mode:", MODE)
 df = load_data()
 x_min, x_max = df["x"].min(), df["x"].max()
 x_range = x_max - x_min
@@ -85,6 +86,7 @@ res["meta"] = {
 res["tiles"] = []
 
 for lod_level in range(lod_levels):
+
     def lg(*msg):
         print(f"[lod={lod_level}]", *msg)
 
@@ -95,10 +97,12 @@ for lod_level in range(lod_levels):
     #   - Since we want to target a specific amount of points, if there is still remaining capacity, sample uniformly randomly from the set of points, which should follow the background distribution of points.
     if lod_level == lod_levels - 1:
         lg("No filtering needed")
+        df_subset = df
     else:
         axis_point_count = BASE_LOD_AXIS_POINTS * (2**lod_level)
         x_grid_width = x_range / axis_point_count
         y_grid_width = y_range / axis_point_count
+        lg("Splitting into", axis_point_count, "x", axis_point_count, "grid")
         df["rect_x"] = (
             ((df["x"] - x_min) // x_grid_width)
             .clip(upper=axis_point_count - 1)
@@ -109,19 +113,20 @@ for lod_level in range(lod_levels):
             .clip(upper=axis_point_count - 1)
             .astype("uint32")
         )
+        lg("Sorting points")
         df_subset = (
             df.sort_values("score", ascending=False)
             .groupby(["rect_x", "rect_y"])
             .first()
             .reset_index(drop=True)
         )
-        extra = axis_point_count - len(df_subset)
+        extra = (axis_point_count**2) - len(df_subset)
         if extra:
             df_extra = df[~df["id"].isin(df_subset["id"])].sample(n=extra)
             df_subset = pd.concat([df_subset, df_extra], ignore_index=True)
         lg("Sampled", len(df_subset), "with extra", extra)
         # Ensure next LOD levels always pick at least these points.
-        df[df["id"].isin(df_subset["id"])]["score"] = 2**15 - 1
+        df.loc[df["id"].isin(df_subset["id"]), "score"] = 2**15 - 1
 
     axis_tile_count = 2**lod_level
     lg("Tiling to", axis_tile_count * axis_tile_count, "tiles")
@@ -160,7 +165,7 @@ for lod_level in range(lod_levels):
             + vec_score.tobytes()
         )
 
-    lg("Done;", axis_tile_count * axis_tile_count, "tiles;", count, "points")
+    lg("Done;", axis_tile_count * axis_tile_count, "tiles;", len(df_subset), "points")
     res["tiles"].append(out)
 
 with open(f"/hndr-data/map-{MODE}.msgpack", "wb") as f:
