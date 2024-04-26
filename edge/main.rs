@@ -4,8 +4,6 @@ use axum::extract::State;
 use axum::routing::get;
 use axum::Router;
 use axum_msgpack::MsgPack;
-use chrono::DateTime;
-use chrono::Utc;
 use futures::TryFutureExt;
 use reqwest::header::ETAG;
 use reqwest::header::IF_NONE_MATCH;

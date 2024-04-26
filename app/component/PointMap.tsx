@@ -45,7 +45,7 @@ export const PointMap = ({
     const ac = new AbortController();
     (async () => {
       const meta = await fetch(
-        `https://us-ashburn-1.edge-hndr.wilsonl.in/hnsw/map/meta`,
+        `https://us-ashburn-1.edge-hndr.wilsonl.in/map/hnsw/meta`,
         { signal: ac.signal },
       )
         .then((res) => res.arrayBuffer())

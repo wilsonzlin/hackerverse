@@ -48,7 +48,7 @@ cli
         shape: "CI.Standard.A1.Flex",
         shapeConfig: {
           ocpus: 1,
-          memoryInGBs: 8,
+          memoryInGBs: 12,
         },
         vnics: [
           {

@@ -1,9 +1,11 @@
 import { Item } from "@wzlin/crawler-toolkit-hn";
 import Dict from "@xtjs/lib/Dict";
+import arrayEquals from "@xtjs/lib/arrayEquals";
 import assertExists from "@xtjs/lib/assertExists";
+import nativeOrdering from "@xtjs/lib/nativeOrdering";
 import propertyComparator from "@xtjs/lib/propertyComparator";
 import RBush, { BBox } from "rbush";
-import { fetchItem } from "./item";
+import { fetchEdgePost } from "./item";
 
 export const PX_PER_PT_BASE = 64;
 export const ZOOM_PER_LOD = 3;
@@ -55,7 +57,7 @@ export const fetchTile = async (
   y: number,
 ) => {
   const res = await fetch(
-    `https://${edge}.edge-hndr.wilsonl.in/hnsw/map/${lod}/${x}-${y}`,
+    `https://${edge}.edge-hndr.wilsonl.in/map/hnsw/tile/${lod}/${x}-${y}`,
     { signal },
   );
   // Not all tiles exist (i.e. no points exist).
@@ -96,6 +98,8 @@ export const createCanvasPointMap = () => {
   let raf: ReturnType<typeof requestAnimationFrame> | undefined;
   let curViewport:
     | {
+        edge: string;
+        lod: number;
         zoom: number;
         scoreMin: number;
         scoreMax: number;
@@ -103,32 +107,65 @@ export const createCanvasPointMap = () => {
         y0Pt: number;
       }
     | undefined;
+  // We don't want to constantly calculate labelled points, as it causes jarring flashes of text. Instead, we want to keep the same points labelled for a few seconds.
+  // The exception is when we're changing LOD level, as that's when many points will enter/exit, so we want to recompute immediately as the intermediate state looks weird.
+  const LABEL_FONT_SIZE = 12;
+  const MIN_GAP_BETWEEN_LABELS = LABEL_FONT_SIZE * 3;
+  const labelledPoints = Array<number>(); // Point IDs, sorted for comparability.
+  let lastPickedLabelledPoints = 0;
+  let pickLabelledPointsTimeout: ReturnType<typeof setTimeout> | undefined;
+  const pickLabelledPoints = () => {
+    const delay = Math.max(0, lastPickedLabelledPoints + 750 - Date.now());
+    clearTimeout(pickLabelledPointsTimeout);
+    pickLabelledPointsTimeout = setTimeout(() => {
+      const vp = curViewport;
+      if (!vp) {
+        return;
+      }
+      const c = mapCalcs(vp.zoom);
+      const prevLabelledPoints = labelledPoints.splice(0);
+      const idByRow: Record<number, Point> = {};
+      for (const p of curPoints) {
+        const canvasY = c.ptToPx(p.y - vp.y0Pt);
+        const row = Math.floor(canvasY / MIN_GAP_BETWEEN_LABELS);
+        if (!idByRow[row] || idByRow[row].score < p.score) {
+          // We mark this as labelled point, even if we don't immediately label (not loaded, blank title, etc.), as otherwise the points that are labelled constantly change as items asynchronously load.
+          idByRow[row] = p;
+          itemLoadPromises.computeIfAbsent(p.id, async (id) => {
+            items.putIfAbsentOrThrow(id, await fetchEdgePost(vp.edge, id));
+            renderPoints();
+          });
+        }
+      }
+      labelledPoints.push(
+        ...Object.values(idByRow)
+          .map((p) => p.id)
+          .sort(nativeOrdering),
+      );
+      if (!arrayEquals(prevLabelledPoints, labelledPoints)) {
+        renderPoints();
+      }
+      lastPickedLabelledPoints = Date.now();
+    }, delay);
+  };
 
   const renderPoints = () => {
     if (raf != undefined) {
       cancelAnimationFrame(raf);
     }
-    if (!curViewport) {
-      return;
-    }
-    const vp = curViewport;
     raf = requestAnimationFrame(() => {
+      const vp = curViewport;
+      if (!vp) {
+        return;
+      }
       const ctx = assertExists(canvas.getContext("2d"));
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       const c = mapCalcs(vp.zoom);
-      let lastLabelY = -Infinity;
-      const LABEL_FONT_SIZE = 12;
-      const MIN_GAP_BETWEEN_LABELS = LABEL_FONT_SIZE * 2;
+      pickLabelledPoints();
       for (const p of curPoints) {
         const canvasX = c.ptToPx(p.x - vp.x0Pt);
         const canvasY = c.ptToPx(p.y - vp.y0Pt);
-        if (canvasY - lastLabelY > MIN_GAP_BETWEEN_LABELS) {
-          // We set this as the last labelled point, even if we don't (not loaded, blank title, etc.), as otherwise the points that are labelled constantly change as items asynchronously load.
-          lastLabelY = canvasY;
-          itemLoadPromises.computeIfAbsent(p.id, async (id) => {
-            items.putIfAbsentOrThrow(id, await fetchItem(id));
-            renderPoints();
-          });
+        if (labelledPoints.includes(p.id)) {
           const label = items.get(p.id)?.title;
           if (label) {
             ctx.font = `${LABEL_FONT_SIZE}px sans-serif`;
@@ -218,14 +255,20 @@ export const createCanvasPointMap = () => {
         Math.floor((msg.y1Pt - yMinPt) / tileHeightPt),
       );
 
-      // Remain responsive to user interaction by redrawing the map with the current points at the new pan/zoom, even if these won't be the final points. Don't just look up in the tree immediately, since it may be a different level and the points may not be loaded yet, so the map will suddenly go blank.
+      const lodChanged = curViewport?.lod !== msg.lod;
       curViewport = {
+        edge: msg.edge,
+        lod: msg.lod,
         scoreMax: msg.scoreMax,
         scoreMin: msg.scoreMin,
         x0Pt: msg.x0Pt,
         y0Pt: msg.y0Pt,
         zoom: msg.zoom,
       };
+      // Remain responsive to user interaction by redrawing the map with the current points at the new pan/zoom, even if these won't be the final points. Don't just look up in the tree immediately, since it may be a different level and the points may not be loaded yet, so the map will suddenly go blank.
+      if (lodChanged) {
+        lastPickedLabelledPoints = 0;
+      }
       renderPoints();
 
       // Ensure all requested tiles are fetched.
