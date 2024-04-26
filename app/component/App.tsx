@@ -3,7 +3,7 @@ import { VArray, VFiniteNumber, VInteger, VStruct } from "@wzlin/valid";
 import assertInstanceOf from "@xtjs/lib/assertInstanceOf";
 import mapExists from "@xtjs/lib/mapExists";
 import { DateTime } from "luxon";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMeasure } from "../util/dom";
 import { useRequest } from "../util/fetch";
 import "./App.css";
@@ -14,6 +14,8 @@ import { PointMap } from "./PointMap";
 export const App = () => {
   const [$root, setRootElem] = useState<HTMLDivElement | null>(null);
   const rootDim = useMeasure($root);
+
+  const $form = useRef<HTMLFormElement | null>(null);
 
   const [query, setQuery] = useState<{
     query: string;
@@ -75,6 +77,7 @@ export const App = () => {
       <PointMap height={rootDim?.height ?? 0} width={rootDim?.width ?? 0} />
 
       <form
+        ref={$form}
         className="search"
         onSubmit={(e) => {
           e.preventDefault();
@@ -93,9 +96,26 @@ export const App = () => {
       >
         <div className="main">
           <input name="query" placeholder="Search or ask" />
-          <button disabled={results.loading} type="submit">
-            {results.loading ? <Loading size={24} /> : <Ico i="search" />}
-          </button>
+          {results.loading ? (
+            <Loading size={24} />
+          ) : results.data?.results ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                setQuery(undefined);
+                assertInstanceOf(
+                  $form.current!.elements.namedItem("query"),
+                  HTMLInputElement,
+                ).value = "";
+              }}
+            >
+              <Ico i="close" />
+            </button>
+          ) : (
+            <button disabled={results.loading} type="submit">
+              <Ico i="search" />
+            </button>
+          )}
         </div>
         <div className="params">
           <label>

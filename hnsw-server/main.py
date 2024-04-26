@@ -22,7 +22,7 @@ print("Loading tables")
 df_posts = load_table("posts", columns=["id", "score", "ts"])
 df_comments = load_table("comments", columns=["id", "score", "ts"])
 df = pd.concat([df_posts, df_comments], ignore_index=True)
-df.set_index("id", inplace=True, drop=False)
+df.set_index("id", inplace=True)
 max_post_score = df["score"].max()
 max_comment_score = df["score"].max()
 

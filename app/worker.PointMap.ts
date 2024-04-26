@@ -35,6 +35,7 @@ const fetchTile = async (
     `https://${edge}.edge-hndr.wilsonl.in/hnsw/map/${lod}/${x}-${y}`,
     { signal },
   );
+  // Not all tiles exist (i.e. no points exist).
   if (res.status === 404) {
     return [];
   }
@@ -67,28 +68,19 @@ const tilesLoadStarted = new Set<string>();
 const lodTrees = Array<MyRBush>(); // One for each LOD level.
 let latestRenderRequestId = -1;
 let canvas: OffscreenCanvas;
+let curPoints = Array<Point>();
 
 const renderPoints = (msg: {
-  lod: number;
   zoom: number;
   scoreMin: number;
   scoreMax: number;
   x0Pt: number;
-  x1Pt: number;
   y0Pt: number;
-  y1Pt: number;
 }) => {
   const ctx = assertExists(canvas.getContext("2d"));
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   const c = mapCalcs({ zoom: msg.zoom });
-  const tree = lodTrees[msg.lod];
-  const points = tree.search({
-    minX: msg.x0Pt,
-    maxX: msg.x1Pt,
-    minY: msg.y0Pt,
-    maxY: msg.y1Pt,
-  });
-  for (const p of points) {
+  for (const p of curPoints) {
     const MIN_ALPHA = 0.7;
     const alpha =
       ((p.score - msg.scoreMin) / (msg.scoreMax - msg.scoreMin + 1)) *
@@ -117,6 +109,7 @@ addEventListener("message", async (e) => {
     tilesLoadAbortController = new AbortController();
     tilesLoadStarted.clear();
     lodTrees.splice(0);
+    curPoints = [];
     for (let i = 0; i < msg.lodLevels; i++) {
       lodTrees.push(new MyRBush());
     }
@@ -149,7 +142,7 @@ addEventListener("message", async (e) => {
       Math.floor((msg.y1Pt - yMinPt) / tileHeightPt),
     );
 
-    // Remain responsive to user interaction by redrawing the map with the current points at the new pan/zoom, even if these won't be the final points.
+    // Remain responsive to user interaction by redrawing the map with the current points at the new pan/zoom, even if these won't be the final points. Don't just look up in the tree immediately, since it may be a different level and the points may not be loaded yet, so the map will suddenly go blank.
     renderPoints(msg);
 
     // Ensure all requested tiles are fetched.
@@ -191,6 +184,12 @@ addEventListener("message", async (e) => {
       return;
     }
     // Render the final points.
+    curPoints = lodTrees[msg.lod].search({
+      minX: msg.x0Pt,
+      maxX: msg.x1Pt,
+      minY: msg.y0Pt,
+      maxY: msg.y1Pt,
+    });
     renderPoints(msg);
   }
 });
