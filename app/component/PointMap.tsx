@@ -5,8 +5,8 @@ import { useEffect, useRef, useState } from "react";
 import {
   ZOOM_PER_LOD,
   calcLod,
+  createCanvasPointMap,
   mapCalcs,
-  vWorkerPointMapMessageToWorker,
 } from "../util/map";
 import "./PointMap.css";
 
@@ -20,8 +20,6 @@ const vMapMeta = new VStruct({
   count: new VInteger(0),
   lod_levels: new VInteger(0),
 });
-
-const worker = new Worker("/dist/worker.PointMap.js");
 
 const EDGES = [
   "ap-sydney-1",
@@ -84,40 +82,29 @@ export const PointMap = ({
   const [wdwYPt, setWdwYPt] = useState(0);
   const [zoom, setZoom] = useState(0);
   const lod = calcLod(lodLevels, zoom);
-  const c = mapCalcs({
-    zoom,
-  });
+  const c = mapCalcs(zoom);
   const wdwWidthPt = c.pxToPt(wdwWidthPx);
   const wdwHeightPt = c.pxToPt(wdwHeightPx);
 
   const nextRenderReqId = useRef(0);
   const $canvas = useRef<HTMLCanvasElement>(null);
-  // The OffscreenCanvas must only be sent once: https://stackoverflow.com/a/57762984.
+  const map = useRef<ReturnType<typeof createCanvasPointMap>>();
   useEffect(() => {
     if (!$canvas.current) {
       return;
     }
-    const offscreen = $canvas.current.transferControlToOffscreen();
-    const msg: Valid<typeof vWorkerPointMapMessageToWorker> = {
-      $type: "init",
-      canvas: offscreen,
-    };
-    worker.postMessage(msg, [offscreen]);
+    map.current ??= createCanvasPointMap();
+    map.current.init($canvas.current);
   }, []);
   const ptrPos = useRef<{ clientX: number; clientY: number }>();
   useEffect(() => {
-    const msg: Valid<typeof vWorkerPointMapMessageToWorker> = {
-      $type: "reset",
-      lodLevels,
-    };
-    worker.postMessage(msg);
+    map.current?.reset(lodLevels);
   }, [lodLevels]);
   useEffect(() => {
     if (!meta) {
       return;
     }
-    const msg: Valid<typeof vWorkerPointMapMessageToWorker> = {
-      $type: "render",
+    map.current?.render({
       requestId: nextRenderReqId.current++,
       edge: edge.current,
       lod,
@@ -137,8 +124,7 @@ export const PointMap = ({
       yMinPt,
       scoreMin: meta.score_min,
       scoreMax: meta.score_max,
-    };
-    worker.postMessage(msg, []);
+    });
   }, [meta, lod, wdwXPt, wdwYPt, wdwWidthPt, wdwHeightPt]);
 
   return (
@@ -184,9 +170,7 @@ export const PointMap = ({
           }
           const newZoom = Math.max(zoom - delta, 0);
           setZoom(newZoom);
-          const nz = mapCalcs({
-            zoom: newZoom,
-          });
+          const nz = mapCalcs(newZoom);
 
           // Get mouse position relative to element.
           const rect = e.currentTarget.getBoundingClientRect();

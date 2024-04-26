@@ -1,4 +1,4 @@
-import { Item, vItem } from "@wzlin/crawler-toolkit-hn";
+import { Item } from "@wzlin/crawler-toolkit-hn";
 import { VArray, VFiniteNumber, VInteger, VStruct } from "@wzlin/valid";
 import assertInstanceOf from "@xtjs/lib/assertInstanceOf";
 import mapExists from "@xtjs/lib/mapExists";
@@ -6,6 +6,7 @@ import { DateTime } from "luxon";
 import { useEffect, useRef, useState } from "react";
 import { useMeasure } from "../util/dom";
 import { useRequest } from "../util/fetch";
+import { fetchItem } from "../util/item";
 import "./App.css";
 import { Ico } from "./Ico";
 import { Loading } from "./Loading";
@@ -53,23 +54,14 @@ export const App = () => {
   const [items, setItems] = useState<Record<number, Item>>({});
   useEffect(() => {
     const ids = results.data?.results.map((r) => r.id) ?? [];
-    const ac = new AbortController();
     (async () => {
       await Promise.all(
         ids.map(async (id) => {
-          const res = await fetch(
-            `https://hacker-news.firebaseio.com/v0/item/${id}.json`,
-            {
-              signal: ac.signal,
-            },
-          );
-          const raw = await res.json();
-          const item = vItem.parseRoot(raw);
+          const item = await fetchItem(id);
           setItems((items) => ({ ...items, [id]: item }));
         }),
       );
     })();
-    return () => ac.abort();
   }, [results.data]);
 
   return (
