@@ -1,12 +1,13 @@
 import { decode } from "@msgpack/msgpack";
-import { VFiniteNumber, VInteger, VStruct, Valid } from "@wzlin/valid";
+import { VFiniteNumber, VInteger, VStruct } from "@wzlin/valid";
 import UnreachableError from "@xtjs/lib/UnreachableError";
+import assertExists from "@xtjs/lib/assertExists";
 import { useEffect, useRef, useState } from "react";
 import {
+  MapState,
   ZOOM_PER_LOD,
-  calcLod,
   createCanvasPointMap,
-  mapCalcs,
+  viewportScale,
 } from "../util/map";
 import "./PointMap.css";
 
@@ -35,36 +36,18 @@ export const PointMap = ({
   height: number;
   width: number;
 }) => {
-  const [meta, setMeta] = useState<Valid<typeof vMapMeta>>();
-  const xMaxPt = meta?.x_max ?? 0;
-  const xMinPt = meta?.x_min ?? 0;
-  const yMaxPt = meta?.y_max ?? 0;
-  const yMinPt = meta?.y_min ?? 0;
-  const lodLevels = meta?.lod_levels ?? 1;
+  const $canvas = useRef<HTMLCanvasElement>(null);
+  const [map, setMap] = useState<ReturnType<typeof createCanvasPointMap>>();
+  const [meta, setMeta] = useState<MapState>();
   useEffect(() => {
     const ac = new AbortController();
-    (async () => {
-      const meta = await fetch(
-        `https://us-ashburn-1.edge-hndr.wilsonl.in/map/hnsw/meta`,
-        { signal: ac.signal },
-      )
-        .then((res) => res.arrayBuffer())
-        .then((res) => vMapMeta.parseRoot(decode(res)));
-      setMeta(meta);
-    })();
-    return () => ac.abort();
-  }, []);
 
-  const edge = useRef("us-ashburn-1");
-  useEffect(() => {
-    const ac = new AbortController();
-    (async () => {
-      const ITERATIONS = 3;
-      // Use Promise.race so we don't wait for the slow ones.
-      edge.current = await Promise.race(
+    // Use Promise.race so we don't wait for the slow ones.
+    const findClosestEdge = () =>
+      Promise.race(
         EDGES.map(async (edge) => {
           // Run a few times to avoid potential cold start biases.
-          for (let i = 0; i < ITERATIONS; i++) {
+          for (let i = 0; i < 3; i++) {
             await fetch(`https://${edge}.edge-hndr.wilsonl.in/healthz`, {
               signal: ac.signal,
             });
@@ -72,77 +55,76 @@ export const PointMap = ({
           return edge;
         }),
       );
-      console.log("Closest edge:", edge.current);
-      ac.abort();
+
+    const fetchMeta = async () => {
+      const res = await fetch(
+        `https://us-ashburn-1.edge-hndr.wilsonl.in/map/hnsw/meta`,
+        { signal: ac.signal },
+      );
+      const raw = await res.arrayBuffer();
+      const meta = vMapMeta.parseRoot(decode(raw));
+      return new MapState({
+        lodLevels: meta.lod_levels,
+        scoreMax: meta.score_max,
+        scoreMin: meta.score_min,
+        xMaxPt: meta.x_max,
+        xMinPt: meta.x_min,
+        yMaxPt: meta.y_max,
+        yMinPt: meta.y_min,
+      });
+    };
+
+    (async () => {
+      const [edge, meta] = await Promise.all([findClosestEdge(), fetchMeta()]);
+      console.log("Closest edge:", edge);
+      console.log("Map metadata:", meta);
+      setMeta(meta);
+      const map = createCanvasPointMap({
+        canvas: assertExists($canvas.current),
+        edge,
+        map: meta,
+      });
+      setMap(map);
     })();
+
     return () => ac.abort();
   }, []);
 
   const [vpXPt, setVpXPt] = useState(0);
   const [vpYPt, setVpYPt] = useState(0);
   const [zoom, setZoom] = useState(0);
-  const lod = calcLod(lodLevels, zoom);
-  const c = mapCalcs(zoom);
-  const vpWidthPt = c.pxToPt(vpWidthPx);
-  const vpHeightPt = c.pxToPt(vpHeightPx);
+  const lod = meta?.calcLod(zoom) ?? 0;
+  const scale = viewportScale(zoom);
 
-  const nextRenderReqId = useRef(0);
-  const $canvas = useRef<HTMLCanvasElement>(null);
-  const map = useRef<ReturnType<typeof createCanvasPointMap>>();
-  useEffect(() => {
-    if (!$canvas.current) {
-      return;
-    }
-    map.current ??= createCanvasPointMap();
-    map.current.init($canvas.current);
-  }, []);
   const ptrPos = useRef<{ clientX: number; clientY: number }>();
   useEffect(() => {
-    map.current?.reset(lodLevels);
-  }, [lodLevels]);
-  useEffect(() => {
-    if (!meta) {
-      return;
-    }
-    map.current?.render({
-      requestId: nextRenderReqId.current++,
-      edge: edge.current,
-      lod,
-      zoom,
-
-      viewportHeightPx: vpHeightPx,
-      viewportWidthPx: vpWidthPx,
-
+    map?.render({
+      heightPx: vpHeightPx,
+      widthPx: vpWidthPx,
       x0Pt: vpXPt,
-      x1Pt: vpXPt + vpWidthPt,
       y0Pt: vpYPt,
-      y1Pt: vpYPt + vpHeightPt,
-
-      xMaxPt,
-      xMinPt,
-      yMaxPt,
-      yMinPt,
-      scoreMin: meta.score_min,
-      scoreMax: meta.score_max,
+      zoom,
     });
-  }, [meta, lod, vpXPt, vpYPt, vpWidthPt, vpHeightPt]);
+  }, [map, vpHeightPx, vpWidthPx, vpXPt, vpYPt, zoom]);
 
   return (
     <div className="PointMap">
       <canvas
         ref={$canvas}
         className="canvas"
+        width={vpWidthPx}
+        height={vpHeightPx}
         onPointerDown={(e) => {
           e.currentTarget.setPointerCapture(e.pointerId);
           ptrPos.current = e;
         }}
         onPointerMove={(e) => {
-          if (!ptrPos.current) {
+          if (!ptrPos.current || !scale) {
             return;
           }
           e.preventDefault();
-          const dXPt = c.pxToPt(ptrPos.current.clientX - e.clientX);
-          const dYPt = c.pxToPt(ptrPos.current.clientY - e.clientY);
+          const dXPt = scale.pxToPt(ptrPos.current.clientX - e.clientX);
+          const dYPt = scale.pxToPt(ptrPos.current.clientY - e.clientY);
           ptrPos.current = e;
           setVpXPt(vpXPt + dXPt);
           setVpYPt(vpYPt + dYPt);
@@ -154,6 +136,9 @@ export const PointMap = ({
           ptrPos.current = undefined;
         }}
         onWheel={(e) => {
+          if (!scale) {
+            return;
+          }
           let delta;
           switch (e.deltaMode) {
             case WheelEvent.DOM_DELTA_PIXEL:
@@ -170,15 +155,15 @@ export const PointMap = ({
           }
           const newZoom = Math.max(zoom - delta, 0);
           setZoom(newZoom);
-          const nz = mapCalcs(newZoom);
+          const nz = viewportScale(newZoom);
 
           // Get mouse position relative to element.
           const rect = e.currentTarget.getBoundingClientRect();
           const relX = e.clientX - rect.left;
           const relY = e.clientY - rect.top;
           // The point position of the cursor at the current zoom level.
-          const curZoomTgtPosX = vpXPt + c.pxToPt(relX);
-          const curZoomTgtPosY = vpYPt + c.pxToPt(relY);
+          const curZoomTgtPosX = vpXPt + scale.pxToPt(relX);
+          const curZoomTgtPosY = vpYPt + scale.pxToPt(relY);
           // How to keep the cursor at the same point after zooming:
           // - If we set the viewport's top-left to the `curZoomTgtPos*`, we'd see the cursor's position at the top left.
           // - Therefore, all we need to do is to then shift by the same amount of absolute pixels back at the new zoom level.
@@ -191,7 +176,7 @@ export const PointMap = ({
         <p>
           ({vpXPt.toFixed(2)}, {vpYPt.toFixed(2)})
         </p>
-        <p>LOD: {lod == lodLevels - 1 ? "max" : lod}</p>
+        <p>LOD: {lod == (meta?.lodLevels ?? 0) - 1 ? "max" : lod}</p>
         <p>Zoom: {zoom.toFixed(2)}</p>
       </div>
     </div>

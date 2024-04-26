@@ -1,20 +1,6 @@
 import { decode } from "@msgpack/msgpack";
-import { fetchHnItem } from "@wzlin/crawler-toolkit-hn";
 import { VBoolean, VInteger, VString, VStruct } from "@wzlin/valid";
-import mapExists from "@xtjs/lib/mapExists";
-
-export const fetchItem = async (id: number) => {
-  const cacheKey = `hndr:hn-item:${id}`;
-  const cached = mapExists(localStorage.getItem(cacheKey), (raw) =>
-    JSON.parse(raw),
-  );
-  if (cached) {
-    return cached;
-  }
-  const item = await fetchHnItem(id);
-  localStorage.setItem(cacheKey, JSON.stringify(item));
-  return item;
-};
+import { CACHED_FETCH_404, cachedFetch } from "./fetch";
 
 const vEdgePost = new VStruct({
   author: new VString(),
@@ -26,20 +12,18 @@ const vEdgePost = new VStruct({
 });
 
 // Use fast edge.
-export const fetchEdgePost = async (edge: string, id: number) => {
-  const cacheKey = `hndr:edge-post:${id}`;
-  const cached = mapExists(localStorage.getItem(cacheKey), (raw) =>
-    JSON.parse(raw),
+export const cachedFetchEdgePost = async (
+  signal: AbortSignal,
+  edge: string,
+  id: number,
+) => {
+  const res = await cachedFetch(
+    `https://${edge}.edge-hndr.wilsonl.in/post/${id}`,
+    signal,
+    // Some posts don't exist if they're missing a title or author.
+    "except-404",
   );
-  if (cached) {
-    return cached;
-  }
-  const res = await fetch(`https://${edge}.edge-hndr.wilsonl.in/post/${id}`);
-  if (!res.ok) {
-    throw new Error(`Failed to fetch post ${id} with status ${res.status}`);
-  }
-  const raw = await res.arrayBuffer();
-  const post = vEdgePost.parseRoot(decode(raw));
-  localStorage.setItem(cacheKey, JSON.stringify(post));
-  return post;
+  return res.body === CACHED_FETCH_404
+    ? undefined
+    : vEdgePost.parseRoot(decode(res.body));
 };

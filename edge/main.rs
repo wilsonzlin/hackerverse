@@ -1,7 +1,9 @@
 use ahash::AHashMap;
+use axum::body::Bytes;
 use axum::extract::Path;
 use axum::extract::State;
 use axum::routing::get;
+use axum::routing::post;
 use axum::Router;
 use axum_msgpack::MsgPack;
 use futures::TryFutureExt;
@@ -119,6 +121,28 @@ async fn get_post(
   Ok(MsgPack(post.clone()))
 }
 
+async fn get_post_title_lengths(
+  State(ctx): State<Arc<Ctx>>,
+  body: Bytes,
+) -> Result<Vec<u8>, axum::http::StatusCode> {
+  if body.len() % 4 != 0 {
+    return Err(axum::http::StatusCode::BAD_REQUEST);
+  };
+  let data = ctx.data.read();
+  let mut out = Vec::new();
+  for id_raw in body.chunks(4) {
+    let id = u32::from_le_bytes(id_raw.try_into().unwrap());
+    out.push(
+      data
+        .posts
+        .get(&id)
+        .map(|post| u8::try_from(post.title.len()).unwrap())
+        .unwrap_or_default(),
+    );
+  }
+  Ok(out)
+}
+
 #[tokio::main]
 async fn main() {
   set_up_panic_hook();
@@ -184,6 +208,7 @@ async fn main() {
     .route("/map/:map/point/:id", get(get_map_point))
     .route("/map/:map/tile/:lod/:tile_id", get(get_map_tile))
     .route("/post/:id", get(get_post))
+    .route("/post-title-lengths", post(get_post_title_lengths))
     .layer(cors)
     .with_state(ctx.clone());
 

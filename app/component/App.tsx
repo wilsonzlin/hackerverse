@@ -1,4 +1,4 @@
-import { Item } from "@wzlin/crawler-toolkit-hn";
+import { Item, fetchHnItem } from "@wzlin/crawler-toolkit-hn";
 import { VArray, VFiniteNumber, VInteger, VStruct } from "@wzlin/valid";
 import assertInstanceOf from "@xtjs/lib/assertInstanceOf";
 import mapExists from "@xtjs/lib/mapExists";
@@ -6,7 +6,6 @@ import { DateTime } from "luxon";
 import { useEffect, useRef, useState } from "react";
 import { useMeasure } from "../util/dom";
 import { useRequest } from "../util/fetch";
-import { fetchItem } from "../util/item";
 import "./App.css";
 import { Ico } from "./Ico";
 import { Loading } from "./Loading";
@@ -57,7 +56,7 @@ export const App = () => {
     (async () => {
       await Promise.all(
         ids.map(async (id) => {
-          const item = await fetchItem(id);
+          const item = await fetchHnItem(id);
           setItems((items) => ({ ...items, [id]: item }));
         }),
       );

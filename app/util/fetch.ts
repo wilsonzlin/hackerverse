@@ -1,6 +1,57 @@
 import { decode, encode } from "@msgpack/msgpack";
 import { Validator } from "@wzlin/valid";
+import Dict from "@xtjs/lib/Dict";
 import { useCallback, useEffect, useRef, useState } from "react";
+
+export class BadStatusError extends Error {
+  constructor(
+    readonly url: string,
+    readonly status: number,
+  ) {
+    super(`GET ${url} failed with status ${status}`);
+  }
+}
+
+type CachedFetchResult = {
+  status: number;
+  headers: Headers;
+  body: ArrayBuffer;
+  throwIfBadStatus: () => void;
+};
+export const CACHED_FETCH_404 = new ArrayBuffer(0);
+const fetches = new Dict<string, Promise<CachedFetchResult>>();
+export const cachedFetch = (
+  url: string,
+  signal?: AbortSignal,
+  throwOnBadStatus: boolean | "except-404" = false,
+) =>
+  fetches.computeIfAbsent(url, async () => {
+    try {
+      const res = await fetch(url, { signal });
+      if (res.status >= 500) {
+        throw new BadStatusError(url, res.status);
+      }
+      const throwIfBadStatus = () => {
+        if (res.status < 200 || res.status > 299) {
+          throw new BadStatusError(url, res.status);
+        }
+      };
+      const isIgnored404 =
+        throwOnBadStatus === "except-404" && res.status !== 404;
+      if (throwOnBadStatus === true || isIgnored404) {
+        throwIfBadStatus();
+      }
+      return {
+        status: res.status,
+        headers: res.headers,
+        body: isIgnored404 ? CACHED_FETCH_404 : await res.arrayBuffer(),
+        throwIfBadStatus,
+      };
+    } catch (err) {
+      fetches.delete(url);
+      throw err;
+    }
+  });
 
 export const useRequest = <T>(endpoint: string, response: Validator<T>) => {
   const cur = useRef<AbortController | undefined>();
@@ -21,7 +72,7 @@ export const useRequest = <T>(endpoint: string, response: Validator<T>) => {
       setLoading(true);
       const ac = (cur.current = new AbortController());
       try {
-        const res = await fetch("https://api-hndr.wilsonl.in/" + endpoint, {
+        const res = await fetch(`https://api-hndr.wilsonl.in/${endpoint}`, {
           signal: ac.signal,
           method: "POST",
           headers: {
