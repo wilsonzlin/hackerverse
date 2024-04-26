@@ -68,6 +68,11 @@ export class MapState {
     return this.yMaxPt - this.yMinPt;
   }
 
+  // This is mostly arbitrary, but we should have a value because some calculations depend on a fixed upper limit.
+  get zoomMax() {
+    return this.lodLevels * ZOOM_PER_LOD + 1;
+  }
+
   calcLod(z: number | ViewportState) {
     const zoom = typeof z === "number" ? z : z.zoom;
     return Math.min(this.lodLevels - 1, Math.floor(zoom / ZOOM_PER_LOD));
@@ -173,43 +178,61 @@ export const cachedFetchTile = async (
   return res.body === CACHED_FETCH_404 ? [] : parseTileData(res.body);
 };
 
-const postLengths = new Dict<number, Promise<number>>();
-export const cachedFetchPostTitleLengths = async (
+const postTitleLengthFetchStarted = new Set<number>();
+const postTitleLengths: Record<number, number> = {};
+export const ensureFetchedPostTitleLengths = async (
   edge: string,
   ids: number[],
 ) => {
-  const out: Record<number, number> = {};
-  const existing = Array<Promise<unknown>>();
-  const missing = Array<number>();
+  const missing = [];
   for (const id of ids) {
-    const ex = postLengths.get(id);
-    if (ex) {
-      existing.push(ex.then((l) => (out[id] = l)));
-    } else {
+    if (!postTitleLengthFetchStarted.has(id)) {
+      postTitleLengthFetchStarted.add(id);
       missing.push(id);
     }
   }
-  const f = fetch(`https://${edge}.edge-hndr.wilsonl.in/post-title-lengths`, {
-    method: "POST",
-    body: new Uint32Array(missing),
-  })
-    .then((res) => res.arrayBuffer())
-    .then((rawBuf) => {
-      const raw = new Uint8Array(rawBuf);
-      assertState(raw.length === missing.length);
-      for (const [i, id] of missing.entries()) {
-        out[id] = raw[i];
-      }
-      return raw;
-    });
-  for (const [i, id] of missing.entries()) {
-    postLengths.set(
-      id,
-      f.then((raw) => raw[i]),
+  if (missing.length) {
+    const res = await fetch(
+      `https://${edge}.edge-hndr.wilsonl.in/post-title-lengths`,
+      {
+        method: "POST",
+        body: new Uint32Array(missing),
+      },
     );
+    if (!res.ok) {
+      throw new Error(
+        `Failed to fetch post title lengths with status ${res.status}`,
+      );
+    }
+    const rawBuf = await res.arrayBuffer();
+    const raw = new Uint8Array(rawBuf);
+    assertState(raw.length === missing.length);
+    for (const [i, id] of missing.entries()) {
+      postTitleLengths[id] = raw[i];
+    }
   }
-  await Promise.all([...existing, f]);
-  return out;
+};
+
+const LABEL_FONT_SIZE = 12;
+const LABEL_FONT_STYLE = `${LABEL_FONT_SIZE}px sans-serif`;
+const LABEL_MARGIN = 12;
+
+const calcLabelBBox = (zoom: number, vp: ViewportState, p: Point) => {
+  const scale = viewportScale(zoom);
+  const canvasX = scale.ptToPx(p.x - vp.x0Pt);
+  const canvasY = scale.ptToPx(p.y - vp.y0Pt);
+  // This must exist because we've already computed the previous zoom level.
+  const titleLen = assertExists(postTitleLengths[p.id]);
+  const box: BBox = {
+    minX: scale.pxToPt(canvasX - LABEL_MARGIN),
+    // Guessed approximate width based on title length.
+    maxX: scale.pxToPt(
+      canvasX + titleLen * (LABEL_FONT_SIZE / 1.6) + LABEL_MARGIN,
+    ),
+    minY: scale.pxToPt(canvasY - LABEL_MARGIN),
+    maxY: scale.pxToPt(canvasY + LABEL_FONT_SIZE + LABEL_MARGIN),
+  };
+  return box;
 };
 
 export const createCanvasPointMap = ({
@@ -233,35 +256,16 @@ export const createCanvasPointMap = ({
 
   // We don't want to constantly calculate labelled points, as it causes jarring flashes of text. Instead, we want to keep the same points labelled for a few seconds.
   // The exception is when we're changing LOD level, as that's when many points will enter/exit, so we want to recompute immediately as the intermediate state looks weird.
-  const LABEL_FONT_SIZE = 12;
-  const LABEL_FONT_STYLE = `${LABEL_FONT_SIZE}px sans-serif`;
-  const LABEL_MARGIN = 12;
-  // One for each integer zoom level.
-  const labelledPoints = Array<{
-    idToBbox: Dict<number, BBox>;
-    skipped: Set<number>;
-    tree: RBush<BBox>;
-  }>();
-  const getLabelledPointsForZoom = (zoom: number) => {
-    let prev;
-    for (let i = 0; i <= zoom; i++) {
-      if (!labelledPoints[i]) {
-        const idToBbox = new Dict<number, BBox>();
-        const tree = new RBush<BBox>();
-        for (const [id, bbox] of prev?.idToBbox ?? []) {
-          idToBbox.set(id, bbox);
-          tree.insert(bbox);
-        }
-        labelledPoints[i] = {
-          idToBbox,
-          skipped: new Set(prev?.skipped),
-          tree,
-        };
-      }
-      prev = labelledPoints[i];
-    }
-    return assertExists(prev);
+  type LabelledPoint = {
+    point: Point;
+    picked: boolean; // Not picked if collided.
   };
+  // One for each integer zoom level [0, map.zoomMax] (inclusive).
+  const labelledPoints = Array.from({ length: map.zoomMax + 1 }, () => ({
+    processedTiles: new Set<string>(),
+    points: new Dict<number, LabelledPoint>(),
+    tree: new RBush<BBox>(),
+  }));
   let latestPickLabelledPointsReqId = 0;
   let pickingLabelledPoints = false;
   const pickLabelledPoints = () => {
@@ -271,20 +275,25 @@ export const createCanvasPointMap = ({
     }
     pickingLabelledPoints = true;
     (async () => {
-      outer: while (true) {
+      while (true) {
         const req = latestPickLabelledPointsReqId;
         const vp = assertExists(curViewport);
         for (let z = 0; z <= vp.zoom; z++) {
           const lod = map.calcLod(z);
-          const scale = viewportScale(z);
           const { tileXMax, tileXMin, tileYMax, tileYMin } = map.viewportTiles({
             ...vp,
             zoom: z,
           });
+          const lp = labelledPoints[z];
           const points = await Promise.all(
             (function* () {
               for (let x = tileXMin; x <= tileXMax; x++) {
                 for (let y = tileYMin; y <= tileYMax; y++) {
+                  const k = `${x}-${y}`;
+                  if (lp.processedTiles.has(k)) {
+                    continue;
+                  }
+                  lp.processedTiles.add(k);
                   yield cachedFetchTile(
                     abortController.signal,
                     edge,
@@ -298,43 +307,39 @@ export const createCanvasPointMap = ({
           ).then((res) =>
             res.flat().sort(reversedComparator(propertyComparator("score"))),
           );
-          // Bail out early if the request has expired since our await.
-          if (req != latestPickLabelledPointsReqId) {
-            continue outer;
-          }
-          const titleLengths = await cachedFetchPostTitleLengths(
+          // Do not bail out early here in case request has now expired, as we've marked the tiles as processed (but the processing is up next).
+          await ensureFetchedPostTitleLengths(
             edge,
             points.map((p) => p.id),
           );
-          const lp = getLabelledPointsForZoom(z);
           for (const p of points) {
-            const titleLen = titleLengths[p.id];
-            if (lp.idToBbox.has(p.id) || lp.skipped.has(p.id)) {
+            // We still need to check existence in and update lp.points despite processedTiles, because of transferring points between zoom levels.
+            if (lp.points.has(p.id)) {
               continue;
             }
-            const canvasX = scale.ptToPx(p.x - vp.x0Pt);
-            const canvasY = scale.ptToPx(p.y - vp.y0Pt);
-            const box: BBox = {
-              minX: scale.pxToPt(canvasX - LABEL_MARGIN),
-              // Guessed approximate width based on title length.
-              maxX: scale.pxToPt(
-                canvasX + (titleLen * LABEL_FONT_SIZE) / 1.6 + LABEL_MARGIN,
-              ),
-              minY: scale.pxToPt(canvasY - LABEL_MARGIN),
-              maxY: scale.pxToPt(canvasY + LABEL_FONT_SIZE + LABEL_MARGIN),
-            };
+            const box = calcLabelBBox(z, vp, p);
+            let picked;
             if (lp.tree.collides(box)) {
               // Avoid recalculating over and over again.
-              lp.skipped.add(p.id);
+              picked = false;
             } else {
-              lp.tree.insert(box);
-              lp.idToBbox.putIfAbsentOrThrow(p.id, box);
               cachedFetchEdgePost(abortController.signal, edge, p.id).then(
                 (post) => {
                   postTitles.set(p.id, post?.title ?? "");
                   renderPoints();
                 },
               );
+              picked = true;
+            }
+            const e = { point: p, picked };
+            // Propagate to all further zoom levels. This is simpler to keep in sync and get correct than trying to pull from previous zoom levels.
+            for (let zn = z; zn < labelledPoints.length; zn++) {
+              const lpn = labelledPoints[zn];
+              if (picked) {
+                // We can't just cache and reuse the previous zoom's BBox values for points, because each zoom has different margin pt. sizes.
+                lpn.tree.insert(calcLabelBBox(zn, vp, p));
+              }
+              lpn.points.putIfAbsentOrThrow(p.id, e);
             }
           }
         }
@@ -364,7 +369,7 @@ export const createCanvasPointMap = ({
       for (const p of curPoints) {
         const canvasX = scale.ptToPx(p.x - vp.x0Pt);
         const canvasY = scale.ptToPx(p.y - vp.y0Pt);
-        if (lp?.idToBbox.has(p.id)) {
+        if (lp?.points.get(p.id)?.picked) {
           const label = postTitles.get(p.id);
           if (label) {
             ctx.font = LABEL_FONT_STYLE;

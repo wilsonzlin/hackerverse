@@ -36,15 +36,19 @@ export const cachedFetch = (
           throw new BadStatusError(url, res.status);
         }
       };
-      const isIgnored404 =
-        throwOnBadStatus === "except-404" && res.status !== 404;
-      if (throwOnBadStatus === true || isIgnored404) {
+      if (
+        throwOnBadStatus === true ||
+        (throwOnBadStatus === "except-404" && res.status !== 404)
+      ) {
         throwIfBadStatus();
       }
       return {
         status: res.status,
         headers: res.headers,
-        body: isIgnored404 ? CACHED_FETCH_404 : await res.arrayBuffer(),
+        body:
+          throwOnBadStatus === "except-404" && res.status === 404
+            ? CACHED_FETCH_404
+            : await res.arrayBuffer(),
         throwIfBadStatus,
       };
     } catch (err) {

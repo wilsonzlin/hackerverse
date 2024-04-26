@@ -2,6 +2,7 @@ import { decode } from "@msgpack/msgpack";
 import { VFiniteNumber, VInteger, VStruct } from "@wzlin/valid";
 import UnreachableError from "@xtjs/lib/UnreachableError";
 import assertExists from "@xtjs/lib/assertExists";
+import bounded from "@xtjs/lib/bounded";
 import { useEffect, useRef, useState } from "react";
 import {
   MapState,
@@ -153,7 +154,7 @@ export const PointMap = ({
             default:
               throw new UnreachableError();
           }
-          const newZoom = Math.max(zoom - delta, 0);
+          const newZoom = bounded(zoom - delta, 0, meta?.zoomMax ?? 0);
           setZoom(newZoom);
           const nz = viewportScale(newZoom);
 
