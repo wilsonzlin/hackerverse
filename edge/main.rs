@@ -52,9 +52,9 @@ struct Post {
   author: String,
   ts: i64, // UNIX epoch seconds.
   title: String,
-  url: Option<String>,
-  proto: Option<String>,
-  found_in_archive: Option<bool>,
+  url: String,            // Empty string if NULL.
+  proto: String,          // Empty string if NULL.
+  found_in_archive: bool, // False if NULL.
 }
 
 #[derive(Default, Deserialize)]

@@ -46,6 +46,9 @@ def load_posts():
         "urls", columns=["id", "url", "proto", "found_in_archive"]
     ).rename(columns={"id": "url_id"})
     df = df.merge(df_urls, on="url_id", how="left").drop(columns=["url_id"])
+    df.loc[df["url"].isna(), "url"] = ""
+    df.loc[df["proto"].isna(), "proto"] = ""
+    df.loc[df["found_in_archive"].isna(), "found_in_archive"] = False
     df_titles = load_table("post_titles").rename(columns={"text": "title"})
     df = df.merge(df_titles, on="id", how="inner")
     df = df.set_index("id")
