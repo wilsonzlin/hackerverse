@@ -4,6 +4,8 @@ use axum::extract::State;
 use axum::routing::get;
 use axum::Router;
 use axum_msgpack::MsgPack;
+use chrono::DateTime;
+use chrono::Utc;
 use futures::TryFutureExt;
 use reqwest::header::ETAG;
 use reqwest::header::IF_NONE_MATCH;
@@ -31,13 +33,6 @@ struct MapMeta {
   lod_levels: u8,
 }
 
-#[derive(Deserialize, Serialize)]
-struct Map {
-  meta: MapMeta,
-  // One for each LOD level.
-  tiles: Vec<AHashMap<String, ByteBuf>>,
-}
-
 #[derive(Clone, Deserialize, Serialize)]
 struct Point {
   x: f32,
@@ -45,24 +40,40 @@ struct Point {
 }
 
 #[derive(Deserialize, Serialize)]
-struct Variant {
-  umap: AHashMap<u32, Point>,
-  map: Map,
+struct Map {
+  points: AHashMap<u32, Point>,
+  meta: MapMeta,
+  // One for each LOD level.
+  tiles: Vec<AHashMap<String, ByteBuf>>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+struct Post {
+  author: String,
+  ts: i64, // UNIX epoch seconds.
+  url: String,
+  title: String,
+}
+
+#[derive(Default, Deserialize)]
+struct Data {
+  maps: AHashMap<String, Map>,
+  posts: AHashMap<u32, Post>,
 }
 
 struct Ctx {
-  data: parking_lot::RwLock<AHashMap<String, Variant>>,
+  data: parking_lot::RwLock<Data>,
 }
 
-async fn get_umap_point(
+async fn get_map_point(
   State(ctx): State<Arc<Ctx>>,
   Path((variant, id)): Path<(String, u32)>,
 ) -> Result<MsgPack<Point>, axum::http::StatusCode> {
   let data = ctx.data.read();
-  let Some(variant) = data.get(&variant) else {
+  let Some(map) = data.maps.get(&variant) else {
     return Err(axum::http::StatusCode::NOT_FOUND);
   };
-  let Some(point) = variant.umap.get(&id) else {
+  let Some(point) = map.points.get(&id) else {
     return Err(axum::http::StatusCode::NOT_FOUND);
   };
   Ok(MsgPack(point.clone()))
@@ -73,10 +84,10 @@ async fn get_map_meta(
   Path(variant): Path<String>,
 ) -> Result<MsgPack<MapMeta>, axum::http::StatusCode> {
   let data = ctx.data.read();
-  let Some(variant) = data.get(&variant) else {
+  let Some(map) = data.maps.get(&variant) else {
     return Err(axum::http::StatusCode::NOT_FOUND);
   };
-  let meta = variant.map.meta.clone();
+  let meta = map.meta.clone();
   Ok(MsgPack(meta))
 }
 
@@ -85,16 +96,27 @@ async fn get_map_tile(
   Path((variant, lod, tile_id)): Path<(String, u8, String)>,
 ) -> Result<Vec<u8>, axum::http::StatusCode> {
   let data = ctx.data.read();
-  let Some(variant) = data.get(&variant) else {
+  let Some(map) = data.maps.get(&variant) else {
     return Err(axum::http::StatusCode::NOT_FOUND);
   };
-  let Some(lod) = variant.map.tiles.get(lod as usize) else {
+  let Some(lod) = map.tiles.get(lod as usize) else {
     return Err(axum::http::StatusCode::NOT_FOUND);
   };
   let Some(tile) = lod.get(&tile_id) else {
     return Err(axum::http::StatusCode::NOT_FOUND);
   };
   Ok(tile.to_vec())
+}
+
+async fn get_post(
+  State(ctx): State<Arc<Ctx>>,
+  Path(post_id): Path<u32>,
+) -> Result<MsgPack<Post>, axum::http::StatusCode> {
+  let data = ctx.data.read();
+  let Some(post) = data.posts.get(&post_id) else {
+    return Err(axum::http::StatusCode::NOT_FOUND);
+  };
+  Ok(MsgPack(post.clone()))
 }
 
 #[tokio::main]
@@ -158,9 +180,10 @@ async fn main() {
 
   let app = Router::new()
     .route("/healthz", get(|| async { "OK" }))
-    .route("/:variant/umap/:id", get(get_umap_point))
-    .route("/:variant/map/meta", get(get_map_meta))
-    .route("/:variant/map/:lod/:tile_id", get(get_map_tile))
+    .route("/map/:map/meta", get(get_map_meta))
+    .route("/map/:map/point/:id", get(get_map_point))
+    .route("/map/:map/tile/:lod/:tile_id", get(get_map_tile))
+    .route("/post/:id", get(get_post))
     .layer(cors)
     .with_state(ctx.clone());
 
