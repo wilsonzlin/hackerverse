@@ -1,11 +1,19 @@
+import { decode } from "@msgpack/msgpack";
+import { VArray, VString, Valid } from "@wzlin/valid";
 import Dict from "@xtjs/lib/Dict";
+import UnreachableError from "@xtjs/lib/UnreachableError";
 import assertExists from "@xtjs/lib/assertExists";
 import assertState from "@xtjs/lib/assertState";
 import propertyComparator from "@xtjs/lib/propertyComparator";
 import reversedComparator from "@xtjs/lib/reversedComparator";
 import RBush, { BBox } from "rbush";
+import {
+  MapStateInit,
+  ViewportState,
+  vPointLabelsMessageToMain,
+  vPointLabelsMessageToWorker,
+} from "./const";
 import { CACHED_FETCH_404, cachedFetch } from "./fetch";
-import { cachedFetchEdgePost } from "./item";
 
 export const PX_PER_PT_BASE = 64;
 export const ZOOM_PER_LOD = 3;
@@ -38,15 +46,7 @@ export class MapState {
   readonly yMaxPt: number;
   readonly yMinPt: number;
 
-  constructor(args: {
-    lodLevels: number;
-    scoreMax: number;
-    scoreMin: number;
-    xMaxPt: number;
-    xMinPt: number;
-    yMaxPt: number;
-    yMinPt: number;
-  }) {
+  constructor(args: MapStateInit) {
     this.lodLevels = args.lodLevels;
     this.scoreMax = args.scoreMax;
     this.scoreMin = args.scoreMin;
@@ -114,14 +114,6 @@ export class MapState {
   }
 }
 
-type ViewportState = {
-  heightPx: number;
-  widthPx: number;
-  x0Pt: number;
-  y0Pt: number;
-  zoom: number;
-};
-
 export const viewportScale = (z: number | ViewportState) => {
   const zoom = typeof z === "number" ? z : z.zoom;
   // This should grow exponentially with zoom, as otherwise the distances between points shrink the more you zoom in, due to min point distances exponentially increasing with each LOD level.
@@ -163,7 +155,7 @@ export const parseTileData = (raw: ArrayBuffer) => {
 };
 
 export const cachedFetchTile = async (
-  signal: AbortSignal,
+  signal: AbortSignal | undefined,
   edge: string,
   lod: number,
   x: number,
@@ -217,7 +209,7 @@ const LABEL_FONT_SIZE = 12;
 const LABEL_FONT_STYLE = `${LABEL_FONT_SIZE}px sans-serif`;
 const LABEL_MARGIN = 12;
 
-const calcLabelBBox = (zoom: number, vp: ViewportState, p: Point) => {
+export const calcLabelBBox = (zoom: number, vp: ViewportState, p: Point) => {
   const scale = viewportScale(zoom);
   const canvasX = scale.ptToPx(p.x - vp.x0Pt);
   const canvasY = scale.ptToPx(p.y - vp.y0Pt);
@@ -245,6 +237,7 @@ export const createCanvasPointMap = ({
   map: MapState;
 }) => {
   const abortController = new AbortController();
+  const postTitleFetchStarted = new Set<number>();
   const postTitles = new Dict<number, string>();
   const lodTrees = Array.from({ length: map.lodLevels }, () => ({
     tree: new PointTree(),
@@ -254,103 +247,57 @@ export const createCanvasPointMap = ({
   let curPoints = Array<Point>(); // This must always be sorted by score descending.
   let curViewport: ViewportState | undefined;
 
-  // We don't want to constantly calculate labelled points, as it causes jarring flashes of text. Instead, we want to keep the same points labelled for a few seconds.
-  // The exception is when we're changing LOD level, as that's when many points will enter/exit, so we want to recompute immediately as the intermediate state looks weird.
-  type LabelledPoint = {
-    point: Point;
-    picked: boolean; // Not picked if collided.
-  };
-  // One for each integer zoom level [0, map.zoomMax] (inclusive).
-  const labelledPoints = Array.from({ length: map.zoomMax + 1 }, () => ({
-    processedTiles: new Set<string>(),
-    points: new Dict<number, LabelledPoint>(),
-    tree: new RBush<BBox>(),
-  }));
-  let latestPickLabelledPointsReqId = 0;
-  let pickingLabelledPoints = false;
-  const pickLabelledPoints = () => {
-    if (pickingLabelledPoints) {
-      latestPickLabelledPointsReqId++;
-      return;
-    }
-    pickingLabelledPoints = true;
-    (async () => {
-      while (true) {
-        const req = latestPickLabelledPointsReqId;
-        const vp = assertExists(curViewport);
-        for (let z = 0; z <= vp.zoom; z++) {
-          const lod = map.calcLod(z);
-          const { tileXMax, tileXMin, tileYMax, tileYMin } = map.viewportTiles({
-            ...vp,
-            zoom: z,
-          });
-          const lp = labelledPoints[z];
-          const points = await Promise.all(
-            (function* () {
-              for (let x = tileXMin; x <= tileXMax; x++) {
-                for (let y = tileYMin; y <= tileYMax; y++) {
-                  const k = `${x}-${y}`;
-                  if (lp.processedTiles.has(k)) {
-                    continue;
-                  }
-                  lp.processedTiles.add(k);
-                  yield cachedFetchTile(
-                    abortController.signal,
-                    edge,
-                    lod,
-                    x,
-                    y,
-                  );
-                }
-              }
-            })(),
-          ).then((res) =>
-            res.flat().sort(reversedComparator(propertyComparator("score"))),
+  // Zoom (integer) level => point IDs.
+  const labelledPoints = new Dict<number, Set<number>>();
+
+  const worker = new Worker("/dist/worker.PointLabels.js");
+  worker.addEventListener("message", (e) => {
+    const msg = vPointLabelsMessageToMain.parseRoot(e.data);
+    if (msg.$type === "update") {
+      labelledPoints.set(msg.zoom, msg.picked);
+      const missing = [];
+      for (const id of msg.picked) {
+        if (!postTitleFetchStarted.has(id)) {
+          postTitleFetchStarted.add(id);
+          missing.push(id);
+        }
+      }
+      (async () => {
+        if (missing.length) {
+          const res = await fetch(
+            `https://${edge}.edge-hndr.wilsonl.in/post-titles`,
+            {
+              method: "POST",
+              body: new Uint32Array(missing),
+            },
           );
-          // Do not bail out early here in case request has now expired, as we've marked the tiles as processed (but the processing is up next).
-          await ensureFetchedPostTitleLengths(
-            edge,
-            points.map((p) => p.id),
-          );
-          for (const p of points) {
-            // We still need to check existence in and update lp.points despite processedTiles, because of transferring points between zoom levels.
-            if (lp.points.has(p.id)) {
-              continue;
-            }
-            const box = calcLabelBBox(z, vp, p);
-            let picked;
-            if (lp.tree.collides(box)) {
-              // Avoid recalculating over and over again.
-              picked = false;
-            } else {
-              cachedFetchEdgePost(abortController.signal, edge, p.id).then(
-                (post) => {
-                  postTitles.set(p.id, post?.title ?? "");
-                  renderPoints();
-                },
-              );
-              picked = true;
-            }
-            const e = { point: p, picked };
-            // Propagate to all further zoom levels. This is simpler to keep in sync and get correct than trying to pull from previous zoom levels.
-            for (let zn = z; zn < labelledPoints.length; zn++) {
-              const lpn = labelledPoints[zn];
-              if (picked) {
-                // We can't just cache and reuse the previous zoom's BBox values for points, because each zoom has different margin pt. sizes.
-                lpn.tree.insert(calcLabelBBox(zn, vp, p));
-              }
-              lpn.points.putIfAbsentOrThrow(p.id, e);
-            }
+          if (!res.ok) {
+            throw new Error(
+              `Failed to fetch post titles with status ${res.status}`,
+            );
+          }
+          const raw = await res.arrayBuffer();
+          const titles = new VArray(
+            new VString(),
+            missing.length,
+            missing.length,
+          ).parseRoot(decode(raw));
+          for (const [i, id] of missing.entries()) {
+            postTitles.set(id, titles[i]);
           }
         }
         renderPoints();
-        if (req == latestPickLabelledPointsReqId) {
-          break;
-        }
-      }
-      pickingLabelledPoints = false;
-    })();
+      })();
+    } else {
+      throw new UnreachableError();
+    }
+  });
+  const initMsg: Valid<typeof vPointLabelsMessageToWorker> = {
+    $type: "init",
+    edge,
+    mapInit: map,
   };
+  worker.postMessage(initMsg);
 
   let raf: ReturnType<typeof requestAnimationFrame> | undefined;
   const renderPoints = () => {
@@ -365,11 +312,11 @@ export const createCanvasPointMap = ({
       const ctx = assertExists(canvas.getContext("2d"));
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       const scale = viewportScale(vp);
-      const lp = labelledPoints.at(Math.floor(vp.zoom));
+      const lp = labelledPoints.get(Math.floor(vp.zoom));
       for (const p of curPoints) {
         const canvasX = scale.ptToPx(p.x - vp.x0Pt);
         const canvasY = scale.ptToPx(p.y - vp.y0Pt);
-        if (lp?.points.get(p.id)?.picked) {
+        if (lp?.has(p.id)) {
           const label = postTitles.get(p.id);
           if (label) {
             ctx.font = LABEL_FONT_STYLE;
@@ -403,7 +350,11 @@ export const createCanvasPointMap = ({
 
       curViewport = newViewport;
       // Remain responsive to user interaction by redrawing the map with the current points at the new pan/zoom, even if these won't be the final points. Don't just look up in the tree immediately, since it may be a different level and the points may not be loaded yet, so the map will suddenly go blank.
-      pickLabelledPoints();
+      const msg: Valid<typeof vPointLabelsMessageToWorker> = {
+        $type: "calculate",
+        viewport: newViewport,
+      };
+      worker.postMessage(msg);
       renderPoints();
 
       // Ensure all requested tiles are fetched.

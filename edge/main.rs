@@ -143,6 +143,28 @@ async fn get_post_title_lengths(
   Ok(out)
 }
 
+async fn get_post_titles(
+  State(ctx): State<Arc<Ctx>>,
+  body: Bytes,
+) -> Result<MsgPack<Vec<String>>, axum::http::StatusCode> {
+  if body.len() % 4 != 0 {
+    return Err(axum::http::StatusCode::BAD_REQUEST);
+  };
+  let data = ctx.data.read();
+  let mut out = Vec::new();
+  for id_raw in body.chunks(4) {
+    let id = u32::from_le_bytes(id_raw.try_into().unwrap());
+    out.push(
+      data
+        .posts
+        .get(&id)
+        .map(|post| post.title.clone())
+        .unwrap_or_default(),
+    );
+  }
+  Ok(MsgPack(out))
+}
+
 #[tokio::main]
 async fn main() {
   set_up_panic_hook();
@@ -207,8 +229,9 @@ async fn main() {
     .route("/map/:map/meta", get(get_map_meta))
     .route("/map/:map/point/:id", get(get_map_point))
     .route("/map/:map/tile/:lod/:tile_id", get(get_map_tile))
-    .route("/post/:id", get(get_post))
     .route("/post-title-lengths", post(get_post_title_lengths))
+    .route("/post-titles", post(get_post_titles))
+    .route("/post/:id", get(get_post))
     .layer(cors)
     .with_state(ctx.clone());
 
