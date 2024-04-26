@@ -51,8 +51,10 @@ struct Map {
 struct Post {
   author: String,
   ts: i64, // UNIX epoch seconds.
-  url: String,
   title: String,
+  url: Option<String>,
+  proto: Option<String>,
+  found_in_archive: Option<bool>,
 }
 
 #[derive(Default, Deserialize)]

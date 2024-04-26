@@ -1,7 +1,6 @@
 from common.data import load_mmap_matrix
 from common.data import load_table
 from common.emb_data import load_emb_table_ids
-import brotli
 import msgpack
 import numpy as np
 
@@ -36,13 +35,17 @@ def load_hnsw_bgem3_umap():
 def load_posts():
     print("Loading posts")
     df = load_table("posts", columns=["id", "author", "ts", "url"]).rename(
-        columns={"author": "author_id"}
+        columns={"author": "author_id", "url": "url_id"}
     )
     df["ts"] = df["ts"].astype("int64")
     df_users = load_table("users").rename(
         columns={"id": "author_id", "username": "author"}
     )
     df = df.merge(df_users, on="author_id", how="inner").drop(columns=["author_id"])
+    df_urls = load_table(
+        "urls", columns=["id", "url", "proto", "found_in_archive"]
+    ).rename(columns={"id": "url_id"})
+    df = df.merge(df_urls, on="url_id", how="left").drop(columns=["url_id"])
     df_titles = load_table("post_titles").rename(columns={"text": "title"})
     df = df.merge(df_titles, on="id", how="inner")
     df = df.set_index("id")
@@ -70,8 +73,6 @@ out = {
     "posts": load_posts(),
 }
 print("Packing")
-raw = msgpack.packb(out)
-print("Compressing")
-with open("/hndr-data/edge.msgpack.br", "wb") as f:
-    f.write(brotli.compress(raw))
+with open("/hndr-data/edge.msgpack", "wb") as f:
+    msgpack.dump(out, f)
 print("All done!")
