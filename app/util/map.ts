@@ -1,6 +1,9 @@
+import { Item } from "@wzlin/crawler-toolkit-hn";
 import Dict from "@xtjs/lib/Dict";
 import assertExists from "@xtjs/lib/assertExists";
+import propertyComparator from "@xtjs/lib/propertyComparator";
 import RBush, { BBox } from "rbush";
+import { fetchItem } from "./item";
 
 export const PX_PER_PT_BASE = 64;
 export const ZOOM_PER_LOD = 3;
@@ -83,39 +86,67 @@ export const calcLod = (lodLevels: number, zoom: number) =>
 
 export const createCanvasPointMap = () => {
   let tilesLoadAbortController: AbortController | undefined;
-  const tilesLoadPromises = new Dict<string, Promise<any>>();
+  const tileLoadPromises = new Dict<string, Promise<any>>();
+  const itemLoadPromises = new Dict<number, Promise<any>>();
+  const items = new Dict<number, Item>();
   const lodTrees = Array<PointTree>(); // One for each LOD level.
   let latestRenderRequestId = -1;
   let canvas: HTMLCanvasElement;
-  let curPoints = Array<Point>();
+  let curPoints = Array<Point>(); // This must always be sorted by y ascending.
+  let raf: ReturnType<typeof requestAnimationFrame> | undefined;
+  let curViewport:
+    | {
+        zoom: number;
+        scoreMin: number;
+        scoreMax: number;
+        x0Pt: number;
+        y0Pt: number;
+      }
+    | undefined;
 
-  const renderPoints = (msg: {
-    zoom: number;
-    scoreMin: number;
-    scoreMax: number;
-    x0Pt: number;
-    y0Pt: number;
-  }) => {
-    const ctx = assertExists(canvas.getContext("2d"));
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    const c = mapCalcs(msg.zoom);
-    for (const p of curPoints) {
-      const MIN_ALPHA = 0.7;
-      const alpha =
-        ((p.score - msg.scoreMin) / (msg.scoreMax - msg.scoreMin + 1)) *
-          (1 - MIN_ALPHA) +
-        MIN_ALPHA;
-      ctx.fillStyle = `rgba(3, 165, 252, ${alpha})`;
-      ctx.beginPath();
-      ctx.arc(
-        c.ptToPx(p.x - msg.x0Pt),
-        c.ptToPx(p.y - msg.y0Pt),
-        3,
-        0,
-        Math.PI * 2,
-      );
-      ctx.fill();
+  const renderPoints = () => {
+    if (raf != undefined) {
+      cancelAnimationFrame(raf);
     }
+    if (!curViewport) {
+      return;
+    }
+    const vp = curViewport;
+    raf = requestAnimationFrame(() => {
+      const ctx = assertExists(canvas.getContext("2d"));
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const c = mapCalcs(vp.zoom);
+      let lastLabelY = -Infinity;
+      const LABEL_FONT_SIZE = 12;
+      const MIN_GAP_BETWEEN_LABELS = LABEL_FONT_SIZE * 2;
+      for (const p of curPoints) {
+        const canvasX = c.ptToPx(p.x - vp.x0Pt);
+        const canvasY = c.ptToPx(p.y - vp.y0Pt);
+        if (canvasY - lastLabelY > MIN_GAP_BETWEEN_LABELS) {
+          // We set this as the last labelled point, even if we don't (not loaded, blank title, etc.), as otherwise the points that are labelled constantly change as items asynchronously load.
+          lastLabelY = canvasY;
+          itemLoadPromises.computeIfAbsent(p.id, async (id) => {
+            items.putIfAbsentOrThrow(id, await fetchItem(id));
+            renderPoints();
+          });
+          const label = items.get(p.id)?.title;
+          if (label) {
+            ctx.font = `${LABEL_FONT_SIZE}px sans-serif`;
+            ctx.fillStyle = "#333";
+            ctx.fillText(label, canvasX, canvasY);
+          }
+        }
+        const MIN_ALPHA = 0.7;
+        const alpha =
+          ((p.score - vp.scoreMin) / (vp.scoreMax - vp.scoreMin + 1)) *
+            (1 - MIN_ALPHA) +
+          MIN_ALPHA;
+        ctx.fillStyle = `rgba(3, 165, 252, ${alpha})`;
+        ctx.beginPath();
+        ctx.arc(canvasX, canvasY, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    });
   };
 
   return {
@@ -126,7 +157,7 @@ export const createCanvasPointMap = () => {
       console.warn("Resetting");
       tilesLoadAbortController?.abort();
       tilesLoadAbortController = new AbortController();
-      tilesLoadPromises.clear();
+      tileLoadPromises.clear();
       lodTrees.splice(0);
       curPoints = [];
       for (let i = 0; i < lodLevels; i++) {
@@ -140,8 +171,8 @@ export const createCanvasPointMap = () => {
       lod: number;
       zoom: number;
 
-      windowWidthPx: number;
-      windowHeightPx: number;
+      viewportWidthPx: number;
+      viewportHeightPx: number;
 
       x0Pt: number;
       x1Pt: number;
@@ -161,8 +192,8 @@ export const createCanvasPointMap = () => {
       const { xMaxPt, xMinPt, yMaxPt, yMinPt } = msg;
 
       // Since this worker thread has control, we can't set the height/width from the JSX attributes, so we must do it here.
-      canvas.width = msg.windowWidthPx;
-      canvas.height = msg.windowHeightPx;
+      canvas.width = msg.viewportWidthPx;
+      canvas.height = msg.viewportHeightPx;
 
       const axisTileCount = 2 ** msg.lod;
       const xRangePt = xMaxPt - xMinPt;
@@ -188,7 +219,14 @@ export const createCanvasPointMap = () => {
       );
 
       // Remain responsive to user interaction by redrawing the map with the current points at the new pan/zoom, even if these won't be the final points. Don't just look up in the tree immediately, since it may be a different level and the points may not be loaded yet, so the map will suddenly go blank.
-      renderPoints(msg);
+      curViewport = {
+        scoreMax: msg.scoreMax,
+        scoreMin: msg.scoreMin,
+        x0Pt: msg.x0Pt,
+        y0Pt: msg.y0Pt,
+        zoom: msg.zoom,
+      };
+      renderPoints();
 
       // Ensure all requested tiles are fetched.
       await Promise.all(
@@ -197,23 +235,13 @@ export const createCanvasPointMap = () => {
             for (let y = tileYMin; y <= tileYMax; y++) {
               const key = `${msg.lod}-${x}-${y}`;
               // We must save the Promise as we still want to await them on subsequent render calls even if they're not the ones to initialize the request. (Otherwise, we will not have awaited on all tiles that need to be loaded, and the map will be partially blank.)
-              yield tilesLoadPromises.computeIfAbsent(key, async () => {
+              yield tileLoadPromises.computeIfAbsent(key, async () => {
                 const points = await fetchTile(
                   tilesLoadAbortController!.signal,
                   msg.edge,
                   msg.lod,
                   x,
                   y,
-                );
-                console.log(
-                  "Fetched LOD",
-                  msg.lod,
-                  "tile",
-                  x,
-                  y,
-                  "with",
-                  points.length,
-                  "points",
                 );
                 lodTrees[msg.lod].load(points);
               });
@@ -226,13 +254,15 @@ export const createCanvasPointMap = () => {
         return;
       }
       // Render the final points.
-      curPoints = lodTrees[msg.lod].search({
-        minX: msg.x0Pt,
-        maxX: msg.x1Pt,
-        minY: msg.y0Pt,
-        maxY: msg.y1Pt,
-      });
-      renderPoints(msg);
+      curPoints = lodTrees[msg.lod]
+        .search({
+          minX: msg.x0Pt,
+          maxX: msg.x1Pt,
+          minY: msg.y0Pt,
+          maxY: msg.y1Pt,
+        })
+        .sort(propertyComparator("y"));
+      renderPoints();
     },
   };
 };

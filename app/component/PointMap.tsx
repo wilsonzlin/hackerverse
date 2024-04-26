@@ -29,8 +29,8 @@ const EDGES = [
 ] as const;
 
 export const PointMap = ({
-  height: wdwHeightPx,
-  width: wdwWidthPx,
+  height: vpHeightPx,
+  width: vpWidthPx,
 }: {
   height: number;
   width: number;
@@ -78,13 +78,13 @@ export const PointMap = ({
     return () => ac.abort();
   }, []);
 
-  const [wdwXPt, setWdwXPt] = useState(0);
-  const [wdwYPt, setWdwYPt] = useState(0);
+  const [vpXPt, setVpXPt] = useState(0);
+  const [vpYPt, setVpYPt] = useState(0);
   const [zoom, setZoom] = useState(0);
   const lod = calcLod(lodLevels, zoom);
   const c = mapCalcs(zoom);
-  const wdwWidthPt = c.pxToPt(wdwWidthPx);
-  const wdwHeightPt = c.pxToPt(wdwHeightPx);
+  const vpWidthPt = c.pxToPt(vpWidthPx);
+  const vpHeightPt = c.pxToPt(vpHeightPx);
 
   const nextRenderReqId = useRef(0);
   const $canvas = useRef<HTMLCanvasElement>(null);
@@ -110,13 +110,13 @@ export const PointMap = ({
       lod,
       zoom,
 
-      windowHeightPx: wdwHeightPx,
-      windowWidthPx: wdwWidthPx,
+      viewportHeightPx: vpHeightPx,
+      viewportWidthPx: vpWidthPx,
 
-      x0Pt: wdwXPt,
-      x1Pt: wdwXPt + wdwWidthPt,
-      y0Pt: wdwYPt,
-      y1Pt: wdwYPt + wdwHeightPt,
+      x0Pt: vpXPt,
+      x1Pt: vpXPt + vpWidthPt,
+      y0Pt: vpYPt,
+      y1Pt: vpYPt + vpHeightPt,
 
       xMaxPt,
       xMinPt,
@@ -125,7 +125,7 @@ export const PointMap = ({
       scoreMin: meta.score_min,
       scoreMax: meta.score_max,
     });
-  }, [meta, lod, wdwXPt, wdwYPt, wdwWidthPt, wdwHeightPt]);
+  }, [meta, lod, vpXPt, vpYPt, vpWidthPt, vpHeightPt]);
 
   return (
     <div className="PointMap">
@@ -144,8 +144,8 @@ export const PointMap = ({
           const dXPt = c.pxToPt(ptrPos.current.clientX - e.clientX);
           const dYPt = c.pxToPt(ptrPos.current.clientY - e.clientY);
           ptrPos.current = e;
-          setWdwXPt(wdwXPt + dXPt);
-          setWdwYPt(wdwYPt + dYPt);
+          setVpXPt(vpXPt + dXPt);
+          setVpYPt(vpYPt + dYPt);
         }}
         onPointerCancel={() => {
           ptrPos.current = undefined;
@@ -177,19 +177,19 @@ export const PointMap = ({
           const relX = e.clientX - rect.left;
           const relY = e.clientY - rect.top;
           // The point position of the cursor at the current zoom level.
-          const curZoomTgtPosX = wdwXPt + c.pxToPt(relX);
-          const curZoomTgtPosY = wdwYPt + c.pxToPt(relY);
+          const curZoomTgtPosX = vpXPt + c.pxToPt(relX);
+          const curZoomTgtPosY = vpYPt + c.pxToPt(relY);
           // How to keep the cursor at the same point after zooming:
-          // - If we set the window top-left to the `curZoomTgtPos*`, we'd see the cursor's position at the top left.
+          // - If we set the viewport's top-left to the `curZoomTgtPos*`, we'd see the cursor's position at the top left.
           // - Therefore, all we need to do is to then shift by the same amount of absolute pixels back at the new zoom level.
-          setWdwXPt(curZoomTgtPosX - nz.pxToPt(relX));
-          setWdwYPt(curZoomTgtPosY - nz.pxToPt(relY));
+          setVpXPt(curZoomTgtPosX - nz.pxToPt(relX));
+          setVpYPt(curZoomTgtPosY - nz.pxToPt(relY));
         }}
       />
 
       <div className="info">
         <p>
-          ({wdwXPt.toFixed(2)}, {wdwYPt.toFixed(2)})
+          ({vpXPt.toFixed(2)}, {vpYPt.toFixed(2)})
         </p>
         <p>LOD: {lod == lodLevels - 1 ? "max" : lod}</p>
         <p>Zoom: {zoom.toFixed(2)}</p>
