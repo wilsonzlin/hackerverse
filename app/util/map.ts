@@ -205,9 +205,12 @@ export const ensureFetchedPostTitleLengths = async (
   }
 };
 
-const LABEL_FONT_SIZE = 12;
-const LABEL_FONT_STYLE = `${LABEL_FONT_SIZE}px sans-serif`;
-const LABEL_MARGIN = 12;
+const POINT_RADIUS = 3;
+
+const LABEL_FONT_SIZE = 13;
+const LABEL_FONT_STYLE = `${LABEL_FONT_SIZE}px InterVariable, sans-serif`;
+const LABEL_POINT_GAP = 4;
+const LABEL_MARGIN = 16;
 
 export const calcLabelBBox = (zoom: number, p: Point) => {
   const scale = viewportScale(zoom);
@@ -308,27 +311,48 @@ export const createCanvasPointMap = ({
       }
       const ctx = assertExists(canvas.getContext("2d"));
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "#fcfcfc";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
       const scale = viewportScale(vp);
       const lp = labelledPoints.get(Math.floor(vp.zoom));
       for (const p of curPoints) {
+        const scoreWeight = Math.max(
+          0,
+          Math.log(p.score - map.scoreMin) / Math.log(map.scoreRange),
+        );
+        const labelled = lp?.has(p.id);
         const canvasX = scale.ptToPx(p.x - vp.x0Pt);
         const canvasY = scale.ptToPx(p.y - vp.y0Pt);
-        if (lp?.has(p.id)) {
-          const label = postTitles.get(p.id);
-          if (label) {
-            ctx.font = LABEL_FONT_STYLE;
-            ctx.fillStyle = "#333";
-            ctx.fillText(label, canvasX, canvasY);
-          }
-        }
-        const MIN_ALPHA = 0.7;
+        const minAlpha = 0.25 * (vp.zoom / map.zoomMax + 1);
         const alpha =
-          ((p.score - map.scoreMin) / map.scoreRange) * (1 - MIN_ALPHA) +
-          MIN_ALPHA;
-        ctx.fillStyle = `rgba(3, 165, 252, ${alpha})`;
+          (scoreWeight * (1 - minAlpha) + minAlpha) *
+          (labelled ? 1 : 0.4 * (vp.zoom / map.zoomMax) + 0.4);
+        ctx.fillStyle = !labelled
+          ? `rgba(120, 120, 120, ${alpha})`
+          : `rgba(3, 165, 252, ${alpha})`;
         ctx.beginPath();
-        ctx.arc(canvasX, canvasY, 3, 0, Math.PI * 2);
+        ctx.arc(canvasX, canvasY, POINT_RADIUS, 0, Math.PI * 2);
         ctx.fill();
+      }
+      // Draw labels over points.
+      for (const p of curPoints) {
+        if (!lp?.has(p.id)) {
+          continue;
+        }
+        const label = postTitles.get(p.id);
+        if (!label) {
+          continue;
+        }
+        const canvasX =
+          scale.ptToPx(p.x - vp.x0Pt) + POINT_RADIUS / 2 + LABEL_POINT_GAP;
+        const canvasY =
+          scale.ptToPx(p.y - vp.y0Pt) + LABEL_FONT_SIZE / 2 - POINT_RADIUS / 2;
+        ctx.font = LABEL_FONT_STYLE;
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 2;
+        ctx.strokeText(label, canvasX, canvasY);
+        ctx.fillStyle = "black";
+        ctx.fillText(label, canvasX, canvasY);
       }
     });
   };

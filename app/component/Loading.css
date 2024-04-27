@@ -1,0 +1,22 @@
+@keyframes Loading {
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.Loading:after {
+  animation: Loading 1.2s linear infinite;
+  border-width: 1em;
+  border-style: solid;
+  border-color: currentColor transparent currentColor transparent;
+  border-radius: 50%;
+  box-sizing: border-box;
+  content: "";
+  display: block;
+  height: 100%;
+  width: 100%;
+}
