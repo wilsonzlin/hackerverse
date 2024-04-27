@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from FlagEmbedding import BGEM3FlagModel
+from typing import Dict
 import base64
 import msgpack
 import numpy as np
@@ -24,6 +25,10 @@ model = BGEM3FlagModel("BAAI/bge-m3", use_fp16=False, normalize_embeddings=True)
 print("Model loaded")
 
 
+def convert_dict(d: Dict[str, np.ndarray]):
+    return {k: v.item() for k, v in d.items()}
+
+
 @dataclass
 class Req:
     id: int
@@ -42,7 +47,11 @@ def on_message(ws, raw):
     emb_sparse = out["lexical_weights"]
     ws.send(
         msgpack.packb(
-            {"id": msg.id, "emb_dense": emb_dense.tobytes(), "emb_sparse": emb_sparse}
+            {
+                "id": msg.id,
+                "emb_dense": emb_dense.tobytes(),
+                "emb_sparse": convert_dict(emb_sparse),
+            }
         )
     )
 
@@ -62,9 +71,11 @@ wsapp = websocket.WebSocketApp(
     on_open=on_open,
 )
 print("Started listener")
+with open("/tmp/cert.pem", "wb") as f:
+    f.write(base64.standard_b64decode(env("API_EMBED_NODE_CERT_B64")))
 wsapp.run_forever(
     reconnect=30,
     sslopt={
-        "ca_certs": base64.standard_b64decode(env("API_EMBED_NODE_CERT_B64")),
+        "ca_certs": "/tmp/cert.pem",
     },
 )
