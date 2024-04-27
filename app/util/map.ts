@@ -209,20 +209,17 @@ const LABEL_FONT_SIZE = 12;
 const LABEL_FONT_STYLE = `${LABEL_FONT_SIZE}px sans-serif`;
 const LABEL_MARGIN = 12;
 
-export const calcLabelBBox = (zoom: number, vp: ViewportState, p: Point) => {
+export const calcLabelBBox = (zoom: number, p: Point) => {
   const scale = viewportScale(zoom);
-  const canvasX = scale.ptToPx(p.x - vp.x0Pt);
-  const canvasY = scale.ptToPx(p.y - vp.y0Pt);
-  // This must exist because we've already computed the previous zoom level.
+  const canvasX = scale.ptToPx(p.x);
+  const canvasY = scale.ptToPx(p.y);
   const titleLen = assertExists(postTitleLengths[p.id]);
   const box: BBox = {
-    minX: scale.pxToPt(canvasX - LABEL_MARGIN),
+    minX: canvasX - LABEL_MARGIN,
     // Guessed approximate width based on title length.
-    maxX: scale.pxToPt(
-      canvasX + titleLen * (LABEL_FONT_SIZE / 1.6) + LABEL_MARGIN,
-    ),
-    minY: scale.pxToPt(canvasY - LABEL_MARGIN),
-    maxY: scale.pxToPt(canvasY + LABEL_FONT_SIZE + LABEL_MARGIN),
+    maxX: canvasX + titleLen * (LABEL_FONT_SIZE / 1.6) + LABEL_MARGIN,
+    minY: canvasY - LABEL_MARGIN,
+    maxY: canvasY + LABEL_FONT_SIZE + LABEL_MARGIN,
   };
   return box;
 };

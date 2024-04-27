@@ -34,6 +34,15 @@ const createPointLabelsPicker = ({
     skipped: new Set<number>(), // Not picked if collided.
     tree: new RBush<BBox>(),
   }));
+  const sendUpdate = (zoom: number) => {
+    const z = Math.floor(zoom);
+    const msg: Valid<typeof vPointLabelsMessageToMain> = {
+      $type: "update",
+      zoom: z,
+      picked: labelledPoints[z].picked,
+    };
+    self.postMessage(msg);
+  };
   let latestPickLabelledPointsReqId = 0;
   let pickingLabelledPoints = false;
   const pickLabelledPoints = () => {
@@ -52,7 +61,7 @@ const createPointLabelsPicker = ({
             ...vp,
             zoom: z,
           });
-          const lp = labelledPoints[z];
+          const lp = assertExists(labelledPoints[z]);
           const points = await Promise.all(
             (function* () {
               for (let x = tileXMin; x <= tileXMax; x++) {
@@ -79,14 +88,14 @@ const createPointLabelsPicker = ({
             if (lp.picked.has(p.id) || lp.skipped.has(p.id)) {
               continue;
             }
-            const box = calcLabelBBox(z, vp, p);
+            const box = calcLabelBBox(z, p);
             const picked = !lp.tree.collides(box);
             // Propagate to all further zoom levels. This is simpler to keep in sync and get correct than trying to pull from previous zoom levels.
             for (let zn = z; zn < labelledPoints.length; zn++) {
               const lpn = labelledPoints[zn];
               if (picked) {
                 // We can't just cache and reuse the previous zoom's BBox values for points, because each zoom has different margin pt. sizes.
-                lpn.tree.insert(calcLabelBBox(zn, vp, p));
+                lpn.tree.insert(calcLabelBBox(zn, p));
                 lpn.picked.add(p.id);
               } else {
                 // Avoid recalculating over and over again.
@@ -96,13 +105,7 @@ const createPointLabelsPicker = ({
           }
         }
         if (req == latestPickLabelledPointsReqId) {
-          const z = Math.floor(vp.zoom);
-          const msg: Valid<typeof vPointLabelsMessageToMain> = {
-            $type: "update",
-            zoom: z,
-            picked: labelledPoints[z].picked,
-          };
-          self.postMessage(msg);
+          sendUpdate(vp.zoom);
           break;
         }
       }
@@ -113,6 +116,8 @@ const createPointLabelsPicker = ({
   return {
     calculate: (vp: ViewportState) => {
       curViewport = vp;
+      // Send the current state so that the canvas can be updated (and feels responsive) while we're calculating, in case the points have changed due to propagation from a previous zoom level.
+      sendUpdate(vp.zoom);
       pickLabelledPoints();
     },
   };
