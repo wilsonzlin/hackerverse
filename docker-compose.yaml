@@ -33,6 +33,40 @@ services:
       QUEUED_API_KEY: ${QUEUED_API_KEY}
       STATSD_HOST: telegraf
 
+  api-embed-node:
+    image: wilsonzlin/hndr-api-embed-node
+    init: true
+    build:
+      context: .
+      dockerfile: Dockerfile.runpod-base
+      args:
+        MAIN: api-embed-node
+    environment:
+      API_EMBED_NODE_CERT_B64: ${API_EMBED_NODE_CERT_B64}
+      API_EMBED_NODE_TOKEN: ${API_EMBED_NODE_TOKEN}
+      INFLUXDB_BUCKET: ${INFLUXDB_BUCKET}
+      INFLUXDB_ENDPOINT: ${INFLUXDB_ENDPOINT}
+      INFLUXDB_ORGANIZATION: ${INFLUXDB_ORGANIZATION}
+      INFLUXDB_TOKEN: ${INFLUXDB_TOKEN}
+      LOKI_BASICAUTH_PASSWORD: ${LOKI_BASICAUTH_PASSWORD}
+      LOKI_BASICAUTH_USER: ${LOKI_BASICAUTH_USER}
+      LOKI_ENDPOINT: ${LOKI_ENDPOINT}
+
+  api-embed-node-broker:
+    network_mode: host
+    image: wilsonzlin/hndr-api-embed-node-broker
+    init: true
+    build:
+      context: .
+      dockerfile: Dockerfile.nodejs-base
+      args:
+        MAIN: api-embed-node-broker
+    environment:
+      API_EMBED_NODE_CERT_B64: ${API_EMBED_NODE_CERT_B64}
+      API_EMBED_NODE_KEY_B64: ${API_EMBED_NODE_KEY_B64}
+      API_EMBED_NODE_TOKEN: ${API_EMBED_NODE_TOKEN}
+      STATSD_HOST: telegraf
+
   build-edge-data:
     image: wilsonzlin/hndr-build-edge-data
     init: true

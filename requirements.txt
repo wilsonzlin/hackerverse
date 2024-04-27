@@ -17,3 +17,4 @@ service-toolkit
 statsd
 umap-learn
 uvicorn
+websocket-client

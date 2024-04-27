@@ -34,5 +34,9 @@ service ssh start
 # Wait for log collector to start, as it won't export existing log entries before it starts.
 sleep 5
 
-# We cannot use ts-node as it doesn't support node:worker.
-node /app/$MAIN/main.js |& tee /app.log
+if [[ -f /app/$MAIN/main.py ]]; then
+  python3 /app/$MAIN/main.py |& tee /app.log
+else
+  # We cannot use ts-node as it doesn't support node:worker.
+  node /app/$MAIN/main.js |& tee /app.log
+fi

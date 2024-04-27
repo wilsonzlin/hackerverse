@@ -1,21 +1,17 @@
 from common.data import load_table
 from fastapi import FastAPI
-from FlagEmbedding import BGEM3FlagModel
 from sentence_transformers import SentenceTransformer
 import hnswlib
+import msgpack
 import numpy as np
 import pandas as pd
+import requests
 import time
 
 print("Loading model")
 model_jinav2small = SentenceTransformer(
     "jinaai/jina-embeddings-v2-small-en",
     trust_remote_code=True,
-)
-model_bgem3 = BGEM3FlagModel(
-    "BAAI/bge-m3",
-    use_fp16=False,
-    normalize_embeddings=True,
 )
 
 print("Loading tables")
@@ -69,7 +65,10 @@ def search(
     else:
         raise ValueError("Invalid dataset")
     if dataset == "posts_bgem3":
-        emb = model_bgem3.encode([query])["dense_vecs"]
+        r = requests.post("http://127.0.0.1:6500", data=query.encode("utf-8"))
+        res = msgpack.unpackb(r.content)
+        emb = np.frombuffer(res["embeddingDense"], dtype=np.float32)
+        assert emb.shape == (1024,)
     else:
         emb = model_jinav2small.encode(
             [query], convert_to_numpy=True, normalize_embeddings=True
