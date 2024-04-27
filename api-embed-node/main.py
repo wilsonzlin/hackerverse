@@ -52,7 +52,8 @@ def on_message(ws, raw):
                 "emb_dense": emb_dense.tobytes(),
                 "emb_sparse": convert_dict(emb_sparse),
             }
-        )
+        ),
+        opcode=websocket.ABNF.OPCODE_BINARY,
     )
 
 
