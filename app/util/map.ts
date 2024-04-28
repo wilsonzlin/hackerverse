@@ -146,12 +146,14 @@ export const parseTileData = (raw: ArrayBuffer) => {
   i += 4 * count;
   const scores = new Int16Array(raw, i, count);
   i += 2 * count;
-  return Array.from({ length: count }, (_, j) => ({
+  const res = Array.from({ length: count }, (_, j) => ({
     id: ids[j],
     x: xs[j],
     y: ys[j],
     score: scores[j],
   }));
+  assertState(i === raw.byteLength);
+  return res;
 };
 
 export const cachedFetchTile = async (
@@ -162,7 +164,7 @@ export const cachedFetchTile = async (
   y: number,
 ) => {
   const res = await cachedFetch(
-    `https://${edge}.edge-hndr.wilsonl.in/map/hnsw/tile/${lod}/${x}-${y}`,
+    `https://${edge}.edge-hndr.wilsonl.in/map/hnsw-bgem3/tile/${lod}/${x}-${y}`,
     signal,
     // Not all tiles exist (i.e. no points exist).
     "except-404",
@@ -246,6 +248,7 @@ export const createCanvasPointMap = ({
   let latestRenderRequestId = 0;
   let curPoints = Array<Point>(); // This must always be sorted by score descending.
   let curViewport: ViewportState | undefined;
+  let heatmap: ImageBitmap | undefined;
 
   // Zoom (integer) level => point IDs.
   const labelledPoints = new Dict<number, Set<number>>();
@@ -309,11 +312,39 @@ export const createCanvasPointMap = ({
       if (!vp) {
         return;
       }
+      const scale = viewportScale(vp);
+      const scaled = scale.scaled(vp);
       const ctx = assertExists(canvas.getContext("2d"));
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = "#fcfcfc";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-      const scale = viewportScale(vp);
+      if (heatmap) {
+        let dx = 0;
+        let dy = 0;
+        let sx = (heatmap.width * (vp.x0Pt - map.xMinPt)) / map.xRangePt;
+        let sy = (heatmap.height * (vp.y0Pt - map.yMinPt)) / map.yRangePt;
+        let sWidth = (heatmap.width * (scaled.x1Pt - vp.x0Pt)) / map.xRangePt;
+        let sHeight = (heatmap.height * (scaled.y1Pt - vp.y0Pt)) / map.yRangePt;
+        if (sx < 0) {
+          dx = -sx;
+          sx = 0;
+        }
+        if (sy < 0) {
+          dy = -sy;
+          sy = 0;
+        }
+        ctx.drawImage(
+          heatmap,
+          sx,
+          sy,
+          sWidth,
+          sHeight,
+          dx,
+          dy,
+          canvas.width,
+          canvas.height,
+        );
+      }
       const lp = labelledPoints.get(Math.floor(vp.zoom));
       for (const p of curPoints) {
         const scoreWeight = Math.max(
@@ -360,6 +391,10 @@ export const createCanvasPointMap = ({
   return {
     destroy: () => {
       abortController.abort();
+    },
+    setHeatmap: (hm: ImageBitmap | undefined) => {
+      heatmap = hm;
+      renderPoints();
     },
     // Render the points at LOD `lod` from (ptX0, ptY0) to (ptX1, ptY1) (inclusive) on the canvas.
     render: async (newViewport: ViewportState) => {

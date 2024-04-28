@@ -10,6 +10,7 @@ from fastapi import HTTPException
 from fastapi import Response
 from fastapi.middleware.cors import CORSMiddleware
 from FlagEmbedding import BGEM3FlagModel
+from io import BytesIO
 from PIL import Image
 from pydantic import BaseModel
 from scipy.ndimage import gaussian_filter
@@ -43,6 +44,10 @@ class Dataset:
     table: pd.DataFrame
     # We store this separately from the DataFrame because we need it to be a continguous matrix, and .to_numpy() just creates a NumPy array of NumPy array objects.
     emb_mat: np.ndarray
+    x_min: float
+    x_max: float
+    y_min: float
+    y_max: float
     index: hnswlib.Index
 
 
@@ -83,69 +88,74 @@ def load_umap(ids: npt.NDArray[np.uint32], name: str):
 def load_jinav2small_umap():
     df_posts = load_post_embs_table()
     df_comments = load_comment_embs_table()
-    mat_ids = merge_posts_and_comments(posts=df_posts, comments=df_comments)[
-        "id"
-    ].to_numpy()
+    df = merge_posts_and_comments(posts=df_posts, comments=df_comments)
+    mat_ids = df["id"].to_numpy()
     return load_umap(mat_ids, "hnsw_n50_d0.25")
 
 
 def load_posts_data():
-    df_posts = load_table("posts", columns=["id", "score", "ts"])
-    df_posts = df_posts.merge(load_post_embs_table(), on="id", how="inner")
-    df_posts = df_posts.merge(load_jinav2small_umap(), on="id", how="inner")
-    df_posts = normalize_dataset(df_posts)
-    print("Posts:", len(df_posts))
+    df = load_table("posts", columns=["id", "score", "ts"])
+    df = df.merge(load_post_embs_table(), on="id", how="inner")
+    df = df.merge(load_jinav2small_umap(), on="id", how="inner")
+    df = normalize_dataset(df)
+    print("Posts:", len(df))
     return Dataset(
-        model=model_jinav2small,
-        table=df_posts,
-        emb_mat=np.vstack(df_posts.pop("emb")),
+        emb_mat=np.vstack(df.pop("emb")),
         index=load_hnsw_index("posts", 512),
+        model=model_jinav2small,
+        table=df,
+        x_max=df["x"].max(),
+        x_min=df["x"].min(),
+        y_max=df["y"].max(),
+        y_min=df["y"].min(),
     )
 
 
 def load_posts_bgem3_data():
-    df_posts_bgem3 = load_table("posts", columns=["id", "score", "ts"])
-    df_posts_bgem3 = df_posts_bgem3.merge(
-        load_post_embs_bgem3_table(), on="id", how="inner"
-    )
-    df_posts_bgem3 = df_posts_bgem3.merge(
-        load_umap(df_posts_bgem3["id"].to_numpy(), "hnsw-bgem3_n300_d0.25"),
-        on="id",
-        how="inner",
-    )
-    df_posts_bgem3 = normalize_dataset(df_posts_bgem3)
-    print("Posts bgem3:", len(df_posts_bgem3))
+    df = load_table("posts", columns=["id", "score", "ts"])
+    df_embs = load_post_embs_bgem3_table()
+    df = df.merge(df_embs, on="id", how="inner")
+    df_umap = load_umap(df_embs["id"].to_numpy(), "hnsw-bgem3_n300_d0.25")
+    df = df.merge(df_umap, on="id", how="inner")
+    df = normalize_dataset(df)
+    print("Posts bgem3:", len(df))
     return Dataset(
-        model=model_bgem3,
-        table=df_posts_bgem3,
-        emb_mat=np.vstack(df_posts_bgem3.pop("emb")),
+        emb_mat=np.vstack(df.pop("emb")),
         index=load_hnsw_index("posts_bgem3", 1024),
+        model=model_bgem3,
+        table=df,
+        x_max=df["x"].max(),
+        x_min=df["x"].min(),
+        y_max=df["y"].max(),
+        y_min=df["y"].min(),
     )
 
 
 def load_comments_data():
-    df_comments = load_table("comments", columns=["id", "score", "ts"])
-    df_comments = df_comments.merge(load_comment_embs_table(), on="id", how="inner")
-    df_comments = df_comments.merge(load_jinav2small_umap(), on="id", how="inner")
-    df_comments = df_comments.merge(
-        load_table("comment_sentiments"), on="id", how="inner"
-    )
-    df_comments["sentiment_weight"] = np.where(
-        df_comments["negative"] > df_comments[["neutral", "positive"]].max(axis=1),
-        -df_comments["negative"],
+    df = load_table("comments", columns=["id", "score", "ts"])
+    df = df.merge(load_comment_embs_table(), on="id", how="inner")
+    df = df.merge(load_jinav2small_umap(), on="id", how="inner")
+    df = df.merge(load_table("comment_sentiments"), on="id", how="inner")
+    df["sentiment_weight"] = np.where(
+        df["negative"] > df[["neutral", "positive"]].max(axis=1),
+        -df["negative"],
         np.where(
-            df_comments["neutral"] > df_comments[["positive"]].max(axis=1),
+            df["neutral"] > df[["positive"]].max(axis=1),
             0,
-            df_comments["positive"],
+            df["positive"],
         ),
     )
-    df_comments = normalize_dataset(df_comments)
-    print("Comments:", len(df_comments))
+    df = normalize_dataset(df)
+    print("Comments:", len(df))
     return Dataset(
-        model=model_jinav2small,
-        table=df_comments,
-        emb_mat=np.vstack(df_comments.pop("emb")),
+        emb_mat=np.vstack(df.pop("emb")),
         index=load_hnsw_index("comments", 512),
+        model=model_jinav2small,
+        table=df,
+        x_max=df["x"].max(),
+        x_min=df["x"].min(),
+        y_max=df["y"].max(),
+        y_min=df["y"].min(),
     )
 
 
@@ -192,29 +202,32 @@ class Clip(BaseModel):
 
 
 class HeatmapOutput(BaseModel):
-    width: int  # Max 1024.
-    height: int  # Max 1024.
+    density: float
     color: Tuple[int, int, int]
     alpha_min: float = 0.0
     alpha_max: float = 1.0
-    sigma: int = 1  # Max 4.
+    sigma: int = 1
     upscale: int = 1  # Max 4.
 
-    def calculate(self, df: pd.DataFrame):
-        xmin, xmax = df["x"].min(), df["x"].max()
-        x_range = xmax - xmin
-        ymin, ymax = df["y"].min(), df["y"].max()
-        y_range = ymax - ymin
+    def calculate(self, d: Dataset, df: pd.DataFrame):
+        # Make sure to use the range of the whole dataset, not just this subset.
+        x_range = d.x_max - d.x_min
+        y_range = d.y_max - d.y_min
 
-        scale_x = self.width / x_range
-        scale_y = self.height / y_range
+        grid_width = int(x_range * self.density)
+        grid_height = int(y_range * self.density)
+
         df = df.assign(
-            grid_x=((df["x"] - xmin) * scale_x).clip(upper=self.width - 1).astype(int),
+            grid_x=((df["x"] - d.x_min) * self.density)
+            .clip(upper=grid_width - 1)
+            .astype(int),
             # Images are stored top-to-bottom, so we need to flip the y-axis
-            grid_y=((ymax - df["y"]) * scale_y).clip(upper=self.height - 1).astype(int),
+            grid_y=((d.y_max - df["y"]) * self.density)
+            .clip(upper=grid_height - 1)
+            .astype(int),
         )
 
-        alpha_grid = np.zeros((self.height, self.width), dtype=np.float32)
+        alpha_grid = np.zeros((grid_height, grid_width), dtype=np.float32)
         alpha_grid[df["grid_y"], df["grid_x"]] = df["final_score"]
         alpha_grid = alpha_grid.repeat(self.upscale, axis=0).repeat(
             self.upscale, axis=1
@@ -223,25 +236,28 @@ class HeatmapOutput(BaseModel):
         blur = blur * (self.alpha_max - self.alpha_min) + self.alpha_min
 
         img = np.full(
-            (self.height * self.upscale, self.width * self.upscale, 4),
+            (grid_height * self.upscale, grid_width * self.upscale, 4),
             (*self.color, 0),
             dtype=np.uint8,
         )
         img[:, :, 3] = (blur * 255).astype(np.uint8)
 
-        webp = Image.fromarray(img, "RGBA").tobytes("webp")
+        webp_out = BytesIO()
+        Image.fromarray(img, "RGBA").save(webp_out, format="webp")
+        webp = webp_out.getvalue()
         return struct.pack("<I", len(webp)) + webp
 
 
 class ItemsOutput(BaseModel):
-    order_by: str = "id"
+    order_by: str = "final_score"
     order_asc: bool = False
     limit: Optional[int] = None
 
-    def calculate(self, df: pd.DataFrame):
+    def calculate(self, d: Dataset, df: pd.DataFrame):
         df = df.sort_values(self.order_by, ascending=self.order_asc)
         if self.limit is not None:
             df = df[: self.limit]
+        df["final_score"] = df["final_score"].astype("float32")
         return pack_rows(df, ["id", "final_score"])
 
 
@@ -254,7 +270,7 @@ class GroupByOutput(BaseModel):
     # mean, min, max, sum, count
     group_final_score_agg: str = "sum"
 
-    def calculate(self, df: pd.DataFrame):
+    def calculate(self, d: Dataset, df: pd.DataFrame):
         df = df.assign(
             group=(df[self.group_by] // (self.group_bucket or 1.0)).astype("int32")
         )
@@ -262,6 +278,7 @@ class GroupByOutput(BaseModel):
             {"final_score": self.group_final_score_agg}
         )
         df = df[df["final_score"] > 0.0]
+        df["final_score"] = df["final_score"].astype("float32")
         df = df.sort_values("group", ascending=True)
         return pack_rows(df, ["group", "final_score"])
 
@@ -272,13 +289,13 @@ class Output(BaseModel):
     heatmap: Optional[HeatmapOutput] = None
     items: Optional[ItemsOutput] = None
 
-    def calculate(self, df: pd.DataFrame):
+    def calculate(self, d: Dataset, df: pd.DataFrame):
         if self.group_by is not None:
-            return self.group_by.calculate(df)
+            return self.group_by.calculate(d, df)
         if self.heatmap is not None:
-            return self.heatmap.calculate(df)
+            return self.heatmap.calculate(d, df)
         if self.items is not None:
-            return self.items.calculate(df)
+            return self.items.calculate(d, df)
         assert False
 
 
@@ -383,5 +400,5 @@ def query(input: QueryInput):
 
     out = b""
     for o in input.outputs:
-        out += o.calculate(df)
+        out += o.calculate(d, df)
     return Response(out)

@@ -79,13 +79,12 @@ const apiCall = async (
         }
       | {
           heatmap: {
-            width: number;
-            height: number;
+            density: number;
             color: [number, number, number];
-            alpha_min: number;
-            alpha_max: number;
-            sigma: number;
-            upscale: number;
+            alpha_min?: number;
+            alpha_max?: number;
+            sigma?: number;
+            upscale?: number;
           };
         }
       | {
@@ -112,7 +111,7 @@ const apiCall = async (
   const payload = await res.arrayBuffer();
   const dv = new DataView(payload);
   let i = 0;
-  return req.outputs.map((out) => {
+  const out = req.outputs.map((out) => {
     if ("group_by" in out || "items" in out) {
       const count = dv.getUint32(i, true);
       i += 4;
@@ -130,6 +129,8 @@ const apiCall = async (
     }
     throw new UnreachableError();
   });
+  assertState(i === payload.byteLength);
+  return out;
 };
 type ApiResponse = Awaited<ReturnType<typeof apiCall>>;
 
@@ -156,14 +157,19 @@ export const App = () => {
           apiCall(signal, {
             dataset: "posts_bgem3",
             queries: [query.query],
-            sim_scale: { min: 0, max: 1 },
+            sim_scale: { min: 0.55, max: 0.75 },
             ts_weight_decay: query.decayTimestamp,
             outputs: [
               {
                 items: {
-                  order_by: "final_score",
-                  order_asc: false,
                   limit: 10,
+                },
+              },
+              {
+                heatmap: {
+                  density: 100, // TODO Dynamic based on viewport size.
+                  color: [66, 207, 115],
+                  upscale: 1,
                 },
               },
             ],
@@ -185,6 +191,22 @@ export const App = () => {
       ]),
     [queryReq.data],
   );
+  const [heatmap, setHeatmap] = useState<ImageBitmap>();
+
+  useEffect(() => {
+    if (!queryReq.data) {
+      setHeatmap(undefined);
+      return;
+    }
+    const blob = assertInstanceOf(queryReq.data[1], ApiHeatmapOutput).blob();
+    const ac = new AbortController();
+    (async () => {
+      const heatmap = await createImageBitmap(blob);
+      ac.signal.throwIfAborted();
+      setHeatmap(heatmap);
+    })();
+    return () => ac.abort();
+  }, [queryReq.data]);
 
   const [items, setItems] = useState<Record<number, Item>>({});
   useEffect(() => {
@@ -203,7 +225,11 @@ export const App = () => {
 
   return (
     <div ref={setRootElem} className="App">
-      <PointMap height={rootDim?.height ?? 0} width={rootDim?.width ?? 0} />
+      <PointMap
+        heatmap={heatmap}
+        height={rootDim?.height ?? 0}
+        width={rootDim?.width ?? 0}
+      />
 
       <form
         ref={$form}
@@ -254,7 +280,7 @@ export const App = () => {
             <input
               name="w_sim"
               type="number"
-              defaultValue={0.4}
+              defaultValue={0.8}
               step={0.00001}
             />
           </label>
@@ -265,7 +291,7 @@ export const App = () => {
             <input
               name="w_score"
               type="number"
-              defaultValue={0.4}
+              defaultValue={0.1}
               step={0.00001}
             />
           </label>
@@ -276,7 +302,7 @@ export const App = () => {
             <input
               name="w_ts"
               type="number"
-              defaultValue={0.2}
+              defaultValue={0.1}
               step={0.00001}
             />
           </label>

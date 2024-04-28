@@ -31,14 +31,17 @@ const EDGES = [
 ] as const;
 
 export const PointMap = ({
+  heatmap,
   height: vpHeightPx,
   width: vpWidthPx,
 }: {
+  heatmap: ImageBitmap | undefined;
   height: number;
   width: number;
 }) => {
   const $canvas = useRef<HTMLCanvasElement>(null);
   const [map, setMap] = useState<ReturnType<typeof createCanvasPointMap>>();
+  useEffect(() => map?.setHeatmap(heatmap), [map, heatmap]);
   const [meta, setMeta] = useState<MapState>();
   useEffect(() => {
     const ac = new AbortController();
@@ -59,7 +62,7 @@ export const PointMap = ({
 
     const fetchMeta = async () => {
       const res = await fetch(
-        `https://us-ashburn-1.edge-hndr.wilsonl.in/map/hnsw/meta`,
+        `https://us-ashburn-1.edge-hndr.wilsonl.in/map/hnsw-bgem3/meta`,
         { signal: ac.signal },
       );
       const raw = await res.arrayBuffer();
