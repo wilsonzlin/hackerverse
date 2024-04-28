@@ -26,23 +26,45 @@ def merge_posts_and_comments(*, posts: T, comments: T) -> T:
     return pd.concat([posts, comments], ignore_index=True)
 
 
+def load_count(pfx: str):
+    with open(f"/hndr-data/{pfx}_count.txt") as f:
+        return int(f.read())
+
+
+def _load_embs_table(pfx: str, dim: int):
+    count = load_count(pfx)
+    mat_ids = load_mmap_matrix(f"{pfx}_ids", (count,), np.uint32)
+    mat_embs = load_mmap_matrix(f"{pfx}_data", (count, dim), np.float32)
+    return pd.DataFrame(
+        {
+            "id": mat_ids,
+            # We can't pass the (N, dim) matrix to DataFrame directly, it'll raise:
+            # > ValueError: Per-column arrays must each be 1-dimensional
+            "emb": [mat_embs[i] for i in range(count)],
+        }
+    )
+
+
+def load_post_embs_table():
+    return _load_embs_table("mat_post_embs", 512)
+
+
+def load_post_embs_bgem3_table():
+    return _load_embs_table("mat_post_embs_bgem3_dense", 1024)
+
+
+def load_comment_embs_table():
+    return _load_embs_table("mat_comment_embs", 512)
+
+
 # Load data built by the build-embs service.
 def load_embs():
-    with open("/hndr-data/embs_count.txt") as f:
-        count = int(f.read())
+    count = load_count("embs")
     return load_mmap_matrix("embs", (count, 512), np.float32)
 
 
-def load_embs_bgem3():
-    pfx = "mat_post_embs_bgem3_dense"
-    with open(f"/hndr-data/{pfx}_count.txt") as f:
-        count = int(f.read())
-    return load_mmap_matrix(f"{pfx}_data", (count, 1024), np.float32)
-
-
 def load_embs_pca():
-    with open("/hndr-data/embs_count.txt") as f:
-        count = int(f.read())
+    count = load_count("embs")
     return load_mmap_matrix("pca_emb", (count, PCA_COMPONENTS), np.float32)
 
 

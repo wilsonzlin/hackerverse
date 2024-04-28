@@ -21,17 +21,19 @@ services:
     init: true
     build:
       context: .
-      dockerfile: Dockerfile.nodejs-base
+      dockerfile: Dockerfile.uvicorn-base
       args:
         MAIN: api
     environment:
-      API_SSL_CA_BASE64: ${API_SSL_CA_BASE64}
-      API_SSL_CERT_BASE64: ${API_SSL_CERT_BASE64}
-      API_SSL_KEY_BASE64: ${API_SSL_KEY_BASE64}
       DB_RPC_API_KEY: ${DB_RPC_API_KEY}
       PORT: 7000
       QUEUED_API_KEY: ${QUEUED_API_KEY}
+      SSL_CA_BASE64: ${API_SSL_CA_BASE64}
+      SSL_CERT_BASE64: ${API_SSL_CERT_BASE64}
+      SSL_KEY_BASE64: ${API_SSL_KEY_BASE64}
       STATSD_HOST: telegraf
+    volumes:
+      - "${DOCKER_VOLUME_DIR}:/hndr-data"
 
   api-embed-node:
     image: wilsonzlin/hndr-api-embed-node
@@ -257,20 +259,6 @@ services:
     volumes:
       - "${DOCKER_VOLUME_DIR}:/hndr-data"
 
-  hnsw-server:
-    network_mode: host
-    image: wilsonzlin/hndr-hnsw-server
-    init: true
-    build:
-      context: .
-      dockerfile: Dockerfile.uvicorn-base
-      args:
-        MAIN: hnsw-server
-    environment:
-      PORT: 7001
-    volumes:
-      - "${DOCKER_VOLUME_DIR}:/hndr-data"
-
   pca:
     image: wilsonzlin/hndr-pca
     init: true
@@ -279,20 +267,6 @@ services:
       dockerfile: Dockerfile.python-base
       args:
         MAIN: pca
-    volumes:
-      - "${DOCKER_VOLUME_DIR}:/hndr-data"
-
-  semantic-analysis-server:
-    network_mode: host
-    image: wilsonzlin/hndr-semantic-analysis-server
-    init: true
-    build:
-      context: .
-      dockerfile: Dockerfile.uvicorn-base
-      args:
-        MAIN: semantic-analysis-server
-    environment:
-      PORT: 7002
     volumes:
       - "${DOCKER_VOLUME_DIR}:/hndr-data"
 

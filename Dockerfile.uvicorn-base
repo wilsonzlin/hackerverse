@@ -18,4 +18,22 @@ COPY $MAIN $MAIN
 WORKDIR /app/$MAIN
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
-CMD uvicorn main:app --host 0.0.0.0 --log-level warning --port $PORT
+RUN cat <<'EOD' >/docker.entrypoint.sh
+set -Eeuo pipefail
+
+extra_args=""
+if [[ -v SSL_CERT_BASE64 ]]; then
+  echo $SSL_CERT_BASE64 | base64 -d > /ssl.cert.pem
+  extra_args="$extra_args --ssl-certfile /ssl.cert.pem"
+fi
+if [[ -v SSL_KEY_BASE64 ]]; then
+  echo $SSL_KEY_BASE64 | base64 -d > /ssl.key.pem
+  extra_args="$extra_args --ssl-keyfile /ssl.key.pem"
+fi
+if [[ -v SSL_CA_BASE64 ]]; then
+  echo $SSL_CA_BASE64 | base64 -d > /ssl.ca.pem
+  extra_args="$extra_args --ssl-ca-certs /ssl.ca.pem --ssl-cert-reqs 1"
+fi
+uvicorn main:app --host 0.0.0.0 --log-level warning --port $PORT $extra_args
+EOD
+CMD bash /docker.entrypoint.sh
