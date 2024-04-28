@@ -26,6 +26,7 @@ services:
         MAIN: api
     environment:
       DB_RPC_API_KEY: ${DB_RPC_API_KEY}
+      HNDR_API_DATASETS: ${HNDR_API_DATASETS}
       PORT: 7000
       QUEUED_API_KEY: ${QUEUED_API_KEY}
       SSL_CA_BASE64: ${API_SSL_CA_BASE64}
