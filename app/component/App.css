@@ -70,6 +70,10 @@
       padding: 1rem;
     }
 
+    > .err {
+      color: red;
+    }
+
     > .result {
       h1 {
         font-size: 1.25rem;

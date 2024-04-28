@@ -7,6 +7,7 @@ from common.emb_data import merge_posts_and_comments
 from dataclasses import dataclass
 from fastapi import FastAPI
 from fastapi import HTTPException
+from fastapi import Response
 from fastapi.middleware.cors import CORSMiddleware
 from FlagEmbedding import BGEM3FlagModel
 from PIL import Image
@@ -227,7 +228,9 @@ class HeatmapOutput(BaseModel):
             dtype=np.uint8,
         )
         img[:, :, 3] = (blur * 255).astype(np.uint8)
-        return Image.fromarray(img, "RGBA").tobytes("webp")
+
+        webp = Image.fromarray(img, "RGBA").tobytes("webp")
+        return struct.pack("<I", len(webp)) + webp
 
 
 class ItemsOutput(BaseModel):
@@ -245,15 +248,15 @@ class ItemsOutput(BaseModel):
 # To filter groups, filter the original column that is grouped by.
 class GroupByOutput(BaseModel):
     # This will replace the ID column, which will instead represent the group.
-    group_by: Optional[str] = None
-    # Each item belongs into the bucket `item[group_by] // group_bucket`. Defaults to 1.0.
-    group_bucket: Optional[float] = None
+    group_by: str
+    # Each item belongs into the bucket `item[group_by] // group_bucket`.
+    group_bucket: float = 1.0
     # mean, min, max, sum, count
     group_final_score_agg: str = "sum"
 
     def calculate(self, df: pd.DataFrame):
         df = df.assign(
-            group=(df[self.group_by] // (self.group_bucket or 1.0)).astype("int64")
+            group=(df[self.group_by] // (self.group_bucket or 1.0)).astype("int32")
         )
         df = df.groupby("group", as_index=False).agg(
             {"final_score": self.group_final_score_agg}
@@ -306,6 +309,9 @@ class QueryInput(BaseModel):
     outputs: List[Output]
 
 
+WEIGHT_COLS = ("sentiment", "sim", "ts", "vote")
+
+
 @app.post("/")
 def query(input: QueryInput):
     # Perform checks before expensive embedding encoding.
@@ -319,7 +325,7 @@ def query(input: QueryInput):
         raise HTTPException(status_code=400, detail="Invalid query length")
     if input.filter_hnsw is not None and not (1 <= input.filter_hnsw <= d.index.ef):
         raise HTTPException(status_code=400, detail="Invalid filter_hnsw")
-    if not all(f"{c}_weight" in df for c in input.weights.keys() if c != "sim"):
+    if not all(c in WEIGHT_COLS for c in input.weights.keys()):
         raise HTTPException(status_code=400, detail="Invalid weight")
     if input.sim_agg not in ("mean", "min", "max"):
         raise HTTPException(status_code=400, detail="Invalid sim_agg")
@@ -377,6 +383,5 @@ def query(input: QueryInput):
 
     out = b""
     for o in input.outputs:
-        raw = o.calculate(df)
-        out += struct.pack("<I", len(raw)) + raw
-    return out
+        out += o.calculate(df)
+    return Response(out)
