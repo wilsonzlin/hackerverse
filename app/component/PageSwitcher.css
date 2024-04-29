@@ -1,0 +1,51 @@
+.PageSwitcher {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+
+  background: white;
+  border-radius: 0.25rem;
+  box-shadow: 0 2px 1rem rgba(0, 0, 0, 0.25);
+
+  > button {
+    display: block;
+    padding: 0.375rem;
+
+    > .Ico {
+      display: block;
+    }
+  }
+
+  > .menu {
+    position: absolute;
+    top: calc(100% + 0.5rem);
+    right: -0.25rem; /* Adjust by a tiny amount so that menu option icons line up with menu toggle icon. */
+
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+
+    background: white;
+    border-radius: 0.25rem;
+    box-shadow: 0 2px 1rem rgba(0, 0, 0, 0.25);
+
+    > a {
+      padding: 0.5rem;
+      padding-left: 1.5rem;
+
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 0.5rem;
+
+      &:hover {
+        text-decoration: none;
+        background: rgba(0, 0, 0, 0.05);
+      }
+
+      > span:first-child {
+        font-size: 0.9rem;
+      }
+    }
+  }
+}

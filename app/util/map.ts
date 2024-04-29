@@ -230,7 +230,7 @@ const POINT_RADIUS = 3;
 const LABEL_FONT_SIZE = 13;
 const LABEL_FONT_STYLE = `${LABEL_FONT_SIZE}px InterVariable, sans-serif`;
 const LABEL_POINT_GAP = 4;
-const LABEL_MARGIN = 16;
+const LABEL_MARGIN = 13;
 
 export const calcLabelBBox = (map: MapState, vp: ViewportState, p: Point) => {
   const scale = map.viewportScale(vp);
@@ -376,7 +376,7 @@ export const createCanvasPointMap = ({
         const minAlpha = 0.25 * (vp.zoom / map.zoomMax + 1);
         const alpha =
           (scoreWeight * (1 - minAlpha) + minAlpha) *
-          (labelled ? 1 : 0.4 * (vp.zoom / map.zoomMax) + 0.4);
+          (labelled ? 1 : 0.6 * (vp.zoom / map.zoomMax) + 0.15);
         ctx.fillStyle = !labelled
           ? `rgba(120, 120, 120, ${alpha})`
           : `rgba(3, 165, 252, ${alpha})`;
