@@ -6,6 +6,8 @@ import assertState from "@xtjs/lib/assertState";
 import defined from "@xtjs/lib/defined";
 import findAndRemove from "@xtjs/lib/findAndRemove";
 import hexToRgb from "@xtjs/lib/hexToRgb";
+import map from "@xtjs/lib/map";
+import mapExists from "@xtjs/lib/mapExists";
 import propertyComparator from "@xtjs/lib/propertyComparator";
 import reversedComparator from "@xtjs/lib/reversedComparator";
 import rgbToHex from "@xtjs/lib/rgbToHex";
@@ -17,29 +19,29 @@ import { usePromise } from "../util/fetch";
 import "./App.css";
 import { Ico } from "./Ico";
 import { Loading } from "./Loading";
-import { PointMap } from "./PointMap";
+import { PointMap, PointMapController } from "./PointMap";
 
 type Clip = { min: number; max: number };
 
-class ApiRowsOutput {
+class ApiGroupByOutput {
   constructor(
-    private readonly keysArray: Uint32Array,
-    private readonly valuesArray: Float32Array,
+    private readonly groupsArray: Uint32Array,
+    private readonly scoresArray: Float32Array,
   ) {
-    assertState(keysArray.length === valuesArray.length);
+    assertState(groupsArray.length === scoresArray.length);
   }
 
   get length() {
-    return this.keysArray.length;
+    return this.groupsArray.length;
   }
 
-  *keys() {
-    yield* this.keysArray;
+  *groups() {
+    yield* this.groupsArray;
   }
 
   *entries() {
     for (let i = 0; i < this.length; i++) {
-      yield [this.keysArray[i], this.valuesArray[i]] as const;
+      yield [this.groupsArray[i], this.scoresArray[i]] as const;
     }
   }
 
@@ -49,6 +51,46 @@ class ApiRowsOutput {
 
   dict() {
     return new Dict(this.entries());
+  }
+}
+
+class ApiItemsOutput {
+  constructor(
+    private readonly idsArray: Uint32Array,
+    private readonly xsArray: Float32Array,
+    private readonly ysArray: Float32Array,
+    private readonly scoresArray: Float32Array,
+  ) {
+    assertState(idsArray.length === xsArray.length);
+    assertState(idsArray.length === ysArray.length);
+    assertState(idsArray.length === scoresArray.length);
+  }
+
+  get length() {
+    return this.idsArray.length;
+  }
+
+  *ids() {
+    yield* this.idsArray;
+  }
+
+  *items() {
+    for (let i = 0; i < this.length; i++) {
+      yield {
+        id: this.idsArray[i],
+        x: this.xsArray[i],
+        y: this.ysArray[i],
+        score: this.scoresArray[i],
+      };
+    }
+  }
+
+  object() {
+    return Object.fromEntries(map(this.items(), (e) => [e.id, e]));
+  }
+
+  dict() {
+    return new Dict(map(this.items(), (e) => [e.id, e]));
   }
 }
 
@@ -117,20 +159,33 @@ const apiCall = async (
   const dv = new DataView(payload);
   let i = 0;
   const out = req.outputs.map((out) => {
-    if ("group_by" in out || "items" in out) {
+    if ("group_by" in out) {
       const count = dv.getUint32(i, true);
       i += 4;
-      const keys = new Uint32Array(payload, i, count);
+      const groups = new Uint32Array(payload, i, count);
       i += count * 4;
-      const values = new Float32Array(payload, i, count);
+      const scores = new Float32Array(payload, i, count);
       i += count * 4;
-      return new ApiRowsOutput(keys, values);
+      return new ApiGroupByOutput(groups, scores);
     }
     if ("heatmap" in out) {
       const rawLen = dv.getUint32(i, true);
       i += 4;
       const raw = payload.slice(i, (i += rawLen));
       return new ApiHeatmapOutput(raw);
+    }
+    if ("items" in out) {
+      const count = dv.getUint32(i, true);
+      i += 4;
+      const ids = new Uint32Array(payload, i, count);
+      i += count * 4;
+      const xs = new Float32Array(payload, i, count);
+      i += count * 4;
+      const ys = new Float32Array(payload, i, count);
+      i += count * 4;
+      const scores = new Float32Array(payload, i, count);
+      i += count * 4;
+      return new ApiItemsOutput(ids, xs, ys, scores);
     }
     throw new UnreachableError();
   });
@@ -148,7 +203,7 @@ type QueryParams = {
 };
 
 type QueryResults = {
-  items: Array<{ id: number; score: number }>;
+  items: Array<{ id: number; x: number; y: number; score: number }>;
   heatmap: ImageBitmap;
 };
 
@@ -215,9 +270,7 @@ const QueryForm = ({
             },
           });
           const results = {
-            items: [...assertInstanceOf(data[0], ApiRowsOutput).entries()].map(
-              ([id, score]) => ({ id, score }),
-            ),
+            items: [...assertInstanceOf(data[0], ApiItemsOutput).items()],
             heatmap: await createImageBitmap(
               assertInstanceOf(data[1], ApiHeatmapOutput).blob(),
             ),
@@ -356,6 +409,8 @@ export const App = () => {
   const [$root, setRootElem] = useState<HTMLDivElement | null>(null);
   const rootDim = useMeasure($root);
 
+  const mapCtl = useRef<PointMapController>();
+
   // We want to preserve other query states (i.e. don't unmount the existing React component) when deleting one, so we need some identifier and not just the ordinal which shifts.
   const nextQueryId = useRef(1);
   const [queries, setQueries] = useState<Array<QueryState>>([
@@ -376,6 +431,33 @@ export const App = () => {
     () => queries.map((q) => q.results?.heatmap).filter(defined),
     [queries],
   );
+  const [shouldAnimateToResults, setShouldAnimateToResults] = useState(false);
+  useEffect(() => {
+    if (!shouldAnimateToResults) {
+      return;
+    }
+    setShouldAnimateToResults(false);
+    let xMinPt = Infinity;
+    let xMaxPt = -Infinity;
+    let yMinPt = Infinity;
+    let yMaxPt = -Infinity;
+    for (const p of results) {
+      xMinPt = Math.min(xMinPt, p.x);
+      xMaxPt = Math.max(xMaxPt, p.x);
+      yMinPt = Math.min(yMinPt, p.y);
+      yMaxPt = Math.max(yMaxPt, p.y);
+    }
+    const ANIM_MS = 700;
+    mapCtl.current?.animate(
+      {
+        x0Pt: xMinPt,
+        x1Pt: xMaxPt,
+        y0Pt: yMinPt,
+        y1Pt: yMaxPt,
+      },
+      ANIM_MS,
+    );
+  }, [shouldAnimateToResults]);
 
   const [items, setItems] = useState<Record<number, Item>>({});
   useEffect(() => {
@@ -393,7 +475,9 @@ export const App = () => {
   return (
     <div ref={setRootElem} className="App">
       <PointMap
+        controllerRef={mapCtl}
         heatmaps={heatmaps}
+        resultPoints={results}
         height={rootDim?.height ?? 0}
         width={rootDim?.width ?? 0}
       />
@@ -405,10 +489,10 @@ export const App = () => {
               // Always use setQueries in callback mode, and always find ID, since `queries` may have changed since we last created and passed the on* callbacks.
               setQueries((queries) =>
                 produce(queries, (queries) => {
-                  const found = queries.find((oq) => oq.id === q.id);
-                  if (found) {
-                    fn(found);
-                  }
+                  mapExists(
+                    queries.find((oq) => oq.id === q.id),
+                    fn,
+                  );
                 }),
               );
             };
@@ -428,7 +512,13 @@ export const App = () => {
                     ),
                   )
                 }
-                onResults={(results) => mutQ((q) => (q.results = results))}
+                onResults={(results) => {
+                  mutQ((q) => (q.results = results));
+                  // Only animate when results come in, not for any other reason that `results` changes (e.g. clearing, deleting).
+                  if (results?.items.length) {
+                    setShouldAnimateToResults(true);
+                  }
+                }}
               />
             );
           })}

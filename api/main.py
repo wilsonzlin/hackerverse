@@ -256,7 +256,7 @@ class ItemsOutput(BaseModel):
         if self.limit is not None:
             df = df[: self.limit]
         df["final_score"] = df["final_score"].astype("float32")
-        return pack_rows(df, ["id", "final_score"])
+        return pack_rows(df, ["id", "x", "y", "final_score"])
 
 
 # To filter groups, filter the original column that is grouped by.

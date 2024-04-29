@@ -4,7 +4,7 @@ import Dict from "@xtjs/lib/Dict";
 import UnreachableError from "@xtjs/lib/UnreachableError";
 import assertExists from "@xtjs/lib/assertExists";
 import bounded from "@xtjs/lib/bounded";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { MutableRefObject, useEffect, useMemo, useRef, useState } from "react";
 import {
   MAP_DATASET,
   MapState,
@@ -31,15 +31,84 @@ const EDGES = [
   "us-sanjose-1",
 ] as const;
 
+export type PointMapController = {
+  animate(
+    vp: {
+      x0Pt: number;
+      x1Pt: number;
+      y0Pt: number;
+      y1Pt: number;
+    },
+    ms: number,
+  ): void;
+  cancelAnimation(): void;
+};
+
 export const PointMap = ({
+  controllerRef,
   heatmaps,
+  resultPoints,
   height: vpHeightPx,
   width: vpWidthPx,
 }: {
+  controllerRef?: MutableRefObject<PointMapController | undefined>;
   heatmaps: ImageBitmap[];
+  resultPoints: undefined | { x: number; y: number }[];
   height: number;
   width: number;
 }) => {
+  const nextAnimId = useRef(0);
+  const curAnim = useRef<number>();
+  const cancelAnimation = () => {
+    curAnim.current = undefined;
+  };
+  if (controllerRef) {
+    controllerRef.current = {
+      animate: (vp, ms) => {
+        if (!scale) {
+          return;
+        }
+        const xRangePt = vp.x1Pt - vp.x0Pt;
+        const yRangePt = vp.y1Pt - vp.y0Pt;
+        const tgtCtrXPt = (vp.x0Pt + vp.x1Pt) / 2;
+        const tgtCtrYPt = (vp.y0Pt + vp.y1Pt) / 2;
+        let tgtPxPerPt;
+        if (xRangePt > yRangePt) {
+          tgtPxPerPt = vpWidthPx / xRangePt;
+        } else {
+          tgtPxPerPt = vpHeightPx / yRangePt;
+        }
+        const tgtZoom =
+          Math.log(tgtPxPerPt / scale.pxPerPtBase) /
+          Math.log(1 + 1 / ZOOM_PER_LOD);
+        const initCtrXPt = vpCtrXPt;
+        const initCtrYPt = vpCtrYPt;
+        const initZoom = zoom;
+        const animId = nextAnimId.current++;
+        let started: number | undefined;
+        const animate = (ts: number) => {
+          if (curAnim.current !== animId) {
+            return;
+          }
+          started ??= ts;
+          const elapsed = ts - started;
+          const progress = bounded(elapsed / ms, 0, 1);
+          const easedProgress = 1 - Math.pow(1 - progress, 2);
+          setVpCtrXPt(initCtrXPt + (tgtCtrXPt - initCtrXPt) * easedProgress);
+          setVpCtrYPt(initCtrYPt + (tgtCtrYPt - initCtrYPt) * easedProgress);
+          setZoom(initZoom + (tgtZoom - initZoom) * easedProgress);
+          if (progress == 1) {
+            return;
+          }
+          requestAnimationFrame(animate);
+        };
+        curAnim.current = animId;
+        requestAnimationFrame(animate);
+      },
+      cancelAnimation,
+    };
+  }
+
   const $canvas = useRef<HTMLCanvasElement>(null);
   const [map, setMap] = useState<ReturnType<typeof createCanvasPointMap>>();
   useEffect(() => map?.setHeatmaps(heatmaps), [map, heatmaps]);
@@ -124,6 +193,11 @@ export const PointMap = ({
     };
   }, [scale, vpHeightPx, vpWidthPx, vpCtrXPt, vpCtrYPt, zoom]);
   useEffect(() => vp && void map?.render(vp), [map, vp]);
+
+  useEffect(
+    () => void map?.setResultPoints(resultPoints ?? []),
+    [map, resultPoints],
+  );
 
   const ptrsRef = useRef(
     new Dict<

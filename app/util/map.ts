@@ -102,6 +102,7 @@ export class MapState {
     const pxToPt = (px: number) => px / pxPerPt;
     const ptToPx = (pt: number) => pt * pxPerPt;
     return {
+      pxPerPtBase,
       pxToPt,
       ptToPx,
       scaled({ x0Pt, y0Pt }: { x0Pt: number; y0Pt: number }) {
@@ -267,6 +268,7 @@ export const createCanvasPointMap = ({
   let curPoints = Array<Point>(); // This must always be sorted by score descending.
   let curViewport: ViewportState | undefined;
   let heatmaps: ImageBitmap[] = [];
+  let resultPoints: { x: number; y: number }[] = [];
 
   // Zoom (integer) level => point IDs.
   const labelledPoints = new Dict<number, Set<number>>();
@@ -382,6 +384,15 @@ export const createCanvasPointMap = ({
         ctx.arc(canvasX, canvasY, POINT_RADIUS, 0, Math.PI * 2);
         ctx.fill();
       }
+      // Draw result points.
+      for (const p of resultPoints) {
+        const canvasX = scale.ptToPx(p.x - vp.x0Pt);
+        const canvasY = scale.ptToPx(p.y - vp.y0Pt);
+        ctx.fillStyle = `rgb(252, 123, 3)`;
+        ctx.beginPath();
+        ctx.arc(canvasX, canvasY, POINT_RADIUS, 0, Math.PI * 2);
+        ctx.fill();
+      }
       // Draw labels over points.
       for (const p of curPoints) {
         if (!lp?.has(p.id)) {
@@ -411,6 +422,10 @@ export const createCanvasPointMap = ({
     },
     setHeatmaps: (hm: ImageBitmap[]) => {
       heatmaps = hm;
+      renderPoints();
+    },
+    setResultPoints: (points: { x: number; y: number }[]) => {
+      resultPoints = points;
       renderPoints();
     },
     // Render the points at LOD `lod` from (ptX0, ptY0) to (ptX1, ptY1) (inclusive) on the canvas.
