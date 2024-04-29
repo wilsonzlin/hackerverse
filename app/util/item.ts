@@ -1,5 +1,7 @@
 import { decode } from "@msgpack/msgpack";
+import { Item, fetchHnItem } from "@wzlin/crawler-toolkit-hn";
 import { VBoolean, VInteger, VString, VStruct } from "@wzlin/valid";
+import { useEffect, useRef, useState } from "react";
 import { CACHED_FETCH_404, cachedFetch } from "./fetch";
 
 const vEdgePost = new VStruct({
@@ -26,4 +28,23 @@ export const cachedFetchEdgePost = async (
   return res.body === CACHED_FETCH_404
     ? undefined
     : vEdgePost.parseRoot(decode(res.body));
+};
+
+export const useHnItems = (ids: number[]) => {
+  const fetchStarted = useRef(new Set<number>());
+  const [items, setItems] = useState<Record<number, Item>>({});
+  useEffect(() => {
+    (async () => {
+      await Promise.all(
+        ids.map(async (id) => {
+          if (!fetchStarted.current.has(id)) {
+            fetchStarted.current.add(id);
+            const item = await fetchHnItem(id);
+            setItems((items) => ({ ...items, [id]: item }));
+          }
+        }),
+      );
+    })();
+  }, [ids]);
+  return items;
 };

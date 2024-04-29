@@ -1,4 +1,3 @@
-import { Item, fetchHnItem } from "@wzlin/crawler-toolkit-hn";
 import { VFiniteNumber, VInteger, VStruct, Valid } from "@wzlin/valid";
 import assertInstanceOf from "@xtjs/lib/assertInstanceOf";
 import defined from "@xtjs/lib/defined";
@@ -18,6 +17,7 @@ import { PointMap, PointMapController } from "../component/PointMap";
 import { ApiHeatmapOutput, ApiItemsOutput, apiCall } from "../util/api";
 import { useMeasure } from "../util/dom";
 import { usePromise } from "../util/fetch";
+import { useHnItems } from "../util/item";
 import { MAP_DATASET } from "../util/map";
 import "./Search.css";
 
@@ -102,7 +102,7 @@ const QueryForm = ({
             weights: {
               sim_scaled: weightSimilarity,
               ts_norm: weightTimestamp,
-              vote_norm: weightScore,
+              votes_norm: weightScore,
             },
           });
           const results = {
@@ -296,19 +296,7 @@ export const SearchPage = () => {
       ANIM_MS,
     );
   }, [shouldAnimateToResults]);
-
-  const [items, setItems] = useState<Record<number, Item>>({});
-  useEffect(() => {
-    (async () => {
-      // TODO Don't refetch if already existing or in the process of fetching.
-      await Promise.all(
-        results.map(async ({ id }) => {
-          const item = await fetchHnItem(id);
-          setItems((items) => ({ ...items, [id]: item }));
-        }),
-      );
-    })();
-  }, [results]);
+  const items = useHnItems(results.map((r) => r.id));
 
   return (
     <div ref={setRootElem} className="SearchPage">

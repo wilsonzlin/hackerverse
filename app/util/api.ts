@@ -1,8 +1,9 @@
+import Dict from "@xtjs/lib/Dict";
+import UnreachableError from "@xtjs/lib/UnreachableError";
 import assertInstanceOf from "@xtjs/lib/assertInstanceOf";
 import assertState from "@xtjs/lib/assertState";
-import Dict from "@xtjs/lib/Dict";
+import bigIntToNumber from "@xtjs/lib/bigIntToNumber";
 import map from "@xtjs/lib/map";
-import UnreachableError from "@xtjs/lib/UnreachableError";
 
 export type Clip = { min: number; max: number };
 
@@ -100,7 +101,7 @@ export const apiCall = async (
     pre_filter_clip?: Record<string, Clip>;
     scales?: Record<string, Clip>;
     thresholds?: Record<string, number>;
-    weights?: Record<string, number>;
+    weights?: Record<string, string | number>;
     post_filter_clip?: Record<string, Clip>;
     outputs: Array<
       | {
@@ -153,21 +154,27 @@ export const apiCall = async (
         const itemSize = dv.getUint8(i++);
         const k = `${kind}${itemSize}`;
         const ctor = {
+          f4: Float32Array,
+          f8: Float64Array,
           i1: Int8Array,
           i2: Int16Array,
           i4: Int32Array,
+          i8: BigInt64Array,
           u1: Uint8Array,
           u2: Uint16Array,
           u4: Uint32Array,
-          f4: Float32Array,
-          f8: Float64Array,
+          u8: BigUint64Array,
         }[k];
         if (!ctor) {
           throw new TypeError(`Unrecognised column "${col}" dtype "${k}"`);
         }
         // We must slice as the offset may not be aligned.
-        const vals = new ctor(payload.slice(i, (i += count * itemSize)));
-        colArrays[col] = vals;
+        const raw = new ctor(payload.slice(i, (i += count * itemSize)));
+        if (raw instanceof BigUint64Array || raw instanceof BigInt64Array) {
+          colArrays[col] = Array.from(map(raw, bigIntToNumber));
+        } else {
+          colArrays[col] = raw;
+        }
       }
       return colArrays;
     };

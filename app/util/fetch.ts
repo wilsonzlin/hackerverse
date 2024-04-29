@@ -68,28 +68,31 @@ export const usePromise = <T>() => {
     setError(undefined);
   }, []);
 
-  const set = useCallback(async (cb: (signal: AbortSignal) => Promise<T>) => {
-    clear();
-    setLoading(true);
-    const ac = (cur.current = new AbortController());
-    try {
-      const data = await cb(ac.signal);
-      // Call this before continuing in case the Promise doesn't support or use the AbortSignal.
-      ac.signal.throwIfAborted();
-      setData(data);
-      return data;
-    } catch (err) {
-      if (!ac.signal.aborted) {
-        setError(err.message);
+  const set = useCallback(
+    async (cb: (signal: AbortSignal) => Promise<T | undefined>) => {
+      clear();
+      setLoading(true);
+      const ac = (cur.current = new AbortController());
+      try {
+        const data = await cb(ac.signal);
+        // Call this before continuing in case the Promise doesn't support or use the AbortSignal.
+        ac.signal.throwIfAborted();
+        setData(data);
+        return data;
+      } catch (err) {
+        if (!ac.signal.aborted) {
+          setError(err.message);
+        }
+        // In case the caller of this set() awaits it.
+        throw err;
+      } finally {
+        if (!ac.signal.aborted) {
+          setLoading(false);
+        }
       }
-      // In case the caller of this set() awaits it.
-      throw err;
-    } finally {
-      if (!ac.signal.aborted) {
-        setLoading(false);
-      }
-    }
-  }, []);
+    },
+    [],
+  );
 
   useEffect(() => {
     return () => cur.current?.abort();
