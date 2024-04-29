@@ -200,6 +200,7 @@ const QueryForm = ({
               },
               {
                 heatmap: {
+                  alpha_scale: 2, // TODO This is really a hack, investigate distribution of scores.
                   density: 25,
                   color,
                   upscale: 2,

@@ -88,14 +88,30 @@ const createPointLabelsPicker = ({
             if (lp.picked.has(p.id) || lp.skipped.has(p.id)) {
               continue;
             }
-            const box = calcLabelBBox(z, p);
+            const box = calcLabelBBox(
+              map,
+              {
+                ...vp,
+                zoom: z,
+              },
+              p,
+            );
             const picked = !lp.tree.collides(box);
             // Propagate to all further zoom levels. This is simpler to keep in sync and get correct than trying to pull from previous zoom levels.
             for (let zn = z; zn < labelledPoints.length; zn++) {
               const lpn = labelledPoints[zn];
               if (picked) {
                 // We can't just cache and reuse the previous zoom's BBox values for points, because each zoom has different margin pt. sizes.
-                lpn.tree.insert(calcLabelBBox(zn, p));
+                lpn.tree.insert(
+                  calcLabelBBox(
+                    map,
+                    {
+                      ...vp,
+                      zoom: zn,
+                    },
+                    p,
+                  ),
+                );
                 lpn.picked.add(p.id);
               } else {
                 // Avoid recalculating over and over again.

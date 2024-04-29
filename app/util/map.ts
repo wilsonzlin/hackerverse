@@ -17,7 +17,6 @@ import { CACHED_FETCH_404, cachedFetch } from "./fetch";
 
 export const MAP_DATASET = "hnsw-bgem3";
 
-export const PX_PER_PT_BASE = 64;
 export const ZOOM_PER_LOD = 3;
 
 export type Point = { id: number; x: number; y: number; score: number };
@@ -80,6 +79,42 @@ export class MapState {
     return Math.min(this.lodLevels - 1, Math.floor(zoom / ZOOM_PER_LOD));
   }
 
+  viewportScale({
+    heightPx,
+    widthPx,
+    zoom,
+  }: {
+    heightPx: number;
+    widthPx: number;
+    zoom: number;
+  }) {
+    // Add some padding around edges of "virtual" map so that at zoom 0 (i.e. fully zooomed out), points aren't on the edges of the screen.
+    const PADDING_PX = 32;
+    let pxPerPtBase;
+    if (heightPx < widthPx) {
+      pxPerPtBase = (heightPx - PADDING_PX * 2) / this.yRangePt;
+    } else {
+      pxPerPtBase = (widthPx - PADDING_PX * 2) / this.xRangePt;
+    }
+
+    // This should grow exponentially with zoom, as otherwise the distances between points shrink the more you zoom in, due to min point distances exponentially increasing with each LOD level.
+    const pxPerPt = pxPerPtBase * Math.pow(1 + 1 / ZOOM_PER_LOD, zoom);
+    const pxToPt = (px: number) => px / pxPerPt;
+    const ptToPx = (pt: number) => pt * pxPerPt;
+    return {
+      pxToPt,
+      ptToPx,
+      scaled({ x0Pt, y0Pt }: { x0Pt: number; y0Pt: number }) {
+        const x1Pt = x0Pt + pxToPt(widthPx);
+        const y1Pt = y0Pt + pxToPt(heightPx);
+        return {
+          x1Pt,
+          y1Pt,
+        };
+      },
+    };
+  }
+
   viewportTiles(vp: ViewportState) {
     const lod = this.calcLod(vp);
 
@@ -87,7 +122,7 @@ export class MapState {
     const tileWidthPt = this.xRangePt / axisTileCount;
     const tileHeightPt = this.yRangePt / axisTileCount;
 
-    const scale = viewportScale(vp);
+    const scale = this.viewportScale(vp);
     const { x1Pt, y1Pt } = scale.scaled(vp);
 
     const tileXMin = Math.max(
@@ -115,26 +150,6 @@ export class MapState {
     };
   }
 }
-
-export const viewportScale = (z: number | ViewportState) => {
-  const zoom = typeof z === "number" ? z : z.zoom;
-  // This should grow exponentially with zoom, as otherwise the distances between points shrink the more you zoom in, due to min point distances exponentially increasing with each LOD level.
-  const pxPerPt = PX_PER_PT_BASE * Math.pow(1 + 1 / ZOOM_PER_LOD, zoom);
-  const pxToPt = (px: number) => px / pxPerPt;
-  const ptToPx = (pt: number) => pt * pxPerPt;
-  return {
-    pxToPt,
-    ptToPx,
-    scaled(vp: ViewportState) {
-      const x1Pt = vp.x0Pt + pxToPt(vp.widthPx);
-      const y1Pt = vp.y0Pt + pxToPt(vp.heightPx);
-      return {
-        x1Pt,
-        y1Pt,
-      };
-    },
-  };
-};
 
 export const parseTileData = (raw: ArrayBuffer) => {
   let i = 0;
@@ -216,14 +231,15 @@ const LABEL_FONT_STYLE = `${LABEL_FONT_SIZE}px InterVariable, sans-serif`;
 const LABEL_POINT_GAP = 4;
 const LABEL_MARGIN = 16;
 
-export const calcLabelBBox = (zoom: number, p: Point) => {
-  const scale = viewportScale(zoom);
+export const calcLabelBBox = (map: MapState, vp: ViewportState, p: Point) => {
+  const scale = map.viewportScale(vp);
   const canvasX = scale.ptToPx(p.x);
   const canvasY = scale.ptToPx(p.y);
   const titleLen = assertExists(postTitleLengths[p.id]);
   const box: BBox = {
     minX: canvasX - LABEL_MARGIN,
     // Guessed approximate width based on title length.
+    // (We can't reasonably fetch millions of titles just to measure their text and filter down to ~10.)
     maxX: canvasX + titleLen * (LABEL_FONT_SIZE / 1.6) + LABEL_MARGIN,
     minY: canvasY - LABEL_MARGIN,
     maxY: canvasY + LABEL_FONT_SIZE + LABEL_MARGIN,
@@ -314,7 +330,7 @@ export const createCanvasPointMap = ({
       if (!vp) {
         return;
       }
-      const scale = viewportScale(vp);
+      const scale = map.viewportScale(vp);
       const scaled = scale.scaled(vp);
       const ctx = assertExists(canvas.getContext("2d"));
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -402,7 +418,7 @@ export const createCanvasPointMap = ({
       const requestId = ++latestRenderRequestId;
 
       const lod = map.calcLod(newViewport);
-      const scale = viewportScale(newViewport);
+      const scale = map.viewportScale(newViewport);
       const { x1Pt, y1Pt } = scale.scaled(newViewport);
 
       curViewport = newViewport;
