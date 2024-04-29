@@ -2,40 +2,75 @@
   position: fixed;
   inset: 0;
 
-  > .search,
-  > .results {
+  .panel {
     position: absolute;
+    inset: 0;
+    padding: 1rem;
+    max-width: 30rem;
+
+    pointer-events: none;
+
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+
+    > * {
+      pointer-events: auto;
+    }
+  }
+
+  .QueryForm,
+  .add-query,
+  .results {
     background: white;
     border-radius: 0.25rem;
     box-shadow: 0 2px 1rem rgba(0, 0, 0, 0.25);
-    left: 2rem;
-    width: 30rem;
   }
 
-  > .search {
-    top: 1rem;
-    left: 2rem;
+  .QueryForm,
+  .results {
     padding: 0.75rem;
+    width: 100%;
+  }
 
-    > .main {
+  .QueryForm,
+  .add-query {
+    margin-bottom: 0.5rem;
+  }
+
+  .QueryForm {
+    .main {
       display: flex;
-      align-items: stretch;
+      align-items: center;
+      gap: 0.75rem;
+      line-height: 1;
 
-      > input {
+      > .color {
+        > div {
+          border-radius: 100%;
+          height: 1.25rem;
+          width: 1.25rem;
+        }
+      }
+
+      > .query {
         flex-grow: 1;
       }
 
-      > button {
-        line-height: 1;
+      > :not(.query) {
         flex-shrink: 0;
 
-        &:disabled {
-          cursor: wait;
+        &.toggle-params {
+          color: #555;
+        }
+
+        &.error {
+          color: red;
         }
       }
     }
 
-    > .params {
+    .params {
       margin-top: 0.5rem;
 
       display: flex;
@@ -57,21 +92,28 @@
     }
   }
 
-  > .results {
-    bottom: 2rem;
-    max-height: calc(100vh - 9rem);
+  .add-query {
+    padding: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8rem;
+  }
+
+  .spacer {
+    flex-grow: 1;
+  }
+
+  .results {
+    min-height: 0;
     overflow: auto;
 
     display: flex;
     flex-direction: column;
     gap: 2rem;
 
-    &:not(:empty) {
-      padding: 1rem;
-    }
-
-    > .err {
-      color: red;
+    &:empty {
+      display: none; /* Hide padding. */
     }
 
     > .result {

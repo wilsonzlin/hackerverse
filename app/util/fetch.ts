@@ -73,7 +73,11 @@ export const usePromise = <T>() => {
     setLoading(true);
     const ac = (cur.current = new AbortController());
     try {
-      setData(await cb(ac.signal));
+      const data = await cb(ac.signal);
+      // Call this before continuing in case the Promise doesn't support or use the AbortSignal.
+      ac.signal.throwIfAborted();
+      setData(data);
+      return data;
     } catch (err) {
       if (!ac.signal.aborted) {
         setError(err.message);

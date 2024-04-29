@@ -3,7 +3,13 @@ import Dict from "@xtjs/lib/Dict";
 import UnreachableError from "@xtjs/lib/UnreachableError";
 import assertInstanceOf from "@xtjs/lib/assertInstanceOf";
 import assertState from "@xtjs/lib/assertState";
-import mapExists from "@xtjs/lib/mapExists";
+import defined from "@xtjs/lib/defined";
+import findAndRemove from "@xtjs/lib/findAndRemove";
+import hexToRgb from "@xtjs/lib/hexToRgb";
+import propertyComparator from "@xtjs/lib/propertyComparator";
+import reversedComparator from "@xtjs/lib/reversedComparator";
+import rgbToHex from "@xtjs/lib/rgbToHex";
+import { produce } from "immer";
 import { DateTime } from "luxon";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMeasure } from "../util/dom";
@@ -133,31 +139,59 @@ const apiCall = async (
 };
 type ApiResponse = Awaited<ReturnType<typeof apiCall>>;
 
-export const App = () => {
-  const [$root, setRootElem] = useState<HTMLDivElement | null>(null);
-  const rootDim = useMeasure($root);
+type QueryParams = {
+  query: string;
+  weightSimilarity: number;
+  weightScore: number;
+  weightTimestamp: number;
+  decayTimestamp: number;
+};
 
-  const $form = useRef<HTMLFormElement | null>(null);
+type QueryResults = {
+  items: Array<{ id: number; score: number }>;
+  heatmap: ImageBitmap;
+};
 
-  const [query, setQuery] = useState<{
-    query: string;
-    weightSimilarity: number;
-    weightScore: number;
-    weightTimestamp: number;
-    decayTimestamp: number;
-  }>();
-  const queryReq = usePromise<ApiResponse>();
-  useEffect(() => {
-    if (!query?.query) {
-      queryReq.clear();
-    } else {
-      const timeout = setTimeout(() => {
-        queryReq.set((signal) =>
-          apiCall(signal, {
-            dataset: "posts_bgem3",
-            queries: [query.query],
+const QueryForm = ({
+  canDelete,
+  color,
+  onChangeColor,
+  onResults,
+  onDelete,
+}: {
+  canDelete: boolean;
+  color: [number, number, number];
+  onChangeColor: (c: [number, number, number]) => void;
+  onResults: (results: QueryResults | undefined) => void;
+  onDelete: () => void;
+}) => {
+  const [queryRaw, setQueryRaw] = useState("");
+  const [weightSimilarity, setWeightSimilarity] = useState(0.7);
+  const [weightScore, setWeightScore] = useState(0.1);
+  const [weightTimestamp, setWeightTimestamp] = useState(0.2);
+  const [decayTimestamp, setDecayTimestamp] = useState(0.1);
+
+  const [showParams, setShowParams] = useState(false);
+
+  const queryReq = usePromise<QueryResults>();
+
+  return (
+    <form
+      className="QueryForm"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const query = queryRaw.trim();
+        if (!query) {
+          queryReq.clear();
+          onResults(undefined);
+          return;
+        }
+        queryReq.set(async (signal) => {
+          const data = await apiCall(signal, {
+            dataset: "posts-bgem3",
+            queries: [query],
             sim_scale: { min: 0.55, max: 0.75 },
-            ts_weight_decay: query.decayTimestamp,
+            ts_weight_decay: decayTimestamp,
             outputs: [
               {
                 items: {
@@ -167,56 +201,187 @@ export const App = () => {
               {
                 heatmap: {
                   density: 25,
-                  color: [227, 197, 0],
+                  color,
                   upscale: 2,
                   sigma: 4,
                 },
               },
             ],
             weights: {
-              sim: query.weightSimilarity,
-              ts: query.weightTimestamp,
-              vote: query.weightScore,
+              sim: weightSimilarity,
+              ts: weightTimestamp,
+              vote: weightScore,
             },
-          }),
-        );
-      }, 250);
-      return () => clearTimeout(timeout);
-    }
-  }, [query]);
+          });
+          const results = {
+            items: [...assertInstanceOf(data[0], ApiRowsOutput).entries()].map(
+              ([id, score]) => ({ id, score }),
+            ),
+            heatmap: await createImageBitmap(
+              assertInstanceOf(data[1], ApiHeatmapOutput).blob(),
+            ),
+          };
+          onResults(results);
+          return results;
+        });
+      }}
+    >
+      <div className="main">
+        <label className="color">
+          <input
+            hidden
+            type="color"
+            value={rgbToHex(...color)}
+            onChange={(e) => onChangeColor(hexToRgb(e.currentTarget.value))}
+          />
+          <div
+            style={{
+              backgroundColor: `rgb(${color.join(",")})`,
+            }}
+          />
+        </label>
+        <input
+          className="query"
+          placeholder="Search, ask, visualize"
+          value={queryRaw}
+          onChange={(e) => setQueryRaw(e.currentTarget.value)}
+        />
+        <button
+          type="button"
+          className="toggle-params"
+          onClick={() => setShowParams(!showParams)}
+        >
+          <Ico i="more_horiz" size={20} />
+        </button>
+        {!queryRaw.trim() ? (
+          canDelete && (
+            <button
+              type="button"
+              onClick={() => {
+                onDelete();
+              }}
+            >
+              <Ico i="delete" size={20} />
+            </button>
+          )
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              setQueryRaw("");
+              queryReq.clear();
+              onResults(undefined);
+            }}
+          >
+            <Ico i="close" size={20} />
+          </button>
+        )}
+        {queryReq.loading ? (
+          <Loading size={18} />
+        ) : (
+          <button type="submit">
+            <Ico i="search" size={20} />
+          </button>
+        )}
+        {queryReq.error && (
+          <button
+            type="button"
+            className="error"
+            onClick={() => alert(queryReq.error)}
+          >
+            <Ico i="error" />
+          </button>
+        )}
+      </div>
+      {showParams && (
+        <div className="params">
+          <label>
+            <span>
+              W<sub>sim</sub>
+            </span>
+            <input
+              type="number"
+              step={0.00001}
+              value={weightSimilarity}
+              onChange={(e) => setWeightSimilarity(e.target.valueAsNumber)}
+            />
+          </label>
+          <label>
+            <span>
+              W<sub>score</sub>
+            </span>
+            <input
+              type="number"
+              step={0.00001}
+              value={weightScore}
+              onChange={(e) => setWeightScore(e.target.valueAsNumber)}
+            />
+          </label>
+          <label>
+            <span>
+              W<sub>ts</sub>
+            </span>
+            <input
+              type="number"
+              step={0.00001}
+              value={weightTimestamp}
+              onChange={(e) => setWeightTimestamp(e.target.valueAsNumber)}
+            />
+          </label>
+          <label>
+            <span>
+              λ<sub>ts</sub>
+            </span>
+            <input
+              type="number"
+              step={0.00001}
+              value={decayTimestamp}
+              onChange={(e) => setDecayTimestamp(e.target.valueAsNumber)}
+            />
+          </label>
+        </div>
+      )}
+    </form>
+  );
+};
+
+type QueryState = {
+  id: number;
+  color: [number, number, number];
+  results: QueryResults | undefined;
+};
+
+export const App = () => {
+  const [$root, setRootElem] = useState<HTMLDivElement | null>(null);
+  const rootDim = useMeasure($root);
+
+  // We want to preserve other query states (i.e. don't unmount the existing React component) when deleting one, so we need some identifier and not just the ordinal which shifts.
+  const nextQueryId = useRef(1);
+  const [queries, setQueries] = useState<Array<QueryState>>([
+    {
+      id: 0,
+      color: [49, 185, 235],
+      results: undefined,
+    },
+  ]);
   const results = useMemo(
     () =>
-      mapExists(queryReq.data, (data) => [
-        ...assertInstanceOf(data[0], ApiRowsOutput).entries(),
-      ]),
-    [queryReq.data],
+      queries
+        .flatMap((q) => q.results?.items ?? [])
+        .sort(reversedComparator(propertyComparator("score"))),
+    [queries],
   );
-  const [heatmap, setHeatmap] = useState<ImageBitmap>();
-
-  useEffect(() => {
-    if (!queryReq.data) {
-      setHeatmap(undefined);
-      return;
-    }
-    const blob = assertInstanceOf(queryReq.data[1], ApiHeatmapOutput).blob();
-    const ac = new AbortController();
-    (async () => {
-      const heatmap = await createImageBitmap(blob);
-      ac.signal.throwIfAborted();
-      console.log("Heatmap loaded:", heatmap.width, "x", heatmap.height);
-      setHeatmap(heatmap);
-    })();
-    return () => ac.abort();
-  }, [queryReq.data]);
+  const heatmaps = useMemo(
+    () => queries.map((q) => q.results?.heatmap).filter(defined),
+    [queries],
+  );
 
   const [items, setItems] = useState<Record<number, Item>>({});
   useEffect(() => {
-    if (!results) {
-      return;
-    }
     (async () => {
+      // TODO Don't refetch if already existing or in the process of fetching.
       await Promise.all(
-        results.map(async ([id]) => {
+        results.map(async ({ id }) => {
           const item = await fetchHnItem(id);
           setItems((items) => ({ ...items, [id]: item }));
         }),
@@ -227,153 +392,118 @@ export const App = () => {
   return (
     <div ref={setRootElem} className="App">
       <PointMap
-        heatmap={heatmap}
+        heatmaps={heatmaps}
         height={rootDim?.height ?? 0}
         width={rootDim?.width ?? 0}
       />
 
-      <form
-        ref={$form}
-        className="search"
-        onSubmit={(e) => {
-          e.preventDefault();
-          const form = e.currentTarget;
-          const elems = form.elements;
-          const getInput = (name: string) =>
-            assertInstanceOf(elems.namedItem(name), HTMLInputElement);
-          setQuery({
-            query: getInput("query").value.trim(),
-            weightSimilarity: getInput("w_sim").valueAsNumber,
-            weightScore: getInput("w_score").valueAsNumber,
-            weightTimestamp: getInput("w_ts").valueAsNumber,
-            decayTimestamp: getInput("decay_ts").valueAsNumber,
-          });
-        }}
-      >
-        <div className="main">
-          <input name="query" placeholder="Search or ask" />
-          {queryReq.loading ? (
-            <Loading size={24} />
-          ) : results ? (
-            <button
-              type="button"
-              onClick={() => {
-                setQuery(undefined);
-                assertInstanceOf(
-                  $form.current!.elements.namedItem("query"),
-                  HTMLInputElement,
-                ).value = "";
-              }}
-            >
-              <Ico i="close" />
-            </button>
-          ) : (
-            <button disabled={queryReq.loading} type="submit">
-              <Ico i="search" />
-            </button>
-          )}
-        </div>
-        <div className="params">
-          <label>
-            <span>
-              W<sub>sim</sub>
-            </span>
-            <input
-              name="w_sim"
-              type="number"
-              defaultValue={0.7}
-              step={0.00001}
-            />
-          </label>
-          <label>
-            <span>
-              W<sub>score</sub>
-            </span>
-            <input
-              name="w_score"
-              type="number"
-              defaultValue={0.1}
-              step={0.00001}
-            />
-          </label>
-          <label>
-            <span>
-              W<sub>ts</sub>
-            </span>
-            <input
-              name="w_ts"
-              type="number"
-              defaultValue={0.2}
-              step={0.00001}
-            />
-          </label>
-          <label>
-            <span>
-              λ<sub>ts</sub>
-            </span>
-            <input
-              name="decay_ts"
-              type="number"
-              defaultValue={0.1}
-              step={0.00001}
-            />
-          </label>
-        </div>
-      </form>
+      <div className="panel">
+        {queries.map((q, i) => {
+          const mutQ = (fn: (q: QueryState) => unknown) => {
+            // Always use setQueries in callback mode, and always find ID, since `queries` may have changed since we last created and passed the on* callbacks.
+            setQueries((queries) =>
+              produce(queries, (queries) => {
+                const found = queries.find((oq) => oq.id === q.id);
+                if (found) {
+                  fn(found);
+                }
+              }),
+            );
+          };
 
-      <div className="results">
-        {mapExists(queryReq.error, (error) => (
-          <p className="err">{error}</p>
-        ))}
-
-        {results?.map(([id, score]) => {
-          const item = items[id];
-          if (!item || !item.time || !item.by || !item.title) {
-            return;
-          }
-          const hnUrl = `https://news.ycombinator.com/item?id=${id}`;
-          let url, site;
-          if (item.url) {
-            try {
-              const parsed = new URL(item.url);
-              url = item.url;
-              site = parsed.hostname.replace(/^www\./, "");
-            } catch {
-              return;
-            }
-          } else {
-            url = hnUrl;
-            site = "news.ycombinator.com";
-          }
-          const ts = DateTime.fromJSDate(item.time);
-          const ago = DateTime.now()
-            .diff(ts)
-            .rescale()
-            .toHuman({ unitDisplay: "long" })
-            .split(",")[0];
           return (
-            <div key={id} className="result">
-              <p className="site">{site}</p>
-              <a href={url} target="_blank" rel="noopener noreferrer">
-                <h1 dangerouslySetInnerHTML={{ __html: item.title ?? "" }} />
-              </a>
-              <p>
-                <a href={hnUrl} target="_blank" rel="noopener noreferrer">
-                  {item.score} point{item.score == 1 ? "" : "s"}
-                </a>{" "}
-                by{" "}
-                <a
-                  href={`https://news.ycombinator.com/user?id=${item.by}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  {item.by}
-                </a>{" "}
-                {ago} ago
-              </p>
-            </div>
+            <QueryForm
+              key={q.id}
+              canDelete={queries.length > 1}
+              color={q.color}
+              onChangeColor={(color) => mutQ((q) => (q.color = color))}
+              onDelete={() =>
+                setQueries((queries) =>
+                  produce(
+                    queries,
+                    (queries) =>
+                      void findAndRemove(queries, (oq) => oq.id === q.id),
+                  ),
+                )
+              }
+              onResults={(results) => mutQ((q) => (q.results = results))}
+            />
           );
         })}
+
+        <button
+          className="add-query"
+          onClick={() => {
+            setQueries([
+              ...queries,
+              {
+                id: nextQueryId.current++,
+                color: [
+                  Math.floor(Math.random() * 255),
+                  Math.floor(Math.random() * 255),
+                  Math.floor(Math.random() * 255),
+                ],
+                results: undefined,
+              },
+            ]);
+          }}
+        >
+          <Ico i="add" size={18} />
+          <span>Add query</span>
+        </button>
+
+        <div className="spacer" />
+
+        <div className="results">
+          {results?.map(({ id, score }) => {
+            const item = items[id];
+            if (!item || !item.time || !item.by || !item.title) {
+              return;
+            }
+            const hnUrl = `https://news.ycombinator.com/item?id=${id}`;
+            let url, site;
+            if (item.url) {
+              try {
+                const parsed = new URL(item.url);
+                url = item.url;
+                site = parsed.hostname.replace(/^www\./, "");
+              } catch {
+                return;
+              }
+            } else {
+              url = hnUrl;
+              site = "news.ycombinator.com";
+            }
+            const ts = DateTime.fromJSDate(item.time);
+            const ago = DateTime.now()
+              .diff(ts)
+              .rescale()
+              .toHuman({ unitDisplay: "long" })
+              .split(",")[0];
+            return (
+              <div key={id} className="result">
+                <p className="site">{site}</p>
+                <a href={url} target="_blank" rel="noopener noreferrer">
+                  <h1 dangerouslySetInnerHTML={{ __html: item.title ?? "" }} />
+                </a>
+                <p>
+                  <a href={hnUrl} target="_blank" rel="noopener noreferrer">
+                    {item.score} point{item.score == 1 ? "" : "s"}
+                  </a>{" "}
+                  by{" "}
+                  <a
+                    href={`https://news.ycombinator.com/user?id=${item.by}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {item.by}
+                  </a>{" "}
+                  {ago} ago
+                </p>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

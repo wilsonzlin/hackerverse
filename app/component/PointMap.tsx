@@ -32,17 +32,17 @@ const EDGES = [
 ] as const;
 
 export const PointMap = ({
-  heatmap,
+  heatmaps,
   height: vpHeightPx,
   width: vpWidthPx,
 }: {
-  heatmap: ImageBitmap | undefined;
+  heatmaps: ImageBitmap[];
   height: number;
   width: number;
 }) => {
   const $canvas = useRef<HTMLCanvasElement>(null);
   const [map, setMap] = useState<ReturnType<typeof createCanvasPointMap>>();
-  useEffect(() => map?.setHeatmap(heatmap), [map, heatmap]);
+  useEffect(() => map?.setHeatmaps(heatmaps), [map, heatmaps]);
   const [meta, setMeta] = useState<MapState>();
   useEffect(() => {
     const ac = new AbortController();

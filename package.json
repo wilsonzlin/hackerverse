@@ -28,6 +28,7 @@
     "db-rpc-client-js": "^0.5.0",
     "hot-shots": "^10.0.0",
     "html-entities": "^2.5.2",
+    "immer": "^10.1.1",
     "luxon": "^3.4.4",
     "oci-common": "^2.84.0",
     "oci-containerinstances": "^2.84.0",

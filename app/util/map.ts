@@ -250,7 +250,7 @@ export const createCanvasPointMap = ({
   let latestRenderRequestId = 0;
   let curPoints = Array<Point>(); // This must always be sorted by score descending.
   let curViewport: ViewportState | undefined;
-  let heatmap: ImageBitmap | undefined;
+  let heatmaps: ImageBitmap[] = [];
 
   // Zoom (integer) level => point IDs.
   const labelledPoints = new Dict<number, Set<number>>();
@@ -320,7 +320,7 @@ export const createCanvasPointMap = ({
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = "#fcfcfc";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-      if (heatmap) {
+      for (const heatmap of heatmaps) {
         const vpRatioX0 = (vp.x0Pt - map.xMinPt) / map.xRangePt;
         const vpRatioY0 = (vp.y0Pt - map.yMinPt) / map.yRangePt;
         const vpRatioX1 = (scaled.x1Pt - map.xMinPt) / map.xRangePt;
@@ -393,8 +393,8 @@ export const createCanvasPointMap = ({
     destroy: () => {
       abortController.abort();
     },
-    setHeatmap: (hm: ImageBitmap | undefined) => {
-      heatmap = hm;
+    setHeatmaps: (hm: ImageBitmap[]) => {
+      heatmaps = hm;
       renderPoints();
     },
     // Render the points at LOD `lod` from (ptX0, ptY0) to (ptX1, ptY1) (inclusive) on the canvas.

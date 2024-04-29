@@ -163,7 +163,7 @@ def load_data():
     print("Loading datasets:", DATASETS)
     loaders = {
         "posts": load_posts_data,
-        "posts_bgem3": load_posts_bgem3_data,
+        "posts-bgem3": load_posts_bgem3_data,
         "comments": load_comments_data,
     }
     return {name: loaders[name]() for name in DATASETS}
