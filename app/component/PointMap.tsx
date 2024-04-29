@@ -5,6 +5,7 @@ import assertExists from "@xtjs/lib/assertExists";
 import bounded from "@xtjs/lib/bounded";
 import { useEffect, useRef, useState } from "react";
 import {
+  MAP_DATASET,
   MapState,
   ZOOM_PER_LOD,
   createCanvasPointMap,
@@ -62,7 +63,7 @@ export const PointMap = ({
 
     const fetchMeta = async () => {
       const res = await fetch(
-        `https://us-ashburn-1.edge-hndr.wilsonl.in/map/hnsw-bgem3/meta`,
+        `https://us-ashburn-1.edge-hndr.wilsonl.in/map/${MAP_DATASET}/meta`,
         { signal: ac.signal },
       );
       const raw = await res.arrayBuffer();

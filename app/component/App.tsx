@@ -81,8 +81,7 @@ const apiCall = async (
           heatmap: {
             density: number;
             color: [number, number, number];
-            alpha_min?: number;
-            alpha_max?: number;
+            alpha_scale?: number;
             sigma?: number;
             upscale?: number;
           };
@@ -149,7 +148,7 @@ export const App = () => {
   }>();
   const queryReq = usePromise<ApiResponse>();
   useEffect(() => {
-    if (!query) {
+    if (!query?.query) {
       queryReq.clear();
     } else {
       const timeout = setTimeout(() => {
@@ -167,9 +166,10 @@ export const App = () => {
               },
               {
                 heatmap: {
-                  density: 100, // TODO Dynamic based on viewport size.
-                  color: [66, 207, 115],
-                  upscale: 1,
+                  density: 25,
+                  color: [227, 197, 0],
+                  upscale: 2,
+                  sigma: 4,
                 },
               },
             ],
@@ -203,6 +203,7 @@ export const App = () => {
     (async () => {
       const heatmap = await createImageBitmap(blob);
       ac.signal.throwIfAborted();
+      console.log("Heatmap loaded:", heatmap.width, "x", heatmap.height);
       setHeatmap(heatmap);
     })();
     return () => ac.abort();
@@ -280,7 +281,7 @@ export const App = () => {
             <input
               name="w_sim"
               type="number"
-              defaultValue={0.8}
+              defaultValue={0.7}
               step={0.00001}
             />
           </label>
@@ -302,7 +303,7 @@ export const App = () => {
             <input
               name="w_ts"
               type="number"
-              defaultValue={0.1}
+              defaultValue={0.2}
               step={0.00001}
             />
           </label>

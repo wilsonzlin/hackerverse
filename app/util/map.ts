@@ -15,6 +15,8 @@ import {
 } from "./const";
 import { CACHED_FETCH_404, cachedFetch } from "./fetch";
 
+export const MAP_DATASET = "hnsw-bgem3";
+
 export const PX_PER_PT_BASE = 64;
 export const ZOOM_PER_LOD = 3;
 
@@ -164,7 +166,7 @@ export const cachedFetchTile = async (
   y: number,
 ) => {
   const res = await cachedFetch(
-    `https://${edge}.edge-hndr.wilsonl.in/map/hnsw-bgem3/tile/${lod}/${x}-${y}`,
+    `https://${edge}.edge-hndr.wilsonl.in/map/${MAP_DATASET}/tile/${lod}/${x}-${y}`,
     signal,
     // Not all tiles exist (i.e. no points exist).
     "except-404",
@@ -319,20 +321,19 @@ export const createCanvasPointMap = ({
       ctx.fillStyle = "#fcfcfc";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       if (heatmap) {
-        let dx = 0;
-        let dy = 0;
-        let sx = (heatmap.width * (vp.x0Pt - map.xMinPt)) / map.xRangePt;
-        let sy = (heatmap.height * (vp.y0Pt - map.yMinPt)) / map.yRangePt;
-        let sWidth = (heatmap.width * (scaled.x1Pt - vp.x0Pt)) / map.xRangePt;
-        let sHeight = (heatmap.height * (scaled.y1Pt - vp.y0Pt)) / map.yRangePt;
-        if (sx < 0) {
-          dx = -sx;
-          sx = 0;
-        }
-        if (sy < 0) {
-          dy = -sy;
-          sy = 0;
-        }
+        const vpRatioX0 = (vp.x0Pt - map.xMinPt) / map.xRangePt;
+        const vpRatioY0 = (vp.y0Pt - map.yMinPt) / map.yRangePt;
+        const vpRatioX1 = (scaled.x1Pt - map.xMinPt) / map.xRangePt;
+        const vpRatioY1 = (scaled.y1Pt - map.yMinPt) / map.yRangePt;
+
+        const dx = 0;
+        const dy = 0;
+        const dWidth = canvas.width;
+        const dHeight = canvas.height;
+        const sx = heatmap.width * vpRatioX0;
+        const sy = heatmap.height * vpRatioY0;
+        const sWidth = heatmap.width * (vpRatioX1 - vpRatioX0);
+        const sHeight = heatmap.height * (vpRatioY1 - vpRatioY0);
         ctx.drawImage(
           heatmap,
           sx,
@@ -341,8 +342,8 @@ export const createCanvasPointMap = ({
           sHeight,
           dx,
           dy,
-          canvas.width,
-          canvas.height,
+          dWidth,
+          dHeight,
         );
       }
       const lp = labelledPoints.get(Math.floor(vp.zoom));

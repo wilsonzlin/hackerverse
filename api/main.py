@@ -204,8 +204,7 @@ class Clip(BaseModel):
 class HeatmapOutput(BaseModel):
     density: float
     color: Tuple[int, int, int]
-    alpha_min: float = 0.0
-    alpha_max: float = 1.0
+    alpha_scale: float = 1.0
     sigma: int = 1
     upscale: int = 1  # Max 4.
 
@@ -221,8 +220,7 @@ class HeatmapOutput(BaseModel):
             grid_x=((df["x"] - d.x_min) * self.density)
             .clip(upper=grid_width - 1)
             .astype(int),
-            # Images are stored top-to-bottom, so we need to flip the y-axis
-            grid_y=((d.y_max - df["y"]) * self.density)
+            grid_y=((df["y"] - d.y_min) * self.density)
             .clip(upper=grid_height - 1)
             .astype(int),
         )
@@ -233,7 +231,7 @@ class HeatmapOutput(BaseModel):
             self.upscale, axis=1
         )
         blur = gaussian_filter(alpha_grid, sigma=self.sigma)
-        blur = blur * (self.alpha_max - self.alpha_min) + self.alpha_min
+        blur = (blur * self.alpha_scale).clip(min=0, max=1)
 
         img = np.full(
             (grid_height * self.upscale, grid_width * self.upscale, 4),
