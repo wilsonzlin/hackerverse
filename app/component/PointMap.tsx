@@ -1,5 +1,6 @@
 import { decode } from "@msgpack/msgpack";
 import { VFiniteNumber, VInteger, VStruct } from "@wzlin/valid";
+import Dict from "@xtjs/lib/Dict";
 import UnreachableError from "@xtjs/lib/UnreachableError";
 import assertExists from "@xtjs/lib/assertExists";
 import bounded from "@xtjs/lib/bounded";
@@ -99,6 +100,7 @@ export const PointMap = ({
   const [vpCtrXPt, setVpCtrXPt] = useState(0);
   const [vpCtrYPt, setVpCtrYPt] = useState(0);
   const [zoom, setZoom] = useState(0);
+  const boundZoom = (zoom: number) => bounded(zoom, 0, meta?.zoomMax ?? 0);
   const lod = useMemo(() => meta?.calcLod(zoom) ?? 0, [meta, zoom]);
   const scale = useMemo(
     () =>
@@ -121,9 +123,19 @@ export const PointMap = ({
       zoom,
     };
   }, [scale, vpHeightPx, vpWidthPx, vpCtrXPt, vpCtrYPt, zoom]);
-
-  const ptrPos = useRef<{ clientX: number; clientY: number }>();
   useEffect(() => vp && void map?.render(vp), [map, vp]);
+
+  const ptrsRef = useRef(
+    new Dict<
+      number,
+      {
+        start: PointerEvent;
+        prev: PointerEvent;
+        cur: PointerEvent;
+      }
+    >(),
+  );
+  const ptrs = ptrsRef.current;
 
   return (
     <div className="PointMap">
@@ -134,24 +146,53 @@ export const PointMap = ({
         height={vpHeightPx}
         onPointerDown={(e) => {
           e.currentTarget.setPointerCapture(e.pointerId);
-          ptrPos.current = e;
+          ptrs.putIfAbsentOrThrow(e.pointerId, {
+            start: e.nativeEvent,
+            prev: e.nativeEvent,
+            cur: e.nativeEvent,
+          });
         }}
         onPointerMove={(e) => {
-          if (!ptrPos.current || !scale) {
+          // May not exist (pointer started elsewhere, moved to over this element).
+          const ptr = ptrs.get(e.pointerId);
+          if (!ptr) {
+            return;
+          }
+          if (!scale) {
             return;
           }
           e.preventDefault();
-          const dXPt = scale.pxToPt(ptrPos.current.clientX - e.clientX);
-          const dYPt = scale.pxToPt(ptrPos.current.clientY - e.clientY);
-          ptrPos.current = e;
-          setVpCtrXPt(vpCtrXPt + dXPt);
-          setVpCtrYPt(vpCtrYPt + dYPt);
+          ptr.prev = ptr.cur;
+          ptr.cur = e.nativeEvent;
+          if (ptrs.size == 1) {
+            // Pan.
+            const dXPt = scale.pxToPt(ptr.prev.clientX - ptr.cur.clientX);
+            const dYPt = scale.pxToPt(ptr.prev.clientY - ptr.cur.clientY);
+            setVpCtrXPt(vpCtrXPt + dXPt);
+            setVpCtrYPt(vpCtrYPt + dYPt);
+          } else if (ptrs.size == 2) {
+            // Pinch to zoom.
+            const [a, b] = ptrs.values();
+            const prevDist = Math.hypot(
+              a.prev.clientX - b.prev.clientX,
+              a.prev.clientY - b.prev.clientY,
+            );
+            const curDist = Math.hypot(
+              a.cur.clientX - b.cur.clientX,
+              a.cur.clientY - b.cur.clientY,
+            );
+            const diff = curDist - prevDist;
+            // TODO Tune.
+            setZoom(boundZoom(zoom + diff / 48));
+          }
         }}
-        onPointerCancel={() => {
-          ptrPos.current = undefined;
+        onPointerCancel={(e) => {
+          // Might not exist if started elsewhere or already removed by onPointerUp.
+          ptrs.remove(e.pointerId);
         }}
-        onPointerUp={() => {
-          ptrPos.current = undefined;
+        onPointerUp={(e) => {
+          // Might not exist if started elsewhere or already removed by onPointerCancel.
+          ptrs.remove(e.pointerId);
         }}
         onWheel={(e) => {
           if (!scale || !meta || !vp) {
@@ -171,7 +212,7 @@ export const PointMap = ({
             default:
               throw new UnreachableError();
           }
-          const newZoom = bounded(zoom - delta, 0, meta?.zoomMax ?? 0);
+          const newZoom = boundZoom(zoom - delta);
           setZoom(newZoom);
           const nz = meta.viewportScale({
             ...vp,
