@@ -1,3 +1,4 @@
+import assertInstanceOf from "@xtjs/lib/assertInstanceOf";
 import assertState from "@xtjs/lib/assertState";
 import Dict from "@xtjs/lib/Dict";
 import map from "@xtjs/lib/map";
@@ -7,11 +8,12 @@ export type Clip = { min: number; max: number };
 
 export class ApiGroupByOutput {
   constructor(
-    private readonly groupsArray: Uint32Array,
-    private readonly scoresArray: Float32Array,
-  ) {
-    assertState(groupsArray.length === scoresArray.length);
-  }
+    private readonly groupsArray: Int32Array,
+    private readonly colArrays: Record<
+      string,
+      ArrayLike<number> & Iterable<number>
+    >,
+  ) {}
 
   get length() {
     return this.groupsArray.length;
@@ -21,9 +23,18 @@ export class ApiGroupByOutput {
     yield* this.groupsArray;
   }
 
+  *column(name: string) {
+    yield* this.colArrays[name];
+  }
+
   *entries() {
     for (let i = 0; i < this.length; i++) {
-      yield [this.groupsArray[i], this.scoresArray[i]] as const;
+      yield [
+        this.groupsArray[i],
+        Object.fromEntries(
+          Object.entries(this.colArrays).map(([col, vals]) => [col, vals[i]]),
+        ),
+      ] as const;
     }
   }
 
@@ -37,33 +48,23 @@ export class ApiGroupByOutput {
 }
 
 export class ApiItemsOutput {
-  constructor(
-    private readonly idsArray: Uint32Array,
-    private readonly xsArray: Float32Array,
-    private readonly ysArray: Float32Array,
-    private readonly scoresArray: Float32Array,
-  ) {
-    assertState(idsArray.length === xsArray.length);
-    assertState(idsArray.length === ysArray.length);
-    assertState(idsArray.length === scoresArray.length);
-  }
+  private length: number = -1;
 
-  get length() {
-    return this.idsArray.length;
-  }
-
-  *ids() {
-    yield* this.idsArray;
+  constructor(private readonly colArrays: Record<string, ArrayLike<number>>) {
+    for (const [col, vals] of Object.entries(colArrays)) {
+      if (this.length == -1) {
+        this.length = vals.length;
+      }
+      assertState(this.length === vals.length, `${col} has invalid length`);
+    }
+    assertState(this.length > -1);
   }
 
   *items() {
     for (let i = 0; i < this.length; i++) {
-      yield {
-        id: this.idsArray[i],
-        x: this.xsArray[i],
-        y: this.ysArray[i],
-        score: this.scoresArray[i],
-      };
+      yield Object.fromEntries(
+        Object.entries(this.colArrays).map(([col, vals]) => [col, vals[i]]),
+      );
     }
   }
 
@@ -93,18 +94,20 @@ export const apiCall = async (
   req: {
     dataset: string;
     queries: string[];
-    sim_scale: Clip;
     sim_agg?: "mean" | "min" | "max";
-    ts_weight_decay?: number;
-    filter_hnsw?: number;
-    filter_clip?: Record<string, Clip>;
-    weights: Record<string, number>;
+    ts_decay?: number;
+    pre_filter_hnsw?: number;
+    pre_filter_clip?: Record<string, Clip>;
+    scales?: Record<string, Clip>;
+    thresholds?: Record<string, number>;
+    weights?: Record<string, number>;
+    post_filter_clip?: Record<string, Clip>;
     outputs: Array<
       | {
           group_by: {
-            group_by: string;
-            group_bucket?: number;
-            group_final_score_agg?: "mean" | "min" | "max" | "sum" | "count";
+            by: string;
+            bucket?: number;
+            cols: [string, "mean" | "min" | "max" | "sum" | "count"][];
           };
         }
       | {
@@ -118,6 +121,7 @@ export const apiCall = async (
         }
       | {
           items: {
+            cols: string[];
             order_by?: string;
             order_asc?: boolean;
             limit?: number;
@@ -141,14 +145,43 @@ export const apiCall = async (
   const dv = new DataView(payload);
   let i = 0;
   const out = req.outputs.map((out) => {
+    const unpackRows = (count: number, cols: string[]) => {
+      const colArrays: Record<string, ArrayLike<number> & Iterable<number>> =
+        {};
+      for (const col of cols) {
+        const kind = String.fromCharCode(dv.getUint8(i++));
+        const itemSize = dv.getUint8(i++);
+        const k = `${kind}${itemSize}`;
+        const ctor = {
+          i1: Int8Array,
+          i2: Int16Array,
+          i4: Int32Array,
+          u1: Uint8Array,
+          u2: Uint16Array,
+          u4: Uint32Array,
+          f4: Float32Array,
+          f8: Float64Array,
+        }[k];
+        if (!ctor) {
+          throw new TypeError(`Unrecognised column "${col}" dtype "${k}"`);
+        }
+        // We must slice as the offset may not be aligned.
+        const vals = new ctor(payload.slice(i, (i += count * itemSize)));
+        colArrays[col] = vals;
+      }
+      return colArrays;
+    };
     if ("group_by" in out) {
       const count = dv.getUint32(i, true);
       i += 4;
-      const groups = new Uint32Array(payload, i, count);
-      i += count * 4;
-      const scores = new Float32Array(payload, i, count);
-      i += count * 4;
-      return new ApiGroupByOutput(groups, scores);
+      const { group, ...colArrays } = unpackRows(count, [
+        "group",
+        ...out.group_by.cols.map((c) => c[0]),
+      ]);
+      return new ApiGroupByOutput(
+        assertInstanceOf(group, Int32Array),
+        colArrays,
+      );
     }
     if ("heatmap" in out) {
       const rawLen = dv.getUint32(i, true);
@@ -159,15 +192,8 @@ export const apiCall = async (
     if ("items" in out) {
       const count = dv.getUint32(i, true);
       i += 4;
-      const ids = new Uint32Array(payload, i, count);
-      i += count * 4;
-      const xs = new Float32Array(payload, i, count);
-      i += count * 4;
-      const ys = new Float32Array(payload, i, count);
-      i += count * 4;
-      const scores = new Float32Array(payload, i, count);
-      i += count * 4;
-      return new ApiItemsOutput(ids, xs, ys, scores);
+      const colArrays = unpackRows(count, out.items.cols);
+      return new ApiItemsOutput(colArrays);
     }
     throw new UnreachableError();
   });

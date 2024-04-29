@@ -51,19 +51,22 @@ class Dataset:
     index: hnswlib.Index
 
 
-def normalize_dataset(df: pd.DataFrame):
+def normalize_dataset(df: pd.DataFrame, mat_embs: np.ndarray):
+    # This may be smaller than the original, if some rows have been filtered during inner joins.
+    mat_embs_ordered = mat_embs[df.pop("emb_row").to_numpy()]
+
     score_min = df["score"].min()
     score_max = df["score"].max()
     # Call this "vote" to avoid confusion with the "score" that we assign.
     df.rename(columns={"score": "vote"}, inplace=True)
     # Add one to ensure no ln(0) which is undefined.
-    df["vote_weight"] = np.log(df["vote"] - score_min + 1) / np.log(
+    df["vote_norm"] = np.log(df["vote"] - score_min + 1) / np.log(
         score_max - score_min + 1
     )
     df["ts"] = df["ts"].astype("int64")
     df["ts_day"] = df["ts"] / (60 * 60 * 24)
     df.set_index("id", inplace=True)
-    return df
+    return df, mat_embs_ordered
 
 
 def load_hnsw_index(name: str, dim: int):
@@ -86,8 +89,8 @@ def load_umap(ids: npt.NDArray[np.uint32], name: str):
 
 
 def load_jinav2small_umap():
-    df_posts = load_post_embs_table()
-    df_comments = load_comment_embs_table()
+    df_posts, _ = load_post_embs_table()
+    df_comments, _ = load_comment_embs_table()
     df = merge_posts_and_comments(posts=df_posts, comments=df_comments)
     mat_ids = df["id"].to_numpy()
     return load_umap(mat_ids, "hnsw_n50_d0.25")
@@ -95,12 +98,13 @@ def load_jinav2small_umap():
 
 def load_posts_data():
     df = load_table("posts", columns=["id", "score", "ts"])
-    df = df.merge(load_post_embs_table(), on="id", how="inner")
+    df_embs, mat_emb = load_post_embs_table()
+    df = df.merge(df_embs, on="id", how="inner")
     df = df.merge(load_jinav2small_umap(), on="id", how="inner")
-    df = normalize_dataset(df)
+    df, mat_emb = normalize_dataset(df, mat_emb)
     print("Posts:", len(df))
     return Dataset(
-        emb_mat=np.vstack(df.pop("emb")),
+        emb_mat=mat_emb,
         index=load_hnsw_index("posts", 512),
         model=model_jinav2small,
         table=df,
@@ -113,14 +117,14 @@ def load_posts_data():
 
 def load_posts_bgem3_data():
     df = load_table("posts", columns=["id", "score", "ts"])
-    df_embs = load_post_embs_bgem3_table()
+    df_embs, mat_emb = load_post_embs_bgem3_table()
     df = df.merge(df_embs, on="id", how="inner")
     df_umap = load_umap(df_embs["id"].to_numpy(), "hnsw-bgem3_n300_d0.25")
     df = df.merge(df_umap, on="id", how="inner")
-    df = normalize_dataset(df)
+    df, mat_emb = normalize_dataset(df, mat_emb)
     print("Posts bgem3:", len(df))
     return Dataset(
-        emb_mat=np.vstack(df.pop("emb")),
+        emb_mat=mat_emb,
         index=load_hnsw_index("posts_bgem3", 1024),
         model=model_bgem3,
         table=df,
@@ -132,23 +136,33 @@ def load_posts_bgem3_data():
 
 
 def load_comments_data():
+    print("Loading comments")
     df = load_table("comments", columns=["id", "score", "ts"])
-    df = df.merge(load_comment_embs_table(), on="id", how="inner")
+    print("Loading and merging comment embeddings")
+    df_embs, mat_emb = load_comment_embs_table()
+    df = df.merge(df_embs, on="id", how="inner")
+    print("Loading and merging comment UMAP")
     df = df.merge(load_jinav2small_umap(), on="id", how="inner")
-    df = df.merge(load_table("comment_sentiments"), on="id", how="inner")
-    df["sentiment_weight"] = np.where(
-        df["negative"] > df[["neutral", "positive"]].max(axis=1),
-        -df["negative"],
-        np.where(
-            df["neutral"] > df[["positive"]].max(axis=1),
-            0,
-            df["positive"],
-        ),
+    print("Loading and merging comment sentiments")
+    df_sent = load_table("comment_sentiments").rename(
+        columns={
+            "positive": "sent_pos",
+            "neutral": "sent_neu",
+            "negative": "sent_neg",
+        }
     )
-    df = normalize_dataset(df)
+    df = df.merge(df_sent, on="id", how="inner")
+    print("Calculating derived comment sentiment columns")
+    df["sent"] = np.float32(0.0)
+    df.loc[df["sent_neg"] > df[["sent_neu", "sent_pos"]].max(axis=1), "sent"] = -df[
+        "sent_neg"
+    ]
+    df.loc[df["sent_pos"] > df["sent_neu"], "sent"] = df["sent_pos"]
+    print("Normalizing comment table")
+    df, mat_emb = normalize_dataset(df, mat_emb)
     print("Comments:", len(df))
     return Dataset(
-        emb_mat=np.vstack(df.pop("emb")),
+        emb_mat=mat_emb,
         index=load_hnsw_index("comments", 512),
         model=model_jinav2small,
         table=df,
@@ -169,8 +183,8 @@ def load_data():
     return {name: loaders[name]() for name in DATASETS}
 
 
-def normalize_sim(raw: np.ndarray, clip: "Clip"):
-    sim = raw.clip(min=clip.min, max=clip.max)
+def scale_series(raw: pd.Series, clip: "Clip"):
+    sim = raw.clip(lower=clip.min, upper=clip.max)
     return (sim - clip.min) / (clip.max - clip.min)
 
 
@@ -178,6 +192,8 @@ def pack_rows(df: pd.DataFrame, cols: List[str]):
     final_count = len(df)
     out = struct.pack("<I", final_count)
     for col in cols:
+        out += df[col].dtype.kind.encode()
+        out += struct.pack("B", df[col].dtype.itemsize)
         out += df[col].to_numpy().tobytes()
     return out
 
@@ -247,6 +263,7 @@ class HeatmapOutput(BaseModel):
 
 
 class ItemsOutput(BaseModel):
+    cols: List[str] = ["id", "final_score"]
     order_by: str = "final_score"
     order_asc: bool = False
     limit: Optional[int] = None
@@ -255,30 +272,24 @@ class ItemsOutput(BaseModel):
         df = df.sort_values(self.order_by, ascending=self.order_asc)
         if self.limit is not None:
             df = df[: self.limit]
-        df["final_score"] = df["final_score"].astype("float32")
-        return pack_rows(df, ["id", "x", "y", "final_score"])
+        return pack_rows(df, self.cols)
 
 
 # To filter groups, filter the original column that is grouped by.
 class GroupByOutput(BaseModel):
     # This will replace the ID column, which will instead represent the group.
-    group_by: str
-    # Each item belongs into the bucket `item[group_by] // group_bucket`.
-    group_bucket: float = 1.0
-    # mean, min, max, sum, count
-    group_final_score_agg: str = "sum"
+    by: str
+    # Each item belongs into the bucket `item[by] // bucket`.
+    bucket: float = 1.0
+    # Mapping from column to aggregation method.
+    # This is a list so that values are returned in a deterministic column order.
+    cols: List[Tuple[str, str]] = [("final_score", "sum")]
 
     def calculate(self, d: Dataset, df: pd.DataFrame):
-        df = df.assign(
-            group=(df[self.group_by] // (self.group_bucket or 1.0)).astype("int32")
-        )
-        df = df.groupby("group", as_index=False).agg(
-            {"final_score": self.group_final_score_agg}
-        )
-        df = df[df["final_score"] > 0.0]
-        df["final_score"] = df["final_score"].astype("float32")
+        df = df.assign(group=(df[self.by] // self.bucket).astype("int32"))
+        df = df.groupby("group", as_index=False).agg(dict(self.cols))
         df = df.sort_values("group", ascending=True)
-        return pack_rows(df, ["group", "final_score"])
+        return pack_rows(df, ["group"] + [c for c, _ in self.cols])
 
 
 class Output(BaseModel):
@@ -301,30 +312,32 @@ class QueryInput(BaseModel):
     dataset: str
     queries: List[str]
 
-    # Normalize similarity weights to this range.
-    sim_scale: Clip
     # How to aggregate the query similarity values into one for each row/item.
-    # Rows with zero agg. similiarity post-scaling will be filtered.
     sim_agg: str = "mean"  # mean, min, max.
 
-    ts_weight_decay: float = 0.1
+    ts_decay: float = 0.1
 
     # If provided, will first filter to this many ANN rows using the HNSW index.
-    filter_hnsw: Optional[int] = None
+    pre_filter_hnsw: Optional[int] = None
 
     # Filter out rows where their column values are outside this range.
-    filter_clip: Dict[str, Clip] = {}
+    pre_filter_clip: Dict[str, Clip] = {}
 
-    # How much to scale each component when calculating final score.
-    # Keys must be the prefix of a "*_weight" column.
+    # Scale each column into a new column `{col}_scaled`.
+    scales: Dict[str, Clip] = {}
+
+    # Map from source column => threshold. Convert the column into 0 or 1, where it's 1 if the original column value is greater than or equal to the threshold. The resulting column will be named `{col}_thresh` and can be used as a weight.
+    thresholds: Dict[str, float] = {}
+
+    # How much to scale each column when calculating final score.
     # Values can be zero, which is the default implied when omitted.
     # WARNING: This means that if this is empty, all items will have a score of zero.
-    weights: Dict[str, float]
+    weights: Dict[str, float] = {}
+
+    # Filter out rows where their column values are outside this range, after calculating thresholds and final score (using weights).
+    post_filter_clip: Dict[str, Clip] = {}
 
     outputs: List[Output]
-
-
-WEIGHT_COLS = ("sentiment", "sim", "ts", "vote")
 
 
 @app.post("/")
@@ -338,10 +351,10 @@ def query(input: QueryInput):
         raise HTTPException(status_code=400, detail="Invalid query count")
     if not all(1 <= len(q) <= 128 for q in input.queries):
         raise HTTPException(status_code=400, detail="Invalid query length")
-    if input.filter_hnsw is not None and not (1 <= input.filter_hnsw <= d.index.ef):
-        raise HTTPException(status_code=400, detail="Invalid filter_hnsw")
-    if not all(c in WEIGHT_COLS for c in input.weights.keys()):
-        raise HTTPException(status_code=400, detail="Invalid weight")
+    if input.pre_filter_hnsw is not None and not (
+        1 <= input.pre_filter_hnsw <= d.index.ef
+    ):
+        raise HTTPException(status_code=400, detail="Invalid pre_filter_hnsw")
     if input.sim_agg not in ("mean", "min", "max"):
         raise HTTPException(status_code=400, detail="Invalid sim_agg")
 
@@ -357,44 +370,53 @@ def query(input: QueryInput):
     assert type(q_mat) == np.ndarray
     assert q_mat.shape[0] == len(input.queries)
 
-    if input.filter_hnsw is not None:
+    if input.pre_filter_hnsw is not None:
         # `ids` and `dists` are matrices of shape (query_count, limit).
         # TODO Support prefiltering using the `filter` callback.
-        ids, dists = d.index.knn_query(q_mat, k=input.filter_hnsw)
-        sims = normalize_sim(1 - dists, input.sim_scale)
+        ids, dists = d.index.knn_query(q_mat, k=input.pre_filter_hnsw)
+        sims = 1 - dists
         raw = pd.DataFrame(
             {
                 "id": np.unique(ids).astype(np.uint32),
             }
         )
         for i in range(len(input.queries)):
-            raw[f"sim{i}"] = 0.0
+            raw[f"sim{i}"] = np.float32(0.0)
             raw.loc[raw["id"].isin(ids[i]), f"sim{i}"] = sims[i]
         cols = [f"sim{i}" for i in range(len(input.queries))]
         mat_sims = raw[cols].to_numpy()
         raw.drop(columns=cols, inplace=True)
         # This is why we index "id" in `d.table`.
         df = df.merge(raw, how="inner", on="id")
-        for col, w in input.filter_clip.items():
-            df = df[df[w.min <= df[col] <= w.max]]
+        for col, w in input.pre_filter_clip.items():
+            df = df[df[col].between(w.min, w.max)]
     else:
         df = df.copy(deep=False)
-        for col, w in input.filter_clip.items():
-            df = df[df[w.min <= df[col] <= w.max]]
-        mat_sims = normalize_sim(d.emb_mat @ q_mat.T, input.sim_scale)
+        # If there are pre-filters, do so before calculating similarity across all rows.
+        for col, w in input.pre_filter_clip.items():
+            df = df[df[col].between(w.min, w.max)]
+        mat_sims = d.emb_mat @ q_mat.T
     # Reset the index so we can select the `id` column again.
     df.reset_index(inplace=True)
 
     today = time.time() / (60 * 60 * 24)
-    df["ts_weight"] = np.exp(-input.ts_weight_decay * (today - df["ts_day"]))
+    df["ts_norm"] = np.exp(-input.ts_decay * (today - df["ts_day"]))
 
     assert mat_sims.shape == (len(df), len(input.queries))
-    df["sim_weight"] = getattr(np, input.sim_agg)(mat_sims, axis=1)
-    df = df[df["sim_weight"] > 0.0]
-    df["final_score"] = 0
+    df["sim"] = getattr(np, input.sim_agg)(mat_sims, axis=1)
+
+    for c, scale in input.scales.items():
+        df[f"{c}_scaled"] = scale_series(df[c], scale)
+
+    for c, t in input.thresholds.items():
+        df[f"{c}_thresh"] = df[c] >= t
+
+    df["final_score"] = np.float32(0.0)
     for c, w in input.weights.items():
-        df["final_score"] += df[f"{c}_weight"] * w
-    df = df[df["final_score"] > 0.0]
+        df["final_score"] += df[c] * w
+
+    for col, w in input.post_filter_clip.items():
+        df = df[df[col].between(w.min, w.max)]
 
     out = b""
     for o in input.outputs:

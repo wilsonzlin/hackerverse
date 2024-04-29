@@ -1,4 +1,5 @@
 import { Item, fetchHnItem } from "@wzlin/crawler-toolkit-hn";
+import { VFiniteNumber, VInteger, VStruct, Valid } from "@wzlin/valid";
 import assertInstanceOf from "@xtjs/lib/assertInstanceOf";
 import defined from "@xtjs/lib/defined";
 import findAndRemove from "@xtjs/lib/findAndRemove";
@@ -17,10 +18,19 @@ import { PointMap, PointMapController } from "../component/PointMap";
 import { ApiHeatmapOutput, ApiItemsOutput, apiCall } from "../util/api";
 import { useMeasure } from "../util/dom";
 import { usePromise } from "../util/fetch";
+import { MAP_DATASET } from "../util/map";
 import "./Search.css";
 
+const vQueryResultItem = new VStruct({
+  id: new VInteger(1),
+  x: new VFiniteNumber(),
+  y: new VFiniteNumber(),
+  sim: new VFiniteNumber(),
+  final_score: new VFiniteNumber(),
+});
+
 type QueryResults = {
-  items: Array<{ id: number; x: number; y: number; score: number }>;
+  items: Array<Valid<typeof vQueryResultItem>>;
   heatmap: ImageBitmap;
 };
 
@@ -60,13 +70,22 @@ const QueryForm = ({
         }
         queryReq.set(async (signal) => {
           const data = await apiCall(signal, {
-            dataset: "posts-bgem3",
+            dataset: {
+              hnsw: "posts",
+              "hnsw-bgem3": "posts-bgem3",
+            }[MAP_DATASET],
             queries: [query],
-            sim_scale: { min: 0.55, max: 0.75 },
-            ts_weight_decay: decayTimestamp,
+            scales: {
+              sim: {
+                hnsw: { min: 0.7, max: 1 },
+                "hnsw-bgem3": { min: 0.55, max: 0.75 },
+              }[MAP_DATASET],
+            },
+            ts_decay: decayTimestamp,
             outputs: [
               {
                 items: {
+                  cols: ["id", "x", "y", "sim", "final_score"],
                   limit: 20,
                 },
               },
@@ -81,13 +100,15 @@ const QueryForm = ({
               },
             ],
             weights: {
-              sim: weightSimilarity,
-              ts: weightTimestamp,
-              vote: weightScore,
+              sim_scaled: weightSimilarity,
+              ts_norm: weightTimestamp,
+              vote_norm: weightScore,
             },
           });
           const results = {
-            items: [...assertInstanceOf(data[0], ApiItemsOutput).items()],
+            items: [...assertInstanceOf(data[0], ApiItemsOutput).items()].map(
+              (o) => vQueryResultItem.parseRoot(o),
+            ),
             heatmap: await createImageBitmap(
               assertInstanceOf(data[1], ApiHeatmapOutput).blob(),
             ),
@@ -241,7 +262,7 @@ export const SearchPage = () => {
     () =>
       queries
         .flatMap((q) => q.results?.items ?? [])
-        .sort(reversedComparator(propertyComparator("score"))),
+        .sort(reversedComparator(propertyComparator("final_score"))),
     [queries],
   );
   const heatmaps = useMemo(
@@ -290,7 +311,7 @@ export const SearchPage = () => {
   }, [results]);
 
   return (
-    <div ref={setRootElem} className="Search">
+    <div ref={setRootElem} className="SearchPage">
       <PointMap
         controllerRef={mapCtl}
         heatmaps={heatmaps}
@@ -303,7 +324,7 @@ export const SearchPage = () => {
 
       <div className="panel">
         <div className="queries">
-          {queries.map((q, i) => {
+          {queries.map((q) => {
             const mutQ = (fn: (q: QueryState) => unknown) => {
               // Always use setQueries in callback mode, and always find ID, since `queries` may have changed since we last created and passed the on* callbacks.
               setQueries((queries) =>
@@ -365,7 +386,7 @@ export const SearchPage = () => {
         </div>
 
         <div className="results">
-          {results?.map(({ id, score }) => {
+          {results?.map(({ id, sim, final_score }) => {
             const item = items[id];
             if (!item || !item.time || !item.by || !item.title) {
               return;
@@ -392,7 +413,12 @@ export const SearchPage = () => {
               .split(",")[0];
             return (
               <div key={id} className="result">
-                <p className="site">{site}</p>
+                <div>
+                  <p className="site">{site}</p>
+                  <div>
+                    {sim} {final_score}
+                  </div>
+                </div>
                 <a href={url} target="_blank" rel="noopener noreferrer">
                   <h1 dangerouslySetInnerHTML={{ __html: item.title ?? "" }} />
                 </a>

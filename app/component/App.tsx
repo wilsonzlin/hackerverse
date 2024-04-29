@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { AnalysisPage } from "../page/Analysis";
 import { NotFoundPage } from "../page/NotFound";
 import { SearchPage } from "../page/Search";
 import { router } from "../util/router";
@@ -15,6 +16,7 @@ export const App = () => {
     () =>
       ({
         "/": SearchPage,
+        "/analysis": AnalysisPage,
       })[path] ?? NotFoundPage,
     [path],
   );

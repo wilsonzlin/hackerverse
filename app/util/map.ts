@@ -15,6 +15,7 @@ import {
 } from "./const";
 import { CACHED_FETCH_404, cachedFetch } from "./fetch";
 
+// "hnsw" or "hnsw-bgem3".
 export const MAP_DATASET = "hnsw-bgem3";
 
 export const ZOOM_PER_LOD = 3;

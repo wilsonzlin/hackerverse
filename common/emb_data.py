@@ -35,13 +35,17 @@ def _load_embs_table(pfx: str, dim: int):
     count = load_count(pfx)
     mat_ids = load_mmap_matrix(f"{pfx}_ids", (count,), np.uint32)
     mat_embs = load_mmap_matrix(f"{pfx}_data", (count, dim), np.float32)
-    return pd.DataFrame(
-        {
-            "id": mat_ids,
-            # We can't pass the (N, dim) matrix to DataFrame directly, it'll raise:
-            # > ValueError: Per-column arrays must each be 1-dimensional
-            "emb": [mat_embs[i] for i in range(count)],
-        }
+    return (
+        pd.DataFrame(
+            {
+                "id": mat_ids,
+                # We can't pass the (N, dim) matrix to DataFrame directly, it'll raise:
+                # > ValueError: Per-column arrays must each be 1-dimensional
+                # Splitting by row takes extremely long. Instead, we'll just store the corresponding row number.
+                "emb_row": list(range(count)),
+            }
+        ),
+        mat_embs,
     )
 
 
