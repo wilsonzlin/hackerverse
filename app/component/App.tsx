@@ -399,61 +399,61 @@ export const App = () => {
       />
 
       <div className="panel">
-        {queries.map((q, i) => {
-          const mutQ = (fn: (q: QueryState) => unknown) => {
-            // Always use setQueries in callback mode, and always find ID, since `queries` may have changed since we last created and passed the on* callbacks.
-            setQueries((queries) =>
-              produce(queries, (queries) => {
-                const found = queries.find((oq) => oq.id === q.id);
-                if (found) {
-                  fn(found);
+        <div className="queries">
+          {queries.map((q, i) => {
+            const mutQ = (fn: (q: QueryState) => unknown) => {
+              // Always use setQueries in callback mode, and always find ID, since `queries` may have changed since we last created and passed the on* callbacks.
+              setQueries((queries) =>
+                produce(queries, (queries) => {
+                  const found = queries.find((oq) => oq.id === q.id);
+                  if (found) {
+                    fn(found);
+                  }
+                }),
+              );
+            };
+
+            return (
+              <QueryForm
+                key={q.id}
+                canDelete={queries.length > 1}
+                color={q.color}
+                onChangeColor={(color) => mutQ((q) => (q.color = color))}
+                onDelete={() =>
+                  setQueries((queries) =>
+                    produce(
+                      queries,
+                      (queries) =>
+                        void findAndRemove(queries, (oq) => oq.id === q.id),
+                    ),
+                  )
                 }
-              }),
+                onResults={(results) => mutQ((q) => (q.results = results))}
+              />
             );
-          };
+          })}
 
-          return (
-            <QueryForm
-              key={q.id}
-              canDelete={queries.length > 1}
-              color={q.color}
-              onChangeColor={(color) => mutQ((q) => (q.color = color))}
-              onDelete={() =>
-                setQueries((queries) =>
-                  produce(
-                    queries,
-                    (queries) =>
-                      void findAndRemove(queries, (oq) => oq.id === q.id),
-                  ),
-                )
-              }
-              onResults={(results) => mutQ((q) => (q.results = results))}
-            />
-          );
-        })}
-
-        <button
-          className="add-query"
-          onClick={() => {
-            setQueries([
-              ...queries,
-              {
-                id: nextQueryId.current++,
-                color: [
-                  Math.floor(Math.random() * 255),
-                  Math.floor(Math.random() * 255),
-                  Math.floor(Math.random() * 255),
-                ],
-                results: undefined,
-              },
-            ]);
-          }}
-        >
-          <Ico i="add" size={18} />
-          <span>Add query</span>
-        </button>
-
-        <div className="spacer" />
+          <button
+            className="add-query"
+            onClick={() => {
+              setQueries([
+                ...queries,
+                {
+                  id: nextQueryId.current++,
+                  color: [
+                    Math.floor(Math.random() * 255),
+                    Math.floor(Math.random() * 255),
+                    Math.floor(Math.random() * 255),
+                  ],
+                  results: undefined,
+                },
+              ]);
+            }}
+          >
+            <Ico i="add" size={18} />
+            <span>Add query</span>
+          </button>
+        </div>
 
         <div className="results">
           {results?.map(({ id, score }) => {

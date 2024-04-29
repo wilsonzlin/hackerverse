@@ -1,117 +1,114 @@
 .App {
+  --card-background: white;
+  --card-border-radius: 0.25rem;
+  --card-padding: 0.75rem;
+  --card-shadow: 0 2px 1rem rgba(0, 0, 0, 0.25);
+  --panel-margin-from-edge: 1rem;
+
   position: fixed;
   inset: 0;
 
   .panel {
     position: absolute;
     inset: 0;
-    padding: 1rem;
     max-width: 30rem;
 
     pointer-events: none;
 
     display: flex;
     flex-direction: column;
-    align-items: flex-start;
+    justify-content: space-between;
+    align-items: stretch;
+    gap: 1rem;
 
     > * {
       pointer-events: auto;
     }
   }
 
-  .QueryForm,
-  .add-query,
-  .results {
-    background: white;
-    border-radius: 0.25rem;
-    box-shadow: 0 2px 1rem rgba(0, 0, 0, 0.25);
-  }
-
-  .QueryForm,
-  .results {
-    padding: 0.75rem;
-    width: 100%;
-  }
-
-  .QueryForm,
-  .add-query {
-    margin-bottom: 0.5rem;
-  }
-
-  .QueryForm {
-    .main {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      line-height: 1;
-
-      > .color {
-        > div {
-          border-radius: 100%;
-          height: 1.25rem;
-          width: 1.25rem;
-        }
-      }
-
-      > .query {
-        flex-grow: 1;
-      }
-
-      > :not(.query) {
-        flex-shrink: 0;
-
-        &.toggle-params {
-          color: #555;
-        }
-
-        &.error {
-          color: red;
-        }
-      }
-    }
-
-    .params {
-      margin-top: 0.5rem;
-
-      display: flex;
-      gap: 0.25rem;
-
-      > label {
-        min-width: 0;
-        flex: 1 1 0;
-        padding: 0.125rem 0.25rem;
-
-        border: 1px solid #ccc;
-        border-radius: 0.25rem;
-
-        display: flex;
-        align-items: center;
-        font-size: 0.75rem;
-        gap: 0.25rem;
-      }
-    }
-  }
-
-  .add-query {
-    padding: 0.5rem;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.8rem;
-  }
-
-  .spacer {
-    flex-grow: 1;
-  }
-
-  .results {
-    min-height: 0;
-    overflow: auto;
-
+  .queries {
     display: flex;
     flex-direction: column;
-    gap: 2rem;
+    align-items: flex-start;
+    gap: 0.5rem;
 
+    margin: var(--panel-margin-from-edge);
+    margin-bottom: 0;
+
+    .QueryForm,
+    .add-query {
+      background: var(--card-background);
+      border-radius: var(--card-border-radius);
+      box-shadow: var(--card-shadow);
+    }
+
+    .QueryForm {
+      padding: var(--card-padding);
+      width: 100%;
+
+      .main {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        line-height: 1;
+
+        > .color {
+          > div {
+            border-radius: 100%;
+            height: 1.25rem;
+            width: 1.25rem;
+          }
+        }
+
+        > .query {
+          flex-grow: 1;
+        }
+
+        > :not(.query) {
+          flex-shrink: 0;
+
+          &.toggle-params {
+            color: #555;
+          }
+
+          &.error {
+            color: red;
+          }
+        }
+      }
+
+      .params {
+        margin-top: 0.5rem;
+
+        display: flex;
+        gap: 0.25rem;
+
+        > label {
+          min-width: 0;
+          flex: 1 1 0;
+          padding: 0.125rem 0.25rem;
+
+          border: 1px solid #ccc;
+          border-radius: 0.25rem;
+
+          display: flex;
+          align-items: center;
+          font-size: 0.75rem;
+          gap: 0.25rem;
+        }
+      }
+    }
+
+    .add-query {
+      padding: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.8rem;
+    }
+  }
+
+  .results {
     &:empty {
       display: none; /* Hide padding. */
     }
@@ -119,6 +116,46 @@
     > .result {
       h1 {
         font-size: 1.25rem;
+      }
+    }
+  }
+
+  @media screen and (min-width: 800px) {
+    .results {
+      display: flex;
+      flex-direction: column;
+      gap: 2rem;
+      min-height: 0;
+      overflow: auto;
+      padding: var(--card-padding);
+
+      margin: var(--panel-margin-from-edge);
+      margin-top: 0;
+
+      background: var(--card-background);
+      border-radius: var(--card-border-radius);
+      box-shadow: var(--card-shadow);
+    }
+  }
+
+  @media screen and (max-width: 799px) {
+    .results {
+      align-items: flex-end;
+      display: flex;
+      flex-wrap: nowrap;
+      gap: calc(var(--panel-margin-from-edge) * 2);
+      overflow: auto;
+      padding: var(--panel-margin-from-edge);
+      width: 100%;
+
+      > .result {
+        flex: 1 1 0;
+        min-width: 100%;
+        padding: var(--card-padding);
+
+        background: var(--card-background);
+        border-radius: var(--card-border-radius);
+        box-shadow: var(--card-shadow);
       }
     }
   }
