@@ -20,7 +20,7 @@ def normalize_dataset(df: pd.DataFrame, mat_embs: np.ndarray):
     # Call this "votes" to avoid confusion with the "score" that we assign.
     df.rename(columns={"score": "votes"}, inplace=True)
     # Add one to ensure no ln(0) which is undefined.
-    df["votes_norm"] = np.log(df["votes"] - score_min + 1) / np.log(
+    df["votes_norm"] = np.log((df["votes"] - score_min).clip(lower=1)) / np.log(
         score_max - score_min + 1
     )
     df["ts"] = df["ts"].astype("int64")
@@ -103,7 +103,12 @@ def build_posts_bgem3_data():
 
 def load_comments_data():
     print("Loading comments")
-    df = load_table("comments", columns=["id", "score", "ts"])
+    df = load_table("comments", columns=["id", "author", "score", "ts"]).rename(
+        columns={"author": "user_id"}
+    )
+    print("Loading and merging users")
+    df_users = load_table("users").rename(columns={"id": "user_id", "username": "user"})
+    df = df.merge(df_users, how="inner", on="user_id")
     print("Loading and merging comment embeddings")
     df_embs, mat_emb = load_comment_embs_table()
     df = df.merge(df_embs, on="id", how="inner")

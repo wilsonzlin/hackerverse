@@ -16,6 +16,7 @@ from typing import Optional
 from typing import Tuple
 from typing import Union
 import hnswlib
+import msgpack
 import numpy as np
 import os
 import pandas as pd
@@ -34,7 +35,7 @@ model_jinav2small = SentenceTransformer(
 
 
 def load_hnsw_index(name: str, dim: int):
-    print("Loading HNSW index", name)
+    print("Loading HNSW index:", name)
     idx = hnswlib.Index(space="ip", dim=dim)
     idx.load_index(f"/hndr-data/hnsw_{name}.index", allow_replace_deleted=True)
     idx.set_ef(128)
@@ -72,9 +73,17 @@ def pack_rows(df: pd.DataFrame, cols: List[str]):
     final_count = len(df)
     out = struct.pack("<I", final_count)
     for col in cols:
-        out += df[col].dtype.kind.encode()
-        out += struct.pack("B", df[col].dtype.itemsize)
-        out += df[col].to_numpy().tobytes()
+        dt = df[col].dtype
+        out += dt.kind.encode()
+        if dt == object:
+            # Probably strings. Anyway, use msgpack for simplicity (instead of inventing our own mechanism).
+            raw = msgpack.packb(df[col].to_list())
+            assert type(raw) == bytes
+            out += struct.pack("<I", len(raw))
+            out += raw
+        else:
+            out += struct.pack("B", df[col].dtype.itemsize)
+            out += df[col].to_numpy().tobytes()
     return out
 
 
@@ -159,16 +168,24 @@ class ItemsOutput(BaseModel):
 class GroupByOutput(BaseModel):
     # This will replace the ID column, which will instead represent the group.
     by: str
-    # Each item belongs into the bucket `item[by] // bucket`.
-    bucket: float = 1.0
+    # If set, each item belongs into the bucket `item[by] // bucket` instead of `item[by]`. Note that this only works on numeric columns.
+    bucket: Optional[float] = None
     # Mapping from column to aggregation method.
     # This is a list so that values are returned in a deterministic column order.
     cols: List[Tuple[str, str]] = [("final_score", "sum")]
+    order_by: str = "group"
+    order_asc: bool = True
+    limit: Optional[int] = None
 
     def calculate(self, d: ApiDataset, df: pd.DataFrame):
-        df = df.assign(group=(df[self.by] // self.bucket).astype("int32"))
+        if self.bucket is not None:
+            df = df.assign(group=(df[self.by] // self.bucket).astype("int32"))
+        else:
+            df = df.assign(group=df[self.by])
         df = df.groupby("group", as_index=False).agg(dict(self.cols))
-        df = df.sort_values("group", ascending=True)
+        df = df.sort_values(self.order_by, ascending=self.order_asc)
+        if self.limit is not None:
+            df = df[: self.limit]
         return pack_rows(df, ["group"] + [c for c, _ in self.cols])
 
 

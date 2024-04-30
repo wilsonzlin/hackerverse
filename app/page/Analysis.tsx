@@ -1,4 +1,4 @@
-import { VFiniteNumber, VInteger, VStruct } from "@wzlin/valid";
+import { VFiniteNumber, VInteger, VString } from "@wzlin/valid";
 import assertInstanceOf from "@xtjs/lib/assertInstanceOf";
 import bounded from "@xtjs/lib/bounded";
 import defined from "@xtjs/lib/defined";
@@ -78,11 +78,11 @@ const SentimentSection = ({
       });
       const data = assertInstanceOf(res[0], ApiGroupByOutput);
       return {
-        timestamps: [...data.groups()].map(
+        timestamps: [...data.groups(new VInteger())].map(
           (d) => new Date(d * 7 * 24 * 60 * 60 * 1000),
         ),
-        positives: [...data.column("sent_pos_thresh")],
-        negatives: [...data.column("sent_neg_thresh")],
+        positives: [...data.column("sent_pos_thresh", new VFiniteNumber())],
+        negatives: [...data.column("sent_neg_thresh", new VFiniteNumber())],
       };
     });
 
@@ -108,12 +108,12 @@ const SentimentSection = ({
         ],
       });
       const data = assertInstanceOf(res[0], ApiItemsOutput);
-      return [...data.items()].map((i) =>
-        new VStruct({
+      return [
+        ...data.items({
           id: new VInteger(1),
           sim: new VFiniteNumber(),
-        }).parseRoot(i),
-      );
+        }),
+      ];
     });
   }, [query, simThreshold]);
 
@@ -245,6 +245,90 @@ const SentimentSection = ({
   );
 };
 
+const TopUsersSection = ({
+  query,
+  simThreshold,
+}: {
+  query: string;
+  simThreshold: number;
+}) => {
+  const req = usePromise<Array<{ user: string; score: number }>>();
+  useEffect(() => {
+    if (!query) {
+      req.clear();
+      return;
+    }
+    req.set(async (signal) => {
+      const res = await apiCall(signal, {
+        dataset: "comments",
+        queries: [query],
+        scales: {
+          sim: {
+            min: simThreshold,
+            max: 1,
+          },
+        },
+        weights: {
+          // We can't multiply by votes, because the HN API does not expose votes for anything except posts.
+          sim_scaled: 1,
+        },
+        outputs: [
+          {
+            group_by: {
+              by: "user",
+              cols: [["final_score", "sum"]],
+              order_by: "final_score",
+              order_asc: false,
+              limit: 20,
+            },
+          },
+        ],
+      });
+      const data = assertInstanceOf(res[0], ApiGroupByOutput);
+      return [
+        ...data.entries(new VString(), {
+          final_score: new VFiniteNumber(),
+        }),
+      ].map((e) => ({
+        user: e[0],
+        score: e[1].final_score,
+      }));
+    });
+  }, [query]);
+
+  if (!query) {
+    return null;
+  }
+
+  return (
+    <section>
+      <h2>Top users</h2>
+      {req.loading && <Loading size={32} />}
+      {req.error && <p className="err">{req.error}</p>}
+      {req.data && (
+        <table>
+          <thead>
+            <tr>
+              <th>Rank</th>
+              <th>User</th>
+              <th>Score</th>
+            </tr>
+          </thead>
+          <tbody>
+            {req.data.map((r, i) => (
+              <tr key={i}>
+                <th>{i + 1}</th>
+                <td>{r.user}</td>
+                <td>{r.score}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
+  );
+};
+
 export const AnalysisPage = () => {
   const [query, setQuery] = useState("");
   const [simThreshold, setSimThreshold_doNotUse] = useState(SIM_THRESHOLD_MIN);
@@ -316,6 +400,8 @@ export const AnalysisPage = () => {
         simThreshold={simThreshold}
         onChangeSimThreshold={setSimThreshold}
       />
+
+      <TopUsersSection query={query} simThreshold={simThreshold} />
 
       <PageSwitcher />
     </div>
