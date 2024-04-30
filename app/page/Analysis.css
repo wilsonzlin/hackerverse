@@ -13,8 +13,14 @@
   }
 
   h2 {
-    font-weight: bolder;
-    font-size: 1.2rem;
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+
+    > span {
+      font-weight: bolder;
+      font-size: 1.2rem;
+    }
   }
 
   section {

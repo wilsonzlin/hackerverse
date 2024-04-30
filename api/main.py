@@ -231,7 +231,7 @@ class QueryInput(BaseModel):
     # WARNING: This means that if this is empty, all items will have a score of zero.
     weights: Dict[str, Union[str, float]] = {}
 
-    # Filter out rows where their column values are outside this range, after calculating thresholds and final score (using weights).
+    # Filter out rows where their column values are outside this range.
     post_filter_clip: Dict[str, Clip] = {}
 
     outputs: List[Output]
@@ -241,7 +241,8 @@ class QueryInput(BaseModel):
 def query(input: QueryInput):
     # Perform checks before expensive embedding encoding.
     d, model, hnsw_idx = datasets[input.dataset]
-    df = d.table
+    # As a precaution, do a shallow copy, in case we accidentally modify the original somewhere below.
+    df = d.table.copy(deep=False)
 
     mat_sims = None
     if input.queries:
@@ -290,22 +291,27 @@ def query(input: QueryInput):
     today = time.time() / (60 * 60 * 24)
     df["ts_norm"] = np.exp(-input.ts_decay * (today - df["ts_day"]))
 
+    def assign_then_post_filter(col: str, new):
+        nonlocal df
+        df[col] = new
+        clip = input.post_filter_clip.get(col)
+        if clip is not None:
+            df = df[df[col].between(clip.min, clip.max)]
+
     if mat_sims is not None:
         assert mat_sims.shape == (len(df), len(input.queries))
-        df["sim"] = getattr(np, input.sim_agg)(mat_sims, axis=1)
+        assign_then_post_filter("sim", getattr(np, input.sim_agg)(mat_sims, axis=1))
 
     for c, scale in input.scales.items():
-        df[f"{c}_scaled"] = scale_series(df[c], scale)
+        assign_then_post_filter(f"{c}_scaled", scale_series(df[c], scale))
 
     for c, t in input.thresholds.items():
-        df[f"{c}_thresh"] = df[c] >= t
+        assign_then_post_filter(f"{c}_thresh", df[c] >= t)
 
     df["final_score"] = np.float32(0.0)
     for c, w in input.weights.items():
         df["final_score"] += df[c] * (df[w] if type(w) == str else w)
-
-    for col, w in input.post_filter_clip.items():
-        df = df[df[col].between(w.min, w.max)]
+    assign_then_post_filter("final_score", df["final_score"])
 
     out = b""
     for o in input.outputs:

@@ -124,7 +124,7 @@ const SentimentSection = ({
           x: timestamps,
           stackgroup: areaMode ? ("one" as const) : undefined,
           groupnorm: areaMode ? ("percent" as const) : undefined,
-          type: "scatter" as const,
+          type: areaMode ? ("scatter" as const) : ("bar" as const),
           line: areaMode ? { width: 0 } : undefined,
           hoverlabel: {
             font: {
@@ -152,6 +152,7 @@ const SentimentSection = ({
   const chartLayout = useMemo(
     () => ({
       autosize: false,
+      barmode: "stack" as const,
       height: 640,
       hovermode: "x" as const,
       showlegend: false,
@@ -215,7 +216,10 @@ const SentimentSection = ({
 
   return (
     <section>
-      <h2>Sentiment over time</h2>
+      <h2>
+        <Ico i="sentiment_satisfied" size={24} />
+        <span>Sentiment over time</span>
+      </h2>
       {!!query && (
         <div className="info">
           <Ico i="info" size={20} />
@@ -294,7 +298,7 @@ const TopUsersSection = ({
         score: e[1].final_score,
       }));
     });
-  }, [query]);
+  }, [query, simThreshold]);
 
   if (!query) {
     return null;
@@ -302,7 +306,10 @@ const TopUsersSection = ({
 
   return (
     <section>
-      <h2>Top users</h2>
+      <h2>
+        <Ico i="social_leaderboard" size={24} />
+        <span>Top users</span>
+      </h2>
       {req.loading && <Loading size={32} />}
       {req.error && <p className="err">{req.error}</p>}
       {req.data && (
@@ -318,7 +325,15 @@ const TopUsersSection = ({
             {req.data.map((r, i) => (
               <tr key={i}>
                 <th>{i + 1}</th>
-                <td>{r.user}</td>
+                <td>
+                  <a
+                    href={`https://news.ycombinator.com/user?id=${encodeURIComponent(r.user)}`}
+                    target="_blank"
+                    rel="noopener"
+                  >
+                    {r.user}
+                  </a>
+                </td>
                 <td>{r.score}</td>
               </tr>
             ))}

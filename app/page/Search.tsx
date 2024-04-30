@@ -78,8 +78,11 @@ const QueryForm = ({
             scales: {
               sim: {
                 hnsw: { min: 0.7, max: 1 },
-                "hnsw-bgem3": { min: 0.55, max: 0.75 },
+                "hnsw-bgem3": { min: 0.55, max: 1 },
               }[MAP_DATASET],
+            },
+            post_filter_clip: {
+              sim_scaled: { min: 0.01, max: 1 },
             },
             ts_decay: decayTimestamp,
             outputs: [
@@ -106,9 +109,11 @@ const QueryForm = ({
             },
           });
           const results = {
-            items: [...assertInstanceOf(data[0], ApiItemsOutput).items()].map(
-              (o) => vQueryResultItem.parseRoot(o),
-            ),
+            items: [
+              ...assertInstanceOf(data[0], ApiItemsOutput).items(
+                vQueryResultItem.fields,
+              ),
+            ],
             heatmap: await createImageBitmap(
               assertInstanceOf(data[1], ApiHeatmapOutput).blob(),
             ),
