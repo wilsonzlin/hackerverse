@@ -205,6 +205,7 @@ class Output(BaseModel):
         assert False
 
 
+# We don't support pre-filtering: it requires selecting arbitrary rows in the embedding matrix, which can literally be tens of gigabytes and is extremely slow. Most of the time, post filtering is better.
 class QueryInput(BaseModel):
     dataset: str
     queries: List[str] = Field(default=[], max_length=3)
@@ -216,9 +217,6 @@ class QueryInput(BaseModel):
 
     # If provided, will first filter to this many ANN rows using the HNSW index.
     pre_filter_hnsw: Optional[int] = None
-
-    # Filter out rows where their column values are outside this range.
-    pre_filter_clip: Dict[str, Clip] = {}
 
     # Scale each column into a new column `{col}_scaled`.
     scales: Dict[str, Clip] = {}
@@ -277,12 +275,7 @@ def query(input: QueryInput):
             raw.drop(columns=cols, inplace=True)
             # This is why we index "id" in `d.table`.
             df = df.merge(raw, how="inner", on="id")
-            for col, w in input.pre_filter_clip.items():
-                df = df[df[col].between(w.min, w.max)]
         else:
-            # If there are pre-filters, do so before calculating similarity across all rows.
-            for col, w in input.pre_filter_clip.items():
-                df = df[df[col].between(w.min, w.max)]
             mat_sims = d.emb_mat @ q_mat.T
 
     # Reset the index so we can select the `id` column again.
@@ -294,12 +287,12 @@ def query(input: QueryInput):
     def assign_then_post_filter(col: str, new):
         nonlocal df
         df[col] = new
-        clip = input.post_filter_clip.get(col)
+        clip = input.post_filter_clip.pop(col, None)
         if clip is not None:
             df = df[df[col].between(clip.min, clip.max)]
 
     if mat_sims is not None:
-        assert mat_sims.shape == (len(df), len(input.queries))
+        assert mat_sims.shape == (len(df), len(input.queries)), mat_sims.shape
         assign_then_post_filter("sim", getattr(np, input.sim_agg)(mat_sims, axis=1))
 
     for c, scale in input.scales.items():
@@ -312,6 +305,10 @@ def query(input: QueryInput):
     for c, w in input.weights.items():
         df["final_score"] += df[c] * (df[w] if type(w) == str else w)
     assign_then_post_filter("final_score", df["final_score"])
+
+    # Process any remaining filters.
+    for col, clip in input.post_filter_clip.items():
+        df = df[df[col].between(clip.min, clip.max)]
 
     out = b""
     for o in input.outputs:

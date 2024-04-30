@@ -97,7 +97,6 @@ export const apiCall = async (
     sim_agg?: "mean" | "min" | "max";
     ts_decay?: number;
     pre_filter_hnsw?: number;
-    pre_filter_clip?: Record<string, Clip>;
     scales?: Record<string, Clip>;
     thresholds?: Record<string, number>;
     weights?: Record<string, string | number>;
