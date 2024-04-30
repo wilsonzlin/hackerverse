@@ -1,22 +1,39 @@
 import { VFiniteNumber, VInteger, VStruct } from "@wzlin/valid";
 import assertInstanceOf from "@xtjs/lib/assertInstanceOf";
+import bounded from "@xtjs/lib/bounded";
 import defined from "@xtjs/lib/defined";
 import mapExists from "@xtjs/lib/mapExists";
 import mapNonEmpty from "@xtjs/lib/mapNonEmpty";
+import maybeParseNumber from "@xtjs/lib/maybeParseNumber";
 import withoutUndefined from "@xtjs/lib/withoutUndefined";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Plot from "react-plotly.js";
 import { Ico } from "../component/Ico";
 import { Loading } from "../component/Loading";
+import { PageSwitcher } from "../component/PageSwitcher";
 import { ApiGroupByOutput, ApiItemsOutput, apiCall } from "../util/api";
 import { useMeasure } from "../util/dom";
 import { usePromise } from "../util/fetch";
 import { useHnItems } from "../util/item";
 import "./Analysis.css";
 
-export const AnalysisPage = () => {
-  const $chartContainer = useRef<HTMLDivElement>(null);
-  const chartContainerRect = useMeasure($chartContainer.current);
+const SIM_THRESHOLD_MIN = 0.8;
+const SIM_THRESHOLD_MAX = 1;
+
+const SentimentSection = ({
+  areaMode,
+  query,
+  simThreshold,
+  onChangeSimThreshold,
+}: {
+  areaMode: boolean;
+  query: string;
+  simThreshold: number;
+  onChangeSimThreshold: (v: number) => void;
+}) => {
+  const [$chartContainer, setChartContainerElem] =
+    useState<HTMLDivElement | null>(null);
+  const chartContainerRect = useMeasure($chartContainer);
 
   const sentReq = usePromise<{
     timestamps: Date[];
@@ -33,8 +50,6 @@ export const AnalysisPage = () => {
     )
     .filter(defined);
 
-  const [query, setQuery] = useState("");
-  const [simThreshold, setSimThreshold] = useState(0.8);
   useEffect(() => {
     sentReq.set(async (signal) => {
       const res = await apiCall(signal, {
@@ -102,9 +117,6 @@ export const AnalysisPage = () => {
     });
   }, [query, simThreshold]);
 
-  const [queryRaw, setQueryRaw] = useState("");
-  const [areaMode, setAreaMode] = useState(false);
-
   const chartData = useMemo(
     () =>
       mapExists(sentReq.data, ({ negatives, positives, timestamps }) => {
@@ -164,11 +176,11 @@ export const AnalysisPage = () => {
       })),
       font: {
         family: "InterVariable",
-        size: 14,
+        size: 12,
       },
       margin: {
         b: 28,
-        l: 42,
+        l: 56,
         pad: 0,
         r: 14,
         t: 14,
@@ -192,10 +204,62 @@ export const AnalysisPage = () => {
       },
       yaxis: {
         showgrid: false,
+        title: {
+          text: areaMode ? "Percentage of comments" : "Comments",
+          size: 14,
+        },
       },
     }),
     [chartContainerRect, areaMode, topPostsReq.data, items],
   );
+
+  return (
+    <section>
+      <h2>Sentiment over time</h2>
+      {!!query && (
+        <div className="info">
+          <Ico i="info" size={20} />
+          <p>
+            If any labelled post isn't relevant, select it to dismiss it and
+            tune the similarity threshold.
+          </p>
+        </div>
+      )}
+      {sentReq.loading && <Loading size={32} />}
+      {sentReq.error && <p className="err">{sentReq.error}</p>}
+      {chartData && (
+        <div ref={setChartContainerElem}>
+          <Plot
+            data={chartData}
+            layout={chartLayout}
+            onClickAnnotation={(a) => {
+              const post = topPosts?.at(a.index);
+              if (post) {
+                onChangeSimThreshold(post.sim + 0.01);
+              }
+            }}
+          />
+        </div>
+      )}
+    </section>
+  );
+};
+
+export const AnalysisPage = () => {
+  const [query, setQuery] = useState("");
+  const [simThreshold, setSimThreshold_doNotUse] = useState(SIM_THRESHOLD_MIN);
+  const setSimThreshold = (v: number) => {
+    v = bounded(v, SIM_THRESHOLD_MIN, SIM_THRESHOLD_MAX);
+    setSimThresholdRaw(toSimThresholdRaw(v));
+    setSimThreshold_doNotUse(v);
+  };
+
+  const toSimThresholdRaw = (v: number) => v.toFixed(2);
+  const [queryRaw, setQueryRaw] = useState("");
+  const [simThresholdRaw, setSimThresholdRaw] = useState(
+    toSimThresholdRaw(simThreshold),
+  );
+  const [areaMode, setAreaMode] = useState(false);
 
   return (
     <div className="AnalysisPage">
@@ -207,56 +271,53 @@ export const AnalysisPage = () => {
         }}
       >
         <input
+          placeholder="Query"
           value={queryRaw}
           onChange={(e) => setQueryRaw(e.currentTarget.value)}
         />
-        {sentReq.loading ? (
-          <Loading size={24} />
-        ) : (
-          <button type="submit">
-            <Ico i="query_stats" />
-          </button>
-        )}
+        <button type="submit">
+          <Ico i="query_stats" size={20} />
+        </button>
       </form>
 
-      <label>
-        <input
-          type="checkbox"
-          checked={areaMode}
-          onChange={(e) => setAreaMode(e.currentTarget.checked)}
-        />
-        <span>Area mode</span>
-      </label>
-      <label>
-        <input
-          type="range"
-          min={0.8}
-          max={1}
-          step={0.01}
-          value={simThreshold}
-          onChange={(e) => setSimThreshold(e.currentTarget.valueAsNumber)}
-        />
-        <span>Similarity threshold</span>
-      </label>
-
-      <p>
-        If any labelled post isn't relevant, press it to dismiss it and tune the
-        similarity threshold.
-      </p>
-      <div ref={$chartContainer}>
-        {chartData && (
-          <Plot
-            data={chartData}
-            layout={chartLayout}
-            onClickAnnotation={(a) => {
-              const post = topPosts?.at(a.index);
-              if (post) {
-                setSimThreshold(post.sim + 0.01);
+      <div className="controls">
+        <label>
+          <input
+            type="checkbox"
+            checked={areaMode}
+            onChange={(e) => setAreaMode(e.currentTarget.checked)}
+          />
+          <span>Area graph</span>
+        </label>
+        <label hidden={!query}>
+          <span>Similarity threshold</span>
+          <input
+            type="text"
+            min={SIM_THRESHOLD_MIN}
+            max={SIM_THRESHOLD_MAX}
+            step={0.01}
+            value={simThresholdRaw}
+            onChange={(e) => setSimThresholdRaw(e.currentTarget.value)}
+            onBlur={(e) => {
+              const parsed = maybeParseNumber(e.currentTarget.value.trim());
+              if (!parsed || !Number.isFinite(parsed)) {
+                setSimThresholdRaw(toSimThresholdRaw(simThreshold));
+              } else {
+                setSimThreshold(parsed);
               }
             }}
           />
-        )}
+        </label>
       </div>
+
+      <SentimentSection
+        areaMode={areaMode}
+        query={query}
+        simThreshold={simThreshold}
+        onChangeSimThreshold={setSimThreshold}
+      />
+
+      <PageSwitcher />
     </div>
   );
 };

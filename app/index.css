@@ -3,6 +3,10 @@
   outline: 0;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 :root {
   font-family: InterVariable, sans-serif;
   font-feature-settings:
@@ -27,6 +31,7 @@ a {
 button,
 select {
   cursor: pointer;
+  display: block; /* Avoid weird line-height issues. */
 }
 
 button,
