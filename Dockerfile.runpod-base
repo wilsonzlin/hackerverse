@@ -22,6 +22,7 @@ RUN curl -fLSs https://deb.nodesource.com/setup_21.x | bash - && apt install -yq
 WORKDIR /app
 
 COPY requirements.txt .
+RUN pip install cupy
 RUN pip install -r requirements.txt
 # TODO HACK to disable TQDM from trashing our logs. (TQDM_DISABLE=1 doesn't seem to work.)
 RUN sed -i 's%tqdm(%(lambda x, **o: x)(%' /usr/local/lib/python3.10/dist-packages/FlagEmbedding/bge_m3.py

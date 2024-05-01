@@ -35,5 +35,27 @@ def load_mmap_matrix(basename: str, shape: Tuple[int, ...], dtype: npt.DTypeLike
     )
 
 
+# Our system or GPU memory may not be enough for anything other than 1x the matrix at once, so be careful with copies, buffers, and fragmented allocations. Examples:
+# - Reading the entire raw bytes on disk and then converting to CuPy matrix will incur 2x the cost in system memory.
+# - Allocating and then merging/stacking chunks requires temporarily 2x the amount of chunk used VRAM, and may fragment VRAM such that there won't be eventually enough room.
+# - Loading as NumPy matrix and then converting to CuPy matrix requires a full copy in system memory first, even if the NumPy matrix is memory-mapped.
+def load_mmap_matrix_to_gpu(
+    basename: str, shape: Tuple[int, ...], dtype: npt.DTypeLike
+):
+    # Conditionally import, as cupy requires CUDA to even install.
+    import cupy as cp
+
+    gpu = cp.empty(shape, dtype)
+    cpu = load_mmap_matrix(basename, shape, dtype)
+    gpu_view = gpu.ravel()
+    cpu_view = cpu.ravel()
+    n = gpu_view.shape[0]
+    BUFSIZE = 1024 * 1024 * 1024
+    for start in range(0, n, BUFSIZE):
+        end = min(n, start + BUFSIZE)
+        gpu_view[start:end] = cp.asarray(cpu_view[start:end])
+    return gpu
+
+
 def deserialize_emb_col(df: pd.DataFrame, col_name: str) -> npt.NDArray[np.float32]:
     return np.stack(df[col_name].apply(np.frombuffer, dtype=np.float32))

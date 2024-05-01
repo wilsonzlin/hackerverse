@@ -2,6 +2,10 @@ FROM python:3.12
 
 WORKDIR /app
 
+RUN pip install huggingface_hub
+COPY $MAIN/download_model.py* /tmp/download_model.py
+RUN bash -c '[[ -f /tmp/download_model.py ]] && python /tmp/download_model.py'
+
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 

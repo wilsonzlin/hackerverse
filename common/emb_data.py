@@ -139,8 +139,7 @@ def load_emb_data_with_sampling(pca=False):
     sample_ids = sample_emb_table_ids(loaded_table_ids)
 
     # Boolean filter to select only sampled rows from the NumPy matrix.
-    sample_rows_filter = loaded_table_ids.total.isin(sample_ids).values
-    assert type(sample_rows_filter) == np.ndarray
+    sample_rows_filter = loaded_table_ids.total.isin(sample_ids).to_numpy()
     assert sample_rows_filter.dtype == np.bool_
     assert sample_rows_filter.shape == (total_count,)
 

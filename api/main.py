@@ -15,6 +15,7 @@ from typing import List
 from typing import Optional
 from typing import Tuple
 from typing import Union
+import base64
 import hnswlib
 import msgpack
 import numpy as np
@@ -22,16 +23,10 @@ import os
 import pandas as pd
 import struct
 import time
+import uvicorn
 
 DATASETS = os.getenv("HNDR_API_DATASETS").split(",")
 LOAD_HNSW = os.getenv("HNDR_API_LOAD_HNSW", "0") == "1"
-
-print("Loading models")
-model_bgem3 = BGEM3FlagModel("BAAI/bge-m3", use_fp16=False, normalize_embeddings=True)
-model_jinav2small = SentenceTransformer(
-    "jinaai/jina-embeddings-v2-small-en",
-    trust_remote_code=True,
-)
 
 
 def load_hnsw_index(name: str, dim: int):
@@ -54,7 +49,7 @@ def load_data():
         "posts-bgem3": lambda: load_hnsw_index("posts_bgem3", 1024),
         "comments": lambda: load_hnsw_index("comments", 512),
     }
-    return {
+    res = {
         name: (
             ApiDataset.load(name),
             models[name],
@@ -62,6 +57,8 @@ def load_data():
         )
         for name in DATASETS
     }
+    print("Loaded datasets:", DATASETS)
+    return res
 
 
 def scale_series(raw: pd.Series, clip: "Clip"):
@@ -87,18 +84,26 @@ def pack_rows(df: pd.DataFrame, cols: List[str]):
     return out
 
 
-datasets = load_data()
-print("All data loaded!")
+if __name__ != "__main__":
+    print("Loading models")
+    model_bgem3 = BGEM3FlagModel(
+        "BAAI/bge-m3", use_fp16=False, normalize_embeddings=True
+    )
+    model_jinav2small = SentenceTransformer(
+        "jinaai/jina-embeddings-v2-small-en", trust_remote_code=True
+    )
 
+    datasets = load_data()
+    print("All data loaded!")
 
-app = FastAPI()
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+    app = FastAPI()
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 
 class Clip(BaseModel):
@@ -314,3 +319,27 @@ def query(input: QueryInput):
     for o in input.outputs:
         out += o.calculate(d, df)
     return Response(out)
+
+
+if __name__ == "__main__":
+    print("Starting server")
+
+    def maybe_write_ssl_env(name: str):
+        val = os.getenv("SSL_" + name.upper() + "_BASE64")
+        path = f"/ssl.{name}.pem"
+        if val is not None:
+            with open(path, "wb") as f:
+                raw = base64.standard_b64decode(val)
+                f.write(raw)
+            return path
+
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        log_level="warning",
+        port=int(os.getenv("PORT")),
+        ssl_certfile=maybe_write_ssl_env("cert"),
+        ssl_keyfile=maybe_write_ssl_env("key"),
+        ssl_ca_certs=maybe_write_ssl_env("ca"),
+        ssl_cert_reqs=1,
+    )

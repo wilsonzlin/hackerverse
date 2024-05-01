@@ -21,7 +21,7 @@ services:
     init: true
     build:
       context: .
-      dockerfile: Dockerfile.uvicorn-base
+      dockerfile: Dockerfile.python-base
       args:
         MAIN: api
     environment:
