@@ -13,10 +13,6 @@ if nt > 64:
     raise ValueError(
         "OpenBLAS does not support more than 64 threads, will result in a crash"
     )
-if nt != 1:
-    print(
-        "Warning: OPENBLAS_NUM_THREADS is not 1, which may cause performance issues due to multiprocessing"
-    )
 
 DATASET = "toppost"
 K_MIN = int(os.getenv("K_MIN", "2"))
@@ -27,6 +23,11 @@ os.makedirs(d, exist_ok=True)
 
 
 def calc_kmeans(k: int):
+    f_json = f"{d}/k{k}.json"
+    if os.path.isfile(f_json):
+        print("Skipping", k, "as it already exists")
+        return
+
     print("Loading data")
     mat_id, mat_emb = load_embs(DATASET)
 
@@ -49,7 +50,7 @@ def calc_kmeans(k: int):
     df = pd.DataFrame({"id": mat_id, f"k{k}_cluster": km.labels_})
 
     df.to_feather(f"{d}/k{k}_cluster.arrow")
-    with open(f"{d}/k{k}.json", "w") as f:
+    with open(f"{f_json}.tmp", "w") as f:
         json.dump(
             {
                 "cluster_centers": km.cluster_centers_.tolist(),
@@ -61,6 +62,7 @@ def calc_kmeans(k: int):
             },
             f,
         )
+    os.rename(f"{f_json}.tmp", f_json)
     print("Saved", k)
 
 
