@@ -20,10 +20,10 @@ class ApiDataset:
     y_max: float
 
     def dump(self):
-        pfx = f"/hndr-data/api_{self.name}"
-        self.table.to_feather(f"{pfx}_table.feather")
-        dump_mmap_matrix(f"api_{self.name}_emb", self.emb_mat)
-        with open(f"{pfx}_meta.json", "w") as f:
+        pfx = f"/hndr-data/api-{self.name}"
+        self.table.to_feather(f"{pfx}-table.feather")
+        dump_mmap_matrix(f"api-{self.name}-emb", self.emb_mat)
+        with open(f"{pfx}-meta.json", "w") as f:
             json.dump(
                 {
                     "count": len(self.table),
@@ -38,14 +38,14 @@ class ApiDataset:
 
     @staticmethod
     def load(name: str):
-        pfx = f"/hndr-data/api_{name}"
-        with open(f"{pfx}_meta.json", "r") as f:
+        pfx = f"/hndr-data/api-{name}"
+        with open(f"{pfx}-meta.json", "r") as f:
             meta = json.load(f)
         count = meta.pop("count")
         emb_dim = meta.pop("emb_dim")
-        table = pyarrow.feather.read_feather(f"{pfx}_table.feather", memory_map=True)
+        table = pyarrow.feather.read_feather(f"{pfx}-table.feather", memory_map=True)
         assert type(table) == pd.DataFrame
-        emb_mat = load_mmap_matrix(f"api_{name}_emb", (count, emb_dim), np.float32)
+        emb_mat = load_mmap_matrix(f"api-{name}-emb", (count, emb_dim), np.float32)
         return ApiDataset(
             name=name,
             table=table,

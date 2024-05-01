@@ -14,7 +14,7 @@ def load_ids(name: str):
 
 
 def load_embs(name: str):
-    mat_ids = load_ids(f"{name}-ids")
+    mat_ids = load_ids(name)
     count = mat_ids.shape[0]
     embs_raw_sz = os.path.getsize(f"/hndr-data/{name}-data.mat")
     mat_embs = load_mmap_matrix(
