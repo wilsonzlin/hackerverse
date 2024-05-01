@@ -1,10 +1,11 @@
 FROM python:3.12
 
-WORKDIR /app
-
+WORKDIR /tmp
 RUN pip install huggingface_hub
-COPY $MAIN/download_model.py* /tmp/download_model.py
-RUN bash -c '[[ -f /tmp/download_model.py ]] && python /tmp/download_model.py'
+COPY $MAIN/download_model.py* dm.py
+RUN bash -c 'if [[ -f dm.py ]]; then python dm.py; fi'
+
+WORKDIR /app
 
 COPY requirements.txt .
 RUN pip install -r requirements.txt
@@ -15,6 +16,5 @@ COPY $MAIN $MAIN
 
 ENV MAIN=$MAIN
 ENV PYTHONPATH=/app
-# Otherwise nothing is printed.
 ENV PYTHONUNBUFFERED=1
 CMD python $MAIN/main.py
