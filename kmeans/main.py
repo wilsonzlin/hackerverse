@@ -25,7 +25,6 @@ os.makedirs(d, exist_ok=True)
 def calc_kmeans(k: int):
     f_json = f"{d}/k{k}.json"
     if os.path.isfile(f_json):
-        print("Skipping", k, "as it already exists")
         return
 
     print("Loading data")

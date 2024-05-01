@@ -14,11 +14,12 @@ def load_ids(name: str):
 
 
 def load_embs(name: str):
-    mat_ids = load_ids(name)
+    pfx = f"{name}-embs"
+    mat_ids = load_ids(pfx)
     count = mat_ids.shape[0]
-    embs_raw_sz = os.path.getsize(f"/hndr-data/{name}-data.mat")
+    embs_raw_sz = os.path.getsize(f"/hndr-data/{pfx}-data.mat")
     mat_embs = load_mmap_matrix(
-        f"{name}-data", (count, embs_raw_sz // 4 // count), np.float32
+        f"{pfx}-data", (count, embs_raw_sz // 4 // count), np.float32
     )
     return mat_ids, mat_embs
 
