@@ -61,6 +61,31 @@ def load_comment_embs_table():
     return _load_embs_table("mat_comment_embs", 512)
 
 
+def load_umap(ids: npt.NDArray[np.uint32], name: str):
+    mat = load_mmap_matrix(f"umap_{name}_emb", (ids.shape[0], 2), np.float32)
+    return pd.DataFrame(
+        {
+            "id": ids,
+            "x": mat[:, 0],
+            "y": mat[:, 1],
+        }
+    )
+
+
+def load_jinav2small_umap():
+    df_posts, _ = load_post_embs_table()
+    df_comments, _ = load_comment_embs_table()
+    df = merge_posts_and_comments(posts=df_posts, comments=df_comments)
+    mat_ids = df["id"].to_numpy()
+    return load_umap(mat_ids, "hnsw_n50_d0.25")
+
+
+def load_bgem3_umap():
+    df, _ = load_post_embs_bgem3_table()
+    mat_ids = df["id"].to_numpy()
+    return load_umap(mat_ids, "hnsw-bgem3_n300_d0.25")
+
+
 # Load data built by the build-embs service.
 def load_embs():
     count = load_count("embs")

@@ -1,13 +1,12 @@
 from common.api_data import ApiDataset
-from common.data import load_mmap_matrix
 from common.data import load_table
+from common.emb_data import load_bgem3_umap
 from common.emb_data import load_comment_embs_table
+from common.emb_data import load_jinav2small_umap
 from common.emb_data import load_post_embs_bgem3_table
 from common.emb_data import load_post_embs_table
-from common.emb_data import merge_posts_and_comments
 import multiprocessing
 import numpy as np
-import numpy.typing as npt
 import pandas as pd
 
 
@@ -35,25 +34,6 @@ def normalize_dataset(df: pd.DataFrame, mat_embs: np.ndarray):
     }
 
     return df, mat_embs_ordered, meta
-
-
-def load_umap(ids: npt.NDArray[np.uint32], name: str):
-    mat = load_mmap_matrix(f"umap_{name}_emb", (ids.shape[0], 2), np.float32)
-    return pd.DataFrame(
-        {
-            "id": ids,
-            "x": mat[:, 0],
-            "y": mat[:, 1],
-        }
-    )
-
-
-def load_jinav2small_umap():
-    df_posts, _ = load_post_embs_table()
-    df_comments, _ = load_comment_embs_table()
-    df = merge_posts_and_comments(posts=df_posts, comments=df_comments)
-    mat_ids = df["id"].to_numpy()
-    return load_umap(mat_ids, "hnsw_n50_d0.25")
 
 
 def merge_comment_count(df: pd.DataFrame):
@@ -89,8 +69,7 @@ def build_posts_bgem3_data():
     df = merge_comment_count(df)
     df_embs, mat_emb = load_post_embs_bgem3_table()
     df = df.merge(df_embs, on="id", how="inner")
-    df_umap = load_umap(df_embs["id"].to_numpy(), "hnsw-bgem3_n300_d0.25")
-    df = df.merge(df_umap, on="id", how="inner")
+    df = df.merge(load_bgem3_umap(), on="id", how="inner")
     df, mat_emb, meta = normalize_dataset(df, mat_emb)
     print("Posts bgem3:", len(df))
     ApiDataset(
