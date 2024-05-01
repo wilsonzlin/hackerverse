@@ -1,10 +1,7 @@
 from common.api_data import ApiDataset
 from common.data import load_table
-from common.emb_data import load_bgem3_umap
-from common.emb_data import load_comment_embs_table
-from common.emb_data import load_jinav2small_umap
-from common.emb_data import load_post_embs_bgem3_table
-from common.emb_data import load_post_embs_table
+from common.emb_data import load_embs_as_table
+from common.emb_data import load_umap
 import multiprocessing
 import numpy as np
 import pandas as pd
@@ -48,39 +45,38 @@ def merge_comment_count(df: pd.DataFrame):
     return df
 
 
-def build_posts_data():
+def build_post_data():
     df = load_table("posts", columns=["id", "score", "ts"])
     df = merge_comment_count(df)
-    df_embs, mat_emb = load_post_embs_table()
+    df_embs, mat_emb = load_embs_as_table("post")
     df = df.merge(df_embs, on="id", how="inner")
-    df = df.merge(load_jinav2small_umap(), on="id", how="inner")
     df, mat_emb, meta = normalize_dataset(df, mat_emb)
     print("Posts:", len(df))
     ApiDataset(
-        name="posts",
+        name="post",
         emb_mat=mat_emb,
         table=df,
         **meta,
     ).dump()
 
 
-def build_posts_bgem3_data():
+def build_toppost_data():
     df = load_table("posts", columns=["id", "score", "ts"])
     df = merge_comment_count(df)
-    df_embs, mat_emb = load_post_embs_bgem3_table()
+    df_embs, mat_emb = load_embs_as_table("toppost")
     df = df.merge(df_embs, on="id", how="inner")
-    df = df.merge(load_bgem3_umap(), on="id", how="inner")
+    df = df.merge(load_umap("toppost"), on="id", how="inner")
     df, mat_emb, meta = normalize_dataset(df, mat_emb)
     print("Posts bgem3:", len(df))
     ApiDataset(
-        name="posts-bgem3",
+        name="toppost",
         emb_mat=mat_emb,
         table=df,
         **meta,
     ).dump()
 
 
-def load_comments_data():
+def load_comment_data():
     print("Loading comments")
     df = load_table("comments", columns=["id", "author", "score", "ts"]).rename(
         columns={"author": "user_id"}
@@ -89,10 +85,8 @@ def load_comments_data():
     df_users = load_table("users").rename(columns={"id": "user_id", "username": "user"})
     df = df.merge(df_users, how="inner", on="user_id")
     print("Loading and merging comment embeddings")
-    df_embs, mat_emb = load_comment_embs_table()
+    df_embs, mat_emb = load_embs_as_table("comment")
     df = df.merge(df_embs, on="id", how="inner")
-    print("Loading and merging comment UMAP")
-    df = df.merge(load_jinav2small_umap(), on="id", how="inner")
     print("Loading and merging comment sentiments")
     df_sent = load_table("comment_sentiments").rename(
         columns={
@@ -121,9 +115,9 @@ def load_comments_data():
 
 if __name__ == "__main__":
     # Create processes for each function
-    p1 = multiprocessing.Process(target=build_posts_data)
-    p2 = multiprocessing.Process(target=build_posts_bgem3_data)
-    p3 = multiprocessing.Process(target=load_comments_data)
+    p1 = multiprocessing.Process(target=build_post_data)
+    p2 = multiprocessing.Process(target=build_toppost_data)
+    p3 = multiprocessing.Process(target=load_comment_data)
 
     # Start each process
     p1.start()

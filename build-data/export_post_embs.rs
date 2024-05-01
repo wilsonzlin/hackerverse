@@ -3,7 +3,7 @@ use common::mat::MatrixFile;
 use db_rpc_client_rs::DbRpcDbClient;
 
 pub async fn export_post_embs(db: DbRpcDbClient) {
-  let Some(mut out) = MatrixFile::new("post_embs").await else {
+  let Some(mut out) = MatrixFile::new("post-embs").await else {
     return;
   };
 

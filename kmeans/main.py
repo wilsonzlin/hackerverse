@@ -1,8 +1,9 @@
-from common.emb_data import load_post_embs_bgem3_table
+from common.emb_data import load_embs
 from sklearn.cluster import MiniBatchKMeans
 import json
 import multiprocessing as mp
 import os
+import pandas as pd
 import time
 
 nt = int(os.getenv("OPENBLAS_NUM_THREADS", mp.cpu_count()))
@@ -17,17 +18,17 @@ if nt != 1:
         "Warning: OPENBLAS_NUM_THREADS is not 1, which may cause performance issues due to multiprocessing"
     )
 
+DATASET = "toppost"
 K_MIN = int(os.getenv("K_MIN", "2"))
 K_MAX = int(os.getenv("K_MAX", "5000"))
 
-os.makedirs("/hndr-data/kmeans_hnsw_bgem3", exist_ok=True)
+d = f"/hndr-data/kmeans-{DATASET}"
+os.makedirs(d, exist_ok=True)
 
 
 def calc_kmeans(k: int):
     print("Loading data")
-    df, mat_emb = load_post_embs_bgem3_table()
-    df = df.drop(columns=["emb_row"])
-    assert mat_emb.shape == (len(df), 1024)
+    mat_id, mat_emb = load_embs(DATASET)
 
     print("K-clustering", k)
     started = time.time()
@@ -45,10 +46,10 @@ def calc_kmeans(k: int):
     # We can't use silhouette score, since that requires O(n^2) computations and memory for pairwise distances. It's too slow and expensive. We'll just use the inertia value. Even if we precompute ourselves using the dot product, we run out of memory (~500K ^ 2 is huge). https://datascience.stackexchange.com/a/36074
 
     # One element per input row, representing the ID of the cluster that input row is in, where a cluster ID is an integer in the range [0, k).
-    df[f"k{k}_cluster"] = km.labels_
+    df = pd.DataFrame({"id": mat_id, f"k{k}_cluster": km.labels_})
 
-    df.to_feather(f"/hndr-data/kmeans_hnsw_bgem3/k{k}_cluster.arrow")
-    with open(f"/hndr-data/kmeans_hnsw_bgem3/k{k}.json", "w") as f:
+    df.to_feather(f"{d}/k{k}_cluster.arrow")
+    with open(f"{d}/k{k}.json", "w") as f:
         json.dump(
             {
                 "cluster_centers": km.cluster_centers_.tolist(),

@@ -1,7 +1,5 @@
-brotli
 fastapi
 FlagEmbedding
-hnswlib
 implicit
 joblib
 msgpipe
@@ -11,7 +9,6 @@ Pillow
 pyarrow
 pynndescent
 requests
-rtree
 scikit-learn
 scipy
 sentence_transformers

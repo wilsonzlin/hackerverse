@@ -1,26 +1,26 @@
 from common.data import dump_mmap_matrix
-from common.emb_data import load_ann_ids
-from common.emb_data import load_post_embs_bgem3_table
+from common.emb_data import load_ann
+from common.emb_data import load_embs
+from common.emb_data import load_ids
+from common.util import assert_exists
 import joblib
 import numpy as np
 import os
-import pickle
 import umap
 
-DATASET = "topposts"
+DATASET = "toppost"
 MIN_DIST = 0.25
 N_NEIGHBORS = 300
 
 out_name_pfx = f"umap-{DATASET}"
 
-d, mat_emb = load_post_embs_bgem3_table()
+mat_id_orig, mat_emb = load_embs(DATASET)
 
-with open("/hndr-data/ann-topposts.pickle", "rb") as f:
-    ann = pickle.load(f)
+ann = load_ann(DATASET)
 # Copied from umap nearest_neighbors() function implementation.
-knn_indices, knn_dists = ann.neighbor_graph
-ann_ids = load_ann_ids(DATASET)
-mat_emb = mat_emb[d["id"].isin(ann_ids)]
+knn_indices, knn_dists = assert_exists(ann.neighbor_graph)
+ann_ids = load_ids(f"ann-{DATASET}")
+mat_emb = mat_emb[np.isin(mat_id_orig, ann_ids)]
 assert mat_emb.shape == (ann_ids.shape[0], 1024)
 
 print("Training on", mat_emb.shape)

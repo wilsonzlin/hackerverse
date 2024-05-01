@@ -1,4 +1,6 @@
 from common.api_data import ApiDataset
+from common.emb_data import load_ann
+from common.util import env
 from fastapi import FastAPI
 from fastapi import HTTPException
 from fastapi import Response
@@ -16,7 +18,6 @@ from typing import Optional
 from typing import Tuple
 from typing import Union
 import base64
-import hnswlib
 import msgpack
 import numpy as np
 import os
@@ -25,35 +26,22 @@ import struct
 import time
 import uvicorn
 
-DATASETS = os.getenv("HNDR_API_DATASETS").split(",")
-LOAD_HNSW = os.getenv("HNDR_API_LOAD_HNSW", "0") == "1"
-
-
-def load_hnsw_index(name: str, dim: int):
-    print("Loading HNSW index:", name)
-    idx = hnswlib.Index(space="ip", dim=dim)
-    idx.load_index(f"/hndr-data/hnsw_{name}.index", allow_replace_deleted=True)
-    idx.set_ef(128)
-    return idx
+DATASETS = env("HNDR_API_DATASETS").split(",")
+LOAD_ANN = os.getenv("HNDR_API_LOAD_ANN", "0") == "1"
 
 
 def load_data():
     print("Loading datasets:", DATASETS)
     models = {
-        "posts": model_jinav2small,
-        "posts-bgem3": model_bgem3,
-        "comments": model_jinav2small,
-    }
-    hnsw_loaders = {
-        "posts": lambda: load_hnsw_index("posts", 512),
-        "posts-bgem3": lambda: load_hnsw_index("posts_bgem3", 1024),
-        "comments": lambda: load_hnsw_index("comments", 512),
+        "comment": model_jinav2small,
+        "post": model_jinav2small,
+        "toppost": model_bgem3,
     }
     res = {
         name: (
             ApiDataset.load(name),
             models[name],
-            hnsw_loaders[name]() if LOAD_HNSW else None,
+            load_ann(name) if LOAD_ANN else None,
         )
         for name in DATASETS
     }
@@ -220,8 +208,8 @@ class QueryInput(BaseModel):
 
     ts_decay: float = 0.1
 
-    # If provided, will first filter to this many ANN rows using the HNSW index.
-    pre_filter_hnsw: Optional[int] = None
+    # If provided, will first filter to this many ANN rows using the ANN index.
+    pre_filter_ann: Optional[int] = None
 
     # Scale each column into a new column `{col}_scaled`.
     scales: Dict[str, Clip] = {}
@@ -243,7 +231,7 @@ class QueryInput(BaseModel):
 @app.post("/")
 def query(input: QueryInput):
     # Perform checks before expensive embedding encoding.
-    d, model, hnsw_idx = datasets[input.dataset]
+    d, model, ann_idx = datasets[input.dataset]
     # As a precaution, do a shallow copy, in case we accidentally modify the original somewhere below.
     df = d.table.copy(deep=False)
 
@@ -260,12 +248,11 @@ def query(input: QueryInput):
         assert type(q_mat) == np.ndarray
         assert q_mat.shape[0] == len(input.queries)
 
-        if input.pre_filter_hnsw is not None:
-            if hnsw_idx is None:
-                raise HTTPException(status_code=400, detail="HNSW index not loaded")
+        if input.pre_filter_ann is not None:
+            if ann_idx is None:
+                raise HTTPException(status_code=400, detail="ANN index not loaded")
             # `ids` and `dists` are matrices of shape (query_count, limit).
-            # TODO Support prefiltering using the `filter` callback.
-            ids, dists = hnsw_idx.knn_query(q_mat, k=input.pre_filter_hnsw)
+            ids, dists = ann_idx.query(q_mat, k=input.pre_filter_ann)
             sims = 1 - dists
             raw = pd.DataFrame(
                 {
@@ -337,7 +324,7 @@ if __name__ == "__main__":
         "main:app",
         host="0.0.0.0",
         log_level="warning",
-        port=int(os.getenv("PORT")),
+        port=int(env("PORT")),
         ssl_certfile=maybe_write_ssl_env("cert"),
         ssl_keyfile=maybe_write_ssl_env("key"),
         ssl_ca_certs=maybe_write_ssl_env("ca"),

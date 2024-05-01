@@ -3,7 +3,7 @@ use common::mat::MatrixFile;
 use db_rpc_client_rs::DbRpcDbClient;
 
 pub async fn export_comment_embs(db: DbRpcDbClient) {
-  let Some(mut out) = MatrixFile::new("comment_embs").await else {
+  let Some(mut out) = MatrixFile::new("comment-embs").await else {
     return;
   };
 
