@@ -238,17 +238,6 @@ services:
     volumes:
       - "${DOCKER_VOLUME_DIR}:/hndr-data"
 
-  kmeans-umap:
-    image: wilsonzlin/hndr-kmeans-umap
-    init: true
-    build:
-      context: .
-      dockerfile: Dockerfile.python-base
-      args:
-        MAIN: kmeans-umap
-    volumes:
-      - "${DOCKER_VOLUME_DIR}:/hndr-data"
-
   hnsw-builder:
     image: wilsonzlin/hndr-hnsw-builder
     init: true

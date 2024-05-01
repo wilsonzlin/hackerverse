@@ -1,9 +1,11 @@
-from common.data import deserialize_emb_col
-from common.data import load_table
 from sklearn.cluster import MiniBatchKMeans
+from sklearn.metrics import silhouette_score
+import json
 import multiprocessing as mp
 import os
-import pandas as pd
+import time
+
+from common.emb_data import load_post_embs_bgem3_table
 
 nt = int(os.getenv("OPENBLAS_NUM_THREADS", mp.cpu_count()))
 if nt > 64:
@@ -12,33 +14,49 @@ if nt > 64:
     raise ValueError(
         "OpenBLAS does not support more than 64 threads, will result in a crash"
     )
+if nt != 1:
+    print("Warning: OPENBLAS_NUM_THREADS is not 1, which may cause performance issues due to multiprocessing")
 
+K_MIN = int(os.getenv("K_MIN", "2"))
+K_MAX = int(os.getenv("K_MAX", "5000"))
 
-print("Loading data")
-df_posts = load_table("post_embs")
-print("Posts:", len(df_posts))
-df_comments = load_table("comment_embs")
-print("Comments:", len(df_comments))
-df = pd.concat([df_posts, df_comments], ignore_index=True)
-print("Total:", len(df))
-mat = deserialize_emb_col(df, "emb")
-df.pop("emb")
-print("Matrix:", mat.shape)
-assert mat.shape == (len(df), 512)
+os.makedirs("/hndr-data/kmeans_hnsw_bgem3", exist_ok=True)
 
-for k in (16, 32, 64, 128, 256, 512, 768, 1024, 1280, 1536, 1792, 2048, 2560):
+def calc_kmeans(k):
+    print("Loading data")
+    df, mat_emb = load_post_embs_bgem3_table()
+    df = df.drop(columns=["emb_row"])
+    assert mat_emb.shape == (len(df), 1024)
+
     print("K-clustering", k)
+    started = time.time()
     # fit_predict just returns `.fit(X).labels_` (check the source code).
     km = MiniBatchKMeans(
         init="k-means++",
         n_clusters=k,
         reassignment_ratio=0.1,
         max_iter=300,
-    ).fit(mat)
+    ).fit(mat_emb)
+    elapsed = time.time() - started
+    print(f"K-clustering {k} done in {elapsed:.2f} seconds")
+
+    print("Calculating silhouette score for", k)
+    started = time.time()
+    s = silhouette_score(mat_emb, km.labels_)
+    elapsed = time.time() - started
+    print(f"Silhouette score for {k} is {s}, calculated in {elapsed:.2f} seconds")
+
     # One element per input row, representing the ID of the cluster that input row is in, where a cluster ID is an integer in the range [0, k).
-    df[f"k{k}_cluster_id"] = km.labels_.tolist()
+    df[f"k{k}_cluster"] = km.labels_
 
-print("Saving")
-df.to_feather("/hndr-data/kmeans.arrow")
+    df.to_feather(f"/hndr-data/kmeans_hnsw_bgem3/k{k}_cluster.arrow")
+    with open(f"/hndr-data/kmeans_hnsw_bgem3/k{k}.json", "w") as f:
+      json.dump({
+        "silhouette_score": s,
+        "k": k,
+      }, f)
+    print("Saved", k)
 
+with mp.Pool() as p:
+    p.map(calc_kmeans, range(K_MIN, K_MAX))
 print("All done!")
