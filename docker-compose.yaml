@@ -1,20 +1,6 @@
 # We use `init: true` as many processes won't respond to signals or process.exit() when PID 1.
 
 services:
-  als:
-    image: wilsonzlin/hndr-als
-    init: true
-    build:
-      context: .
-      dockerfile: Dockerfile.python-base
-      args:
-        MAIN: als
-    environment:
-      # > OpenBLAS is configured to use 32 threads. It is highly recommended to disable its internal threadpool by setting the environment variable 'OPENBLAS_NUM_THREADS=1' or by calling 'threadpoolctl.threadpool_limits(1, "blas")'. Having OpenBLAS use a threadpool can lead to severe performance issues here.
-      OPENBLAS_NUM_THREADS: "1"
-    volumes:
-      - "${DOCKER_VOLUME_DIR}:/hndr-data"
-
   api:
     network_mode: host
     image: wilsonzlin/hndr-api
@@ -100,17 +86,6 @@ services:
       dockerfile: Dockerfile.python-base
       args:
         MAIN: build-edge-data
-    volumes:
-      - "${DOCKER_VOLUME_DIR}:/hndr-data"
-
-  build-embs:
-    image: wilsonzlin/hndr-build-embs
-    init: true
-    build:
-      context: .
-      dockerfile: Dockerfile.python-base
-      args:
-        MAIN: build-embs
     volumes:
       - "${DOCKER_VOLUME_DIR}:/hndr-data"
 
@@ -249,39 +224,6 @@ services:
     volumes:
       - "${DOCKER_VOLUME_DIR}:/hndr-data"
 
-  hnsw-builder:
-    image: wilsonzlin/hndr-hnsw-builder
-    init: true
-    build:
-      context: .
-      dockerfile: Dockerfile.python-base
-      args:
-        MAIN: hnsw-builder
-    volumes:
-      - "${DOCKER_VOLUME_DIR}:/hndr-data"
-
-  hnsw-post-bgem3-builder:
-    image: wilsonzlin/hndr-hnsw-post-bgem3-builder
-    init: true
-    build:
-      context: .
-      dockerfile: Dockerfile.python-base
-      args:
-        MAIN: hnsw-post-bgem3-builder
-    volumes:
-      - "${DOCKER_VOLUME_DIR}:/hndr-data"
-
-  pca:
-    image: wilsonzlin/hndr-pca
-    init: true
-    build:
-      context: .
-      dockerfile: Dockerfile.python-base
-      args:
-        MAIN: pca
-    volumes:
-      - "${DOCKER_VOLUME_DIR}:/hndr-data"
-
   sentiment-analyser:
     image: wilsonzlin/hndr-sentiment-analyser
     init: true
@@ -321,16 +263,5 @@ services:
         MAIN: umap
     environment:
       UMAP_LOW_MEMORY: ${UMAP_LOW_MEMORY}
-    volumes:
-      - "${DOCKER_VOLUME_DIR}:/hndr-data"
-
-  umap-prepare:
-    image: wilsonzlin/hndr-umap-prepare
-    init: true
-    build:
-      context: .
-      dockerfile: Dockerfile.python-base
-      args:
-        MAIN: umap-prepare
     volumes:
       - "${DOCKER_VOLUME_DIR}:/hndr-data"

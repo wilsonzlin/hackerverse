@@ -1,4 +1,5 @@
 from common.data import dump_mmap_matrix
+from common.emb_data import load_ann_ids
 from common.emb_data import load_post_embs_bgem3_table
 import joblib
 import numpy as np
@@ -18,8 +19,7 @@ with open("/hndr-data/ann-topposts.pickle", "rb") as f:
     ann = pickle.load(f)
 # Copied from umap nearest_neighbors() function implementation.
 knn_indices, knn_dists = ann.neighbor_graph
-with open("/hndr-data/ann-topposts-ids.mat", "rb") as f:
-    ann_ids = np.frombuffer(f.read(), dtype=np.uint32)
+ann_ids = load_ann_ids(DATASET)
 mat_emb = mat_emb[d["id"].isin(ann_ids)]
 assert mat_emb.shape == (ann_ids.shape[0], 1024)
 

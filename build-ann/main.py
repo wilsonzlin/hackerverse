@@ -12,6 +12,7 @@ print("Deduplicating embeddings")
 # Deduplicate rows to prevent errors in NNDescent.
 mat_emb, uniq_rows = np.unique(mat_emb, axis=0, return_index=True)
 uniq_ids = df["id"][uniq_rows].to_numpy()
+assert uniq_ids.dtype == np.uint32
 print("After deduplicating:", mat_emb.shape, uniq_rows.shape, uniq_ids.shape)
 
 print("Building index")
