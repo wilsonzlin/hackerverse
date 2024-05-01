@@ -55,7 +55,3 @@ def load_mmap_matrix_to_gpu(
         end = min(n, start + BUFSIZE)
         gpu_view[start:end] = cp.asarray(cpu_view[start:end])
     return gpu
-
-
-def deserialize_emb_col(df: pd.DataFrame, col_name: str) -> npt.NDArray[np.float32]:
-    return np.stack(df[col_name].apply(np.frombuffer, dtype=np.float32))
