@@ -9,6 +9,7 @@ numpy
 pandas
 Pillow
 pyarrow
+pynndescent
 requests
 rtree
 scikit-learn

@@ -70,6 +70,17 @@ services:
       API_EMBED_NODE_TOKEN: ${API_EMBED_NODE_TOKEN}
       STATSD_HOST: telegraf
 
+  build-ann:
+    image: wilsonzlin/hndr-build-ann
+    init: true
+    build:
+      context: .
+      dockerfile: Dockerfile.python-base
+      args:
+        MAIN: build-ann
+    volumes:
+      - "${DOCKER_VOLUME_DIR}:/hndr-data"
+
   build-api-data:
     image: wilsonzlin/hndr-build-api-data
     init: true
