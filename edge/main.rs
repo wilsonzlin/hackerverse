@@ -45,6 +45,7 @@ struct Map {
   meta: MapMeta,
   // One for each LOD level.
   tiles: Vec<AHashMap<String, ByteBuf>>,
+  terrain: AHashMap<String, ByteBuf>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -108,6 +109,20 @@ async fn get_map_tile(
     return Err(axum::http::StatusCode::NOT_FOUND);
   };
   Ok(tile.to_vec())
+}
+
+async fn get_map_terrain(
+  State(ctx): State<Arc<Ctx>>,
+  Path((variant, typ)): Path<(String, String)>,
+) -> Result<Vec<u8>, axum::http::StatusCode> {
+  let data = ctx.data.read();
+  let Some(map) = data.maps.get(&variant) else {
+    return Err(axum::http::StatusCode::NOT_FOUND);
+  };
+  let Some(img) = map.terrain.get(typ) else {
+    return Err(axum::http::StatusCode::NOT_FOUND);
+  };
+  Ok(img.to_vec())
 }
 
 async fn get_post(
@@ -228,6 +243,7 @@ async fn main() {
     .route("/healthz", get(|| async { "OK" }))
     .route("/map/:map/meta", get(get_map_meta))
     .route("/map/:map/point/:id", get(get_map_point))
+    .route("/map/:map/terrain/:typ", get(get_map_terrain))
     .route("/map/:map/tile/:lod/:tile_id", get(get_map_tile))
     .route("/post-title-lengths", post(get_post_title_lengths))
     .route("/post-titles", post(get_post_titles))

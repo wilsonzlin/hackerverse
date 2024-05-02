@@ -1,35 +1,13 @@
-from common.data import load_mmap_matrix
 from common.data import load_table
-from common.emb_data import load_emb_table_ids
+from common.emb_data import load_umap
 import msgpack
-import numpy as np
 
 
-def load_hnsw_umap():
-    print("Loading hnsw UMAP")
-    mat_id = load_emb_table_ids().total.to_numpy()
-    count = mat_id.shape[0]
-    mat_umap = load_mmap_matrix(
-        "umap_hnsw_n50_d0.25_emb", (count, 2), np.float32
-    ).tolist()
-    out = {}
-    for i, id_ in enumerate(mat_id.tolist()):
-        out[id_] = {"x": mat_umap[i][0], "y": mat_umap[i][1]}
-    return out
-
-
-def load_hnsw_bgem3_umap():
-    print("Loading hnsw-bgem3 UMAP")
-    with open("/hndr-data/mat_post_embs_bgem3_dense_count.txt") as f:
-        count = int(f.readline())
-    mat_id = load_mmap_matrix("mat_post_embs_bgem3_dense_ids", (count,), np.uint32)
-    mat_umap = load_mmap_matrix(
-        "umap_hnsw-bgem3_n300_d0.25_emb", (count, 2), np.float32
-    ).tolist()
-    out = {}
-    for i, id_ in enumerate(mat_id.tolist()):
-        out[id_] = {"x": mat_umap[i][0], "y": mat_umap[i][1]}
-    return out
+def load_umap_as_dict(dataset: str):
+    print("Loading UMAP:", dataset)
+    df = load_umap("toppost")
+    df.set_index("id", inplace=True)
+    return df.to_dict("index")
 
 
 def load_posts():
@@ -55,23 +33,22 @@ def load_posts():
     return df.to_dict("index")
 
 
-def load_map_data(name: str):
-    print(f"Loading map data for {name}")
-    data = msgpack.unpack(open(f"/hndr-data/map-{name}.msgpack", "rb"))
+def load_map_data(dataset: str):
+    print(f"Loading map data for {dataset}")
+    with open(f"/hndr-data/map-{dataset}.msgpack", "rb") as f:
+        data = msgpack.unpack(f)
     assert type(data) == dict
     return data
 
 
 out = {
     "maps": {
-        "hnsw": {
-            "points": load_hnsw_umap(),
-            **load_map_data("hnsw"),
-        },
-        "hnsw-bgem3": {
-            "points": load_hnsw_bgem3_umap(),
-            **load_map_data("hnsw-bgem3"),
-        },
+        dataset: {
+            "points": load_umap_as_dict(dataset),
+            **load_map_data(dataset),
+        }
+        # Add "post", "comment" here if they are built in the future.
+        for dataset in ["toppost"]
     },
     "posts": load_posts(),
 }
