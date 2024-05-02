@@ -119,7 +119,7 @@ async fn get_map_terrain(
   let Some(map) = data.maps.get(&variant) else {
     return Err(axum::http::StatusCode::NOT_FOUND);
   };
-  let Some(img) = map.terrain.get(typ) else {
+  let Some(img) = map.terrain.get(&typ) else {
     return Err(axum::http::StatusCode::NOT_FOUND);
   };
   Ok(img.to_vec())
