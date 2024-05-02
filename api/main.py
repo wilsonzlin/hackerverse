@@ -1,16 +1,14 @@
 from common.api_data import ApiDataset
 from common.emb_data import load_ann
+from common.heatmap import render_heatmap
 from common.util import env
 from fastapi import FastAPI
 from fastapi import HTTPException
 from fastapi import Response
 from fastapi.middleware.cors import CORSMiddleware
 from FlagEmbedding import BGEM3FlagModel
-from io import BytesIO
-from PIL import Image
 from pydantic import BaseModel
 from pydantic import Field
-from scipy.ndimage import gaussian_filter
 from sentence_transformers import SentenceTransformer
 from typing import Dict
 from typing import List
@@ -107,40 +105,19 @@ class HeatmapOutput(BaseModel):
     upscale: int = 1  # Max 4.
 
     def calculate(self, d: ApiDataset, df: pd.DataFrame):
-        # Make sure to use the range of the whole dataset, not just this subset.
-        x_range = d.x_max - d.x_min
-        y_range = d.y_max - d.y_min
-
-        grid_width = int(x_range * self.density)
-        grid_height = int(y_range * self.density)
-
-        df = df.assign(
-            grid_x=((df["x"] - d.x_min) * self.density)
-            .clip(upper=grid_width - 1)
-            .astype(int),
-            grid_y=((df["y"] - d.y_min) * self.density)
-            .clip(upper=grid_height - 1)
-            .astype(int),
+        webp = render_heatmap(
+            xs=df["x"].to_numpy(),
+            ys=df["y"].to_numpy(),
+            weights=df["final_score"].to_numpy(),
+            # Make sure to use the range of the whole dataset, not just this subset.
+            x_range=(d.x_min, d.x_max),
+            y_range=(d.y_min, d.y_max),
+            density=self.density,
+            color=self.color,
+            alpha_scale=self.alpha_scale,
+            sigma=self.sigma,
+            upscale=self.upscale,
         )
-
-        alpha_grid = np.zeros((grid_height, grid_width), dtype=np.float32)
-        alpha_grid[df["grid_y"], df["grid_x"]] = df["final_score"]
-        alpha_grid = alpha_grid.repeat(self.upscale, axis=0).repeat(
-            self.upscale, axis=1
-        )
-        blur = gaussian_filter(alpha_grid, sigma=self.sigma)
-        blur = (blur * self.alpha_scale).clip(min=0, max=1)
-
-        img = np.full(
-            (grid_height * self.upscale, grid_width * self.upscale, 4),
-            (*self.color, 0),
-            dtype=np.uint8,
-        )
-        img[:, :, 3] = (blur * 255).astype(np.uint8)
-
-        webp_out = BytesIO()
-        Image.fromarray(img, "RGBA").save(webp_out, format="webp")
-        webp = webp_out.getvalue()
         return struct.pack("<I", len(webp)) + webp
 
 
