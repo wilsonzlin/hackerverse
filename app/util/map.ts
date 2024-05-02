@@ -15,8 +15,7 @@ import {
 } from "./const";
 import { CACHED_FETCH_404, cachedFetch } from "./fetch";
 
-// "hnsw" or "hnsw-bgem3".
-export const MAP_DATASET = "hnsw-bgem3";
+export const MAP_DATASET = "toppost";
 
 export const ZOOM_PER_LOD = 3;
 
@@ -249,6 +248,39 @@ export const calcLabelBBox = (map: MapState, vp: ViewportState, p: Point) => {
   return box;
 };
 
+const renderImage = ({
+  canvas,
+  context: ctx,
+  image,
+  map,
+  viewport: vp,
+}: {
+  canvas: HTMLCanvasElement;
+  context: CanvasRenderingContext2D;
+  map: MapState;
+  viewport: ViewportState;
+  image: ImageBitmap;
+}) => {
+  const scale = map.viewportScale(vp);
+  const scaled = scale.scaled(vp);
+
+  const vpRatioX0 = (vp.x0Pt - map.xMinPt) / map.xRangePt;
+  const vpRatioY0 = (vp.y0Pt - map.yMinPt) / map.yRangePt;
+  const vpRatioX1 = (scaled.x1Pt - map.xMinPt) / map.xRangePt;
+  const vpRatioY1 = (scaled.y1Pt - map.yMinPt) / map.yRangePt;
+
+  const dx = 0;
+  const dy = 0;
+  const dWidth = canvas.width;
+  const dHeight = canvas.height;
+  const sx = image.width * vpRatioX0;
+  const sy = image.height * vpRatioY0;
+  const sWidth = image.width * (vpRatioX1 - vpRatioX0);
+  const sHeight = image.height * (vpRatioY1 - vpRatioY0);
+
+  ctx.drawImage(image, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight);
+};
+
 export const createCanvasPointMap = ({
   canvas,
   edge,
@@ -270,6 +302,27 @@ export const createCanvasPointMap = ({
   let curViewport: ViewportState | undefined;
   let heatmaps: ImageBitmap[] = [];
   let resultPoints: { x: number; y: number }[] = [];
+
+  let terrainLand: ImageBitmap | undefined;
+  let terrainWater: ImageBitmap | undefined;
+  Promise.all(
+    ["land", "water"].map(async (feature) => {
+      const res = await fetch(
+        `https://${edge}.edge-hndr.wilsonl.in/map/${MAP_DATASET}/terrain/${feature}`,
+      );
+      if (!res.ok) {
+        throw new Error(`Failed to fetch terrain with error ${res.status}`);
+      }
+      const raw = await res.arrayBuffer();
+      const img = await createImageBitmap(new Blob([raw]));
+      if (feature === "land") {
+        terrainLand = img;
+      } else {
+        terrainWater = img;
+      }
+      render();
+    }),
+  );
 
   // Zoom (integer) level => point IDs.
   const labelledPoints = new Dict<number, Set<number>>();
@@ -310,7 +363,7 @@ export const createCanvasPointMap = ({
             postTitles.set(id, titles[i]);
           }
         }
-        renderPoints();
+        render();
       })();
     } else {
       throw new UnreachableError();
@@ -324,7 +377,7 @@ export const createCanvasPointMap = ({
   worker.postMessage(initMsg);
 
   let raf: ReturnType<typeof requestAnimationFrame> | undefined;
-  const renderPoints = () => {
+  const render = () => {
     if (raf != undefined) {
       cancelAnimationFrame(raf);
     }
@@ -334,36 +387,29 @@ export const createCanvasPointMap = ({
         return;
       }
       const scale = map.viewportScale(vp);
-      const scaled = scale.scaled(vp);
       const ctx = assertExists(canvas.getContext("2d"));
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = "#fcfcfc";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
+      for (const image of [terrainWater, terrainLand]) {
+        if (image) {
+          renderImage({
+            canvas,
+            context: ctx,
+            image,
+            map,
+            viewport: vp,
+          });
+        }
+      }
       for (const heatmap of heatmaps) {
-        const vpRatioX0 = (vp.x0Pt - map.xMinPt) / map.xRangePt;
-        const vpRatioY0 = (vp.y0Pt - map.yMinPt) / map.yRangePt;
-        const vpRatioX1 = (scaled.x1Pt - map.xMinPt) / map.xRangePt;
-        const vpRatioY1 = (scaled.y1Pt - map.yMinPt) / map.yRangePt;
-
-        const dx = 0;
-        const dy = 0;
-        const dWidth = canvas.width;
-        const dHeight = canvas.height;
-        const sx = heatmap.width * vpRatioX0;
-        const sy = heatmap.height * vpRatioY0;
-        const sWidth = heatmap.width * (vpRatioX1 - vpRatioX0);
-        const sHeight = heatmap.height * (vpRatioY1 - vpRatioY0);
-        ctx.drawImage(
-          heatmap,
-          sx,
-          sy,
-          sWidth,
-          sHeight,
-          dx,
-          dy,
-          dWidth,
-          dHeight,
-        );
+        renderImage({
+          canvas,
+          context: ctx,
+          image: heatmap,
+          map,
+          viewport: vp,
+        });
       }
       const lp = labelledPoints.get(Math.floor(vp.zoom));
       for (const p of curPoints) {
@@ -423,11 +469,11 @@ export const createCanvasPointMap = ({
     },
     setHeatmaps: (hm: ImageBitmap[]) => {
       heatmaps = hm;
-      renderPoints();
+      render();
     },
     setResultPoints: (points: { x: number; y: number }[]) => {
       resultPoints = points;
-      renderPoints();
+      render();
     },
     // Render the points at LOD `lod` from (ptX0, ptY0) to (ptX1, ptY1) (inclusive) on the canvas.
     render: async (newViewport: ViewportState) => {
@@ -444,7 +490,7 @@ export const createCanvasPointMap = ({
         viewport: newViewport,
       };
       worker.postMessage(msg);
-      renderPoints();
+      render();
 
       // Ensure all requested tiles are fetched.
       const { tileXMax, tileXMin, tileYMax, tileYMin } =
@@ -485,7 +531,7 @@ export const createCanvasPointMap = ({
           maxY: y1Pt,
         })
         .sort(reversedComparator(propertyComparator("score")));
-      renderPoints();
+      render();
     },
   };
 };

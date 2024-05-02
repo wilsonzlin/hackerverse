@@ -70,15 +70,12 @@ const QueryForm = ({
         }
         queryReq.set(async (signal) => {
           const data = await apiCall(signal, {
-            dataset: {
-              hnsw: "posts",
-              "hnsw-bgem3": "posts-bgem3",
-            }[MAP_DATASET],
+            dataset: MAP_DATASET,
             queries: [query],
             scales: {
               sim: {
-                hnsw: { min: 0.7, max: 1 },
-                "hnsw-bgem3": { min: 0.55, max: 1 },
+                post: { min: 0.7, max: 1 },
+                toppost: { min: 0.55, max: 1 },
               }[MAP_DATASET],
             },
             post_filter_clip: {

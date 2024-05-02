@@ -66,6 +66,7 @@ res["terrain"] = render_terrain(
     dpi=32,
     upscale=16,
 )
+print("Image sizes (KiB):", {k: len(v) / 1024.0 for k, v in res["terrain"].items()})
 
 df["sampled"] = False
 
