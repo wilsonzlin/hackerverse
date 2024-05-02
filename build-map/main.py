@@ -1,58 +1,34 @@
-from common.data import load_mmap_matrix
 from common.data import load_table
-from common.emb_data import load_emb_table_ids
-from pandas import DataFrame
+from common.emb_data import load_umap
+from common.terrain import render_terrain
 from typing import Dict
 import math
 import msgpack
 import numpy as np
-import os
 import pandas as pd
 import struct
 
-# "hnsw", "hnsw-bgem3", "hnsw-pca", "pynndescent-pca-sampling", "pynndescent-sampling"
-MODE = os.getenv("MAP_POINT_SET")
+DATASET = "toppost"
 
-INCLUDE_COMMENTS = False
 # Each LOD level doubles the amount of information on screen.
-# At LOD level 1, we want points to be at least 0.2 units apart.
-# At LOD level 2, we want points to be at least 0.1 units apart.
-# At LOD level 3, we want points to be at least 0.05 units apart.
-# At LOD level 4, we want points to be at least 0.025 units apart.
+# At LOD level 1, we want points to be at least N units apart.
+# At LOD level 2, we want points to be at least N / 2 units apart.
+# At LOD level 3, we want points to be at least N / 4 units apart.
+# At LOD level 4, we want points to be at least N / 8 units apart.
 # ...
 # At the maximum LOD level, we show everything, regardless of distance.
 BASE_LOD_AXIS_POINTS = 32
 
 
 def load_data():
-    if MODE == "hnsw-bgem3":
-        with open("/hndr-data/mat_post_embs_bgem3_dense_count.txt") as f:
-            count = int(f.readline())
-        mat_id = load_mmap_matrix("mat_post_embs_bgem3_dense_ids", (count,), np.uint32)
-        mat_umap = load_mmap_matrix(
-            "umap_hnsw-bgem3_n300_d0.25_emb", (count, 2), np.float32
-        )
-    elif MODE == "hnsw":
-        mat_id = load_emb_table_ids().total.to_numpy()
-        count = mat_id.shape[0]
-        mat_umap = load_mmap_matrix("umap_hnsw_n50_d0.25_emb", (count, 2), np.float32)
+    df = load_umap(DATASET)
+    if DATASET.endswith("post"):
+        df_items = load_table("posts", columns=["id", "score"])
+    elif DATASET.endswith("comment"):
+        df_items = load_table("comments", columns=["id", "score"])
     else:
-        raise NotImplementedError()
-
-    df = DataFrame(
-        {
-            "id": mat_id,
-            "x": mat_umap[:, 0],
-            "y": mat_umap[:, 1],
-        }
-    )
-    df_posts = load_table("posts", columns=["id", "score"])
-    if INCLUDE_COMMENTS:
-        df_comments = load_table("comments", columns=["id", "score"])
-        df_scores = pd.concat([df_posts, df_comments], ignore_index=True)
-    else:
-        df_scores = df_posts
-    return df.merge(df_scores, how="inner", on="id")
+        raise ValueError("Unknown dataset")
+    return df.merge(df_items, how="inner", on="id")
 
 
 def calc_lod_levels(count: int) -> int:
@@ -61,7 +37,7 @@ def calc_lod_levels(count: int) -> int:
     return max(1, math.ceil(math.log2(count / (BASE_LOD_AXIS_POINTS**2)) / 2) + 1)
 
 
-print("Mode:", MODE)
+print("Dataset:", DATASET)
 df = load_data()
 x_min, x_max = df["x"].min(), df["x"].max()
 x_range = x_max - x_min
@@ -84,6 +60,12 @@ res["meta"] = {
     "lod_levels": lod_levels,
 }
 res["tiles"] = []
+res["terrain"] = render_terrain(
+    xs=df["x"].to_numpy(),
+    ys=df["y"].to_numpy(),
+    dpi=32,
+    upscale=16,
+)
 
 df["sampled"] = False
 
@@ -183,7 +165,7 @@ for lod_level in range(lod_levels):
     lg("Done;", axis_tile_count * axis_tile_count, "tiles;", len(df_subset), "points")
     res["tiles"].append(out)
 
-with open(f"/hndr-data/map-{MODE}.msgpack", "wb") as f:
+with open(f"/hndr-data/map-{DATASET}.msgpack", "wb") as f:
     msgpack.dump(res, f)
 
 print("All done!")
