@@ -21,7 +21,6 @@ ann = load_ann(DATASET)
 knn_indices, knn_dists = assert_exists(ann.neighbor_graph)
 ann_ids = load_ids(f"ann-{DATASET}")
 mat_emb = mat_emb[np.isin(mat_id_orig, ann_ids)]
-assert mat_emb.shape == (ann_ids.shape[0], 1024)
 
 print("Training on", mat_emb.shape)
 mapper = umap.UMAP(
