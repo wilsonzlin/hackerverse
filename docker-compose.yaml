@@ -159,6 +159,7 @@ services:
       dockerfile: Dockerfile.edge-caddy
     environment:
       EDGE_CADDY_ACME_EMAIL: ${EDGE_CADDY_ACME_EMAIL}
+      EDGE_DOMAIN: ${EDGE_DOMAIN}
 
   embedder:
     image: wilsonzlin/hndr-embedder

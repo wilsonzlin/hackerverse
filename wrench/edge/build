@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+pushd "$(dirname "$0")/../.." >/dev/null
+
+# There must already be a builder created with the name "multiarch", where the first Docker context is a x86_64 machine, and the second is an aarch64 machine.
+docker buildx \
+  --builder multiarch \
+  bake \
+  --push \
+  --set '*.platform=linux/amd64,linux/arm64' \
+  edge

@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+pushd "$(dirname "$0")/../.." >/dev/null
+
+region="$1"
+
+# We assume that the edge server exists as a Docker context named `hndr-edge-$region`.
+DOCKER_CONTEXT=hndr-edge-$region \
+EDGE_DOMAIN=$region.edge-hndr.wilsonl.in \
+docker compose up -d edge edge-caddy
