@@ -1,4 +1,12 @@
-import { VArray, VFiniteNumber, VInteger, VString, VStruct, Valid } from "@wzlin/valid";
+import { decode } from "@msgpack/msgpack";
+import {
+  VArray,
+  VFiniteNumber,
+  VInteger,
+  VString,
+  VStruct,
+  Valid,
+} from "@wzlin/valid";
 import UnreachableError from "@xtjs/lib/UnreachableError";
 import assertExists from "@xtjs/lib/assertExists";
 import propertyComparator from "@xtjs/lib/propertyComparator";
@@ -18,7 +26,6 @@ import {
   calcLabelBBox,
   ensureFetchedPostTitleLengths,
 } from "./util/map";
-import { decode } from "@msgpack/msgpack";
 
 const createPointLabelsPicker = ({
   edge,
@@ -64,20 +71,26 @@ const createPointLabelsPicker = ({
     (async () => {
       // Calculate cities first to ensure they always show.
       await (citiesLoadPromise ??= (async () => {
-        const res = await fetch(`https://${edge}.edge-hndr.wilsonl.in/map/${MAP_DATASET}/cities`);
+        const res = await fetch(
+          `https://${edge}.edge-hndr.wilsonl.in/map/${MAP_DATASET}/cities`,
+        );
         if (!res.ok) {
           throw new Error(`Failed to fetch terrain with error ${res.status}`);
         }
         const raw = decode(await res.arrayBuffer());
-        const vCities = new VArray(new VStruct({
-          lod: new VInteger(0),
-          cities: new VArray(new VStruct({
-            label: new VString(),
-            x: new VFiniteNumber(),
-            y: new VFiniteNumber(),
-          })),
-        }));
-        for (const {lod, cities} of vCities.parseRoot(raw)) {
+        const vCities = new VArray(
+          new VStruct({
+            lod: new VInteger(0),
+            cities: new VArray(
+              new VStruct({
+                label: new VString(),
+                x: new VFiniteNumber(),
+                y: new VFiniteNumber(),
+              }),
+            ),
+          }),
+        );
+        for (const { lod, cities } of vCities.parseRoot(raw)) {
           for (const city of cities) {
             for (let z = lod * ZOOM_PER_LOD; z < labelledPoints.length; z++) {
               const lp = labelledPoints[z];

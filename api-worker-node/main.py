@@ -1,21 +1,14 @@
-from dataclasses import dataclass
-from serde import serde, field
-from serde.msgpack import from_msgpack
-from FlagEmbedding import BGEM3FlagModel
-from typing import Dict, Iterable
-import base64
-import msgpack
-import numpy as np
-import os
-import requests
-import websocket
 from common.api_data import ApiDataset
+from common.emb_data import DatasetEmbModel
 from common.emb_data import load_ann
 from common.heatmap import render_heatmap
 from common.util import env
-from FlagEmbedding import BGEM3FlagModel
-from sentence_transformers import SentenceTransformer
+from dataclasses import dataclass
+from serde import field
+from serde import serde
+from serde.msgpack import from_msgpack
 from typing import Dict
+from typing import Iterable
 from typing import List
 from typing import Optional
 from typing import Tuple
@@ -25,9 +18,10 @@ import msgpack
 import numpy as np
 import os
 import pandas as pd
+import requests
 import struct
 import time
-
+import websocket
 
 DATASETS = env("HNDR_API_DATASETS").split(",")
 LOAD_ANN = os.getenv("HNDR_API_LOAD_ANN", "0") == "1"

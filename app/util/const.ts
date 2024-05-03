@@ -43,10 +43,12 @@ export const vPointLabelsMessageToMain = new VTagged("$type", {
   update: new VStruct({
     zoom: new VInteger(0),
     picked: new VSet(new VInteger(0)),
-    cities: new VArray(new VStruct({
-      label: new VString(),
-      x: new VFiniteNumber(),
-      y: new VFiniteNumber(),
-    })),
+    cities: new VArray(
+      new VStruct({
+        label: new VString(),
+        x: new VFiniteNumber(),
+        y: new VFiniteNumber(),
+      }),
+    ),
   }),
 });

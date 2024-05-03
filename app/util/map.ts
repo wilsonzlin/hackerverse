@@ -1,5 +1,5 @@
 import { decode } from "@msgpack/msgpack";
-import { VArray, VFiniteNumber, VString, VStruct, Valid } from "@wzlin/valid";
+import { VArray, VString, Valid } from "@wzlin/valid";
 import Dict from "@xtjs/lib/Dict";
 import UnreachableError from "@xtjs/lib/UnreachableError";
 import assertExists from "@xtjs/lib/assertExists";
@@ -340,14 +340,17 @@ export const createCanvasPointMap = ({
   })();
 
   // Zoom (integer) level => point IDs.
-  const labelledPoints = new Dict<number, {
-    points: Set<number>;
-    cities: Array<{
-      label: string;
-      x: number;
-      y: number;
-    }>;
-  }>();
+  const labelledPoints = new Dict<
+    number,
+    {
+      points: Set<number>;
+      cities: Array<{
+        label: string;
+        x: number;
+        y: number;
+      }>;
+    }
+  >();
 
   const worker = new Worker("/dist/worker.PointLabels.js");
   worker.addEventListener("message", (e) => {
