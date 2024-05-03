@@ -4,8 +4,10 @@ import Dict from "@xtjs/lib/Dict";
 import UnreachableError from "@xtjs/lib/UnreachableError";
 import assertExists from "@xtjs/lib/assertExists";
 import assertState from "@xtjs/lib/assertState";
+import derivedComparator from "@xtjs/lib/derivedComparator";
 import propertyComparator from "@xtjs/lib/propertyComparator";
 import reversedComparator from "@xtjs/lib/reversedComparator";
+import slices from "@xtjs/lib/slices";
 import RBush, { BBox } from "rbush";
 import {
   MapStateInit,
@@ -303,26 +305,41 @@ export const createCanvasPointMap = ({
   let heatmaps: ImageBitmap[] = [];
   let resultPoints: { x: number; y: number }[] = [];
 
-  let terrainLand: ImageBitmap | undefined;
-  let terrainWater: ImageBitmap | undefined;
-  Promise.all(
-    ["land", "water"].map(async (feature) => {
-      const res = await fetch(
-        `https://${edge}.edge-hndr.wilsonl.in/map/${MAP_DATASET}/terrain/${feature}`,
-      );
-      if (!res.ok) {
-        throw new Error(`Failed to fetch terrain with error ${res.status}`);
+  let terrain = Array<{ level: number; points: { x: number; y: number }[] }>();
+  (async () => {
+    const res = await fetch(
+      `https://${edge}.edge-hndr.wilsonl.in/map/${MAP_DATASET}/terrain`,
+    );
+    if (!res.ok) {
+      throw new Error(`Failed to fetch terrain with error ${res.status}`);
+    }
+    const raw = await res.arrayBuffer();
+    const dv = new DataView(raw);
+    let i = 0;
+    const paths = [];
+    while (i < raw.byteLength) {
+      const level = dv.getUint32(i, true);
+      i += 4;
+      const pathCount = dv.getUint32(i, true);
+      i += 4;
+      for (let j = 0; j < pathCount; j++) {
+        const pathLen = dv.getUint32(i, true);
+        i += 4;
+        const pointsRaw = new Float32Array(
+          raw.slice(i, (i += pathLen * 4 * 2)),
+        );
+        paths.push({
+          level,
+          points: slices(pointsRaw, 2).map(([x, y]) => ({ x, y })),
+        });
       }
-      const raw = await res.arrayBuffer();
-      const img = await createImageBitmap(new Blob([raw]));
-      if (feature === "land") {
-        terrainLand = img;
-      } else {
-        terrainWater = img;
-      }
-      render();
-    }),
-  );
+    }
+    assertState(i === raw.byteLength);
+    // Render level 1, then 2 on top, then 3, etc. However, render 0 last, because those are holes.
+    terrain = paths.sort(derivedComparator((e) => e.level || Infinity));
+    // @ts-expect-error This is not used before initialization.
+    render();
+  })();
 
   // Zoom (integer) level => point IDs.
   const labelledPoints = new Dict<number, Set<number>>();
@@ -389,18 +406,19 @@ export const createCanvasPointMap = ({
       const scale = map.viewportScale(vp);
       const ctx = assertExists(canvas.getContext("2d"));
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = "#fcfcfc";
+      ctx.fillStyle = "#6cd2e7";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-      for (const image of [terrainWater, terrainLand]) {
-        if (image) {
-          renderImage({
-            canvas,
-            context: ctx,
-            image,
-            map,
-            viewport: vp,
-          });
+      for (const { level, points } of terrain) {
+        ctx.fillStyle = ["#6cd2e7", "#bbecd8", "#a7e6cc", "#90e0be"][level];
+        ctx.beginPath();
+        const toCanvasPos = ({ x, y }: { x: number; y: number }) =>
+          [scale.ptToPx(x - vp.x0Pt), scale.ptToPx(y - vp.y0Pt)] as const;
+        ctx.moveTo(...toCanvasPos(points[0]));
+        for (const p of points.slice(1)) {
+          ctx.lineTo(...toCanvasPos(p));
         }
+        ctx.closePath();
+        ctx.fill();
       }
       for (const heatmap of heatmaps) {
         renderImage({

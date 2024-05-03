@@ -7,7 +7,6 @@ pushd "$(dirname "$0")/../.." >/dev/null
 region="$1"
 
 # We assume that the edge server exists as a Docker context named `hndr-edge-$region`.
-export DOCKER_CONTEXT=hndr-edge-$region
-export EDGE_DOMAIN=$region.edge-hndr.wilsonl.in
-docker compose pull edge edge-caddy
-docker compose up -d edge edge-caddy
+DOCKER_CONTEXT=hndr-edge-$region \
+EDGE_DOMAIN=$region.edge-hndr.wilsonl.in \
+docker compose logs -f

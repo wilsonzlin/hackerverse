@@ -1,7 +1,6 @@
 from scipy.ndimage import gaussian_filter
 from typing import Dict
 from typing import List
-from typing import Tuple
 import cv2
 import numpy as np
 import numpy.typing as npt
