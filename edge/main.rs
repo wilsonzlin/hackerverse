@@ -39,6 +39,19 @@ struct Point {
   y: f32,
 }
 
+#[derive(Clone, Deserialize, Serialize)]
+struct MapCity {
+  label: String,
+  x: f32,
+  y: f32,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+struct MapCitiesLod {
+  lod: u8,
+  cities: Vec<MapCity>,
+}
+
 #[derive(Deserialize, Serialize)]
 struct Map {
   points: AHashMap<u32, Point>,
@@ -46,6 +59,7 @@ struct Map {
   // One for each LOD level.
   tiles: Vec<AHashMap<String, ByteBuf>>,
   terrain: ByteBuf,
+  cities: Vec<MapCitiesLod>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -109,6 +123,17 @@ async fn get_map_tile(
     return Err(axum::http::StatusCode::NOT_FOUND);
   };
   Ok(tile.to_vec())
+}
+
+async fn get_map_cities(
+  State(ctx): State<Arc<Ctx>>,
+  Path(variant): Path<String>,
+) -> Result<MsgPack<Vec<MapCitiesLod>>, axum::http::StatusCode> {
+  let data = ctx.data.read();
+  let Some(map) = data.maps.get(&variant) else {
+    return Err(axum::http::StatusCode::NOT_FOUND);
+  };
+  Ok(MsgPack(map.cities.clone()))
 }
 
 async fn get_map_terrain(
@@ -238,6 +263,7 @@ async fn main() {
 
   let app = Router::new()
     .route("/healthz", get(|| async { "OK" }))
+    .route("/map/:map/cities", get(get_map_cities))
     .route("/map/:map/meta", get(get_map_meta))
     .route("/map/:map/point/:id", get(get_map_point))
     .route("/map/:map/terrain", get(get_map_terrain))

@@ -1,4 +1,4 @@
-import { Valid } from "@wzlin/valid";
+import { VArray, VFiniteNumber, VInteger, VString, VStruct, Valid } from "@wzlin/valid";
 import UnreachableError from "@xtjs/lib/UnreachableError";
 import assertExists from "@xtjs/lib/assertExists";
 import propertyComparator from "@xtjs/lib/propertyComparator";
@@ -11,11 +11,14 @@ import {
   vPointLabelsMessageToWorker,
 } from "./util/const";
 import {
+  MAP_DATASET,
   MapState,
+  ZOOM_PER_LOD,
   cachedFetchTile,
   calcLabelBBox,
   ensureFetchedPostTitleLengths,
 } from "./util/map";
+import { decode } from "@msgpack/msgpack";
 
 const createPointLabelsPicker = ({
   edge,
@@ -26,6 +29,7 @@ const createPointLabelsPicker = ({
 }) => {
   const map = new MapState(mapInit);
   let curViewport: ViewportState | undefined;
+  let citiesLoadPromise: Promise<any> | undefined;
 
   // One for each integer zoom level [0, map.zoomMax] (inclusive).
   const labelledPoints = Array.from({ length: map.zoomMax + 1 }, () => ({
@@ -33,6 +37,11 @@ const createPointLabelsPicker = ({
     picked: new Set<number>(),
     skipped: new Set<number>(), // Not picked if collided.
     tree: new RBush<BBox>(),
+    cities: Array<{
+      label: string;
+      x: number;
+      y: number;
+    }>(),
   }));
   const sendUpdate = (zoom: number) => {
     const z = Math.floor(zoom);
@@ -40,6 +49,7 @@ const createPointLabelsPicker = ({
       $type: "update",
       zoom: z,
       picked: labelledPoints[z].picked,
+      cities: labelledPoints[z].cities,
     };
     self.postMessage(msg);
   };
@@ -52,6 +62,43 @@ const createPointLabelsPicker = ({
     }
     pickingLabelledPoints = true;
     (async () => {
+      // Calculate cities first to ensure they always show.
+      await (citiesLoadPromise ??= (async () => {
+        const res = await fetch(`https://${edge}.edge-hndr.wilsonl.in/map/${MAP_DATASET}/cities`);
+        if (!res.ok) {
+          throw new Error(`Failed to fetch terrain with error ${res.status}`);
+        }
+        const raw = decode(await res.arrayBuffer());
+        const vCities = new VArray(new VStruct({
+          lod: new VInteger(0),
+          cities: new VArray(new VStruct({
+            label: new VString(),
+            x: new VFiniteNumber(),
+            y: new VFiniteNumber(),
+          })),
+        }));
+        for (const {lod, cities} of vCities.parseRoot(raw)) {
+          for (const city of cities) {
+            for (let z = lod * ZOOM_PER_LOD; z < labelledPoints.length; z++) {
+              const lp = labelledPoints[z];
+              const scaled = map.viewportScale({
+                ...curViewport!,
+                zoom: z,
+              });
+              lp.cities.push(city);
+              const Y_PX_PER_CHAR = 24;
+              const X_PX_PER_CHAR = Y_PX_PER_CHAR * (9 / 16);
+              lp.tree.insert({
+                minX: scaled.ptToPx(city.x),
+                minY: scaled.ptToPx(city.y),
+                maxX: scaled.ptToPx(city.x) + city.label.length * X_PX_PER_CHAR,
+                maxY: scaled.ptToPx(city.y) + Y_PX_PER_CHAR,
+              });
+            }
+          }
+        }
+      })());
+
       while (true) {
         const req = latestPickLabelledPointsReqId;
         const vp = assertExists(curViewport);

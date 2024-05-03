@@ -1,5 +1,5 @@
 import { decode } from "@msgpack/msgpack";
-import { VArray, VString, Valid } from "@wzlin/valid";
+import { VArray, VFiniteNumber, VString, VStruct, Valid } from "@wzlin/valid";
 import Dict from "@xtjs/lib/Dict";
 import UnreachableError from "@xtjs/lib/UnreachableError";
 import assertExists from "@xtjs/lib/assertExists";
@@ -228,7 +228,6 @@ export const ensureFetchedPostTitleLengths = async (
 };
 
 const LABEL_FONT_SIZE = 13;
-const LABEL_FONT_STYLE = `${LABEL_FONT_SIZE}px InterVariable, sans-serif`;
 const LABEL_POINT_GAP = 4;
 const LABEL_MARGIN = 13;
 
@@ -341,13 +340,23 @@ export const createCanvasPointMap = ({
   })();
 
   // Zoom (integer) level => point IDs.
-  const labelledPoints = new Dict<number, Set<number>>();
+  const labelledPoints = new Dict<number, {
+    points: Set<number>;
+    cities: Array<{
+      label: string;
+      x: number;
+      y: number;
+    }>;
+  }>();
 
   const worker = new Worker("/dist/worker.PointLabels.js");
   worker.addEventListener("message", (e) => {
     const msg = vPointLabelsMessageToMain.parseRoot(e.data);
     if (msg.$type === "update") {
-      labelledPoints.set(msg.zoom, msg.picked);
+      labelledPoints.set(msg.zoom, {
+        points: msg.picked,
+        cities: msg.cities,
+      });
       const missing = [];
       for (const id of msg.picked) {
         if (!postTitleFetchStarted.has(id)) {
@@ -449,7 +458,7 @@ export const createCanvasPointMap = ({
           0,
           Math.log(p.score - map.scoreMin) / Math.log(map.scoreRange),
         );
-        const labelled = lp?.has(p.id);
+        const labelled = lp?.points.has(p.id);
         const canvasX = scale.ptToPx(p.x - vp.x0Pt);
         const canvasY = scale.ptToPx(p.y - vp.y0Pt);
         const minAlpha = 0.25 * (vp.zoom / map.zoomMax + 1);
@@ -463,7 +472,7 @@ export const createCanvasPointMap = ({
           },
           space: {
             true: `rgba(255, 255, 255, ${alpha})`,
-            false: `rgba(120, 120, 120, ${alpha})`,
+            false: `rgba(140, 140, 140, ${alpha})`,
           },
         }[theme][`${!!labelled}`];
         ctx.beginPath();
@@ -486,7 +495,7 @@ export const createCanvasPointMap = ({
       }
       // Draw labels over points.
       for (const p of curPoints) {
-        if (!lp?.has(p.id)) {
+        if (!lp?.points.has(p.id)) {
           continue;
         }
         const label = postTitles.get(p.id);
@@ -497,7 +506,7 @@ export const createCanvasPointMap = ({
           scale.ptToPx(p.x - vp.x0Pt) + pointRadius / 2 + LABEL_POINT_GAP;
         const canvasY =
           scale.ptToPx(p.y - vp.y0Pt) + LABEL_FONT_SIZE / 2 - pointRadius / 2;
-        ctx.font = LABEL_FONT_STYLE;
+        ctx.font = `${LABEL_FONT_SIZE}px InterVariable, sans-serif`;
         ctx.strokeStyle = {
           land: "white",
           space: "black",
@@ -509,6 +518,24 @@ export const createCanvasPointMap = ({
           space: "white",
         }[theme];
         ctx.fillText(label, canvasX, canvasY);
+      }
+      // Draw labels over points.
+      for (const p of lp?.cities ?? []) {
+        const fontSize = 13;
+        const canvasX = scale.ptToPx(p.x - vp.x0Pt);
+        const canvasY = scale.ptToPx(p.y - vp.y0Pt);
+        ctx.font = `${fontSize}px InterVariable, sans-serif`;
+        ctx.strokeStyle = {
+          land: "rgb(250, 250, 250)",
+          space: "black",
+        }[theme];
+        ctx.lineWidth = 2;
+        ctx.strokeText(p.label.toUpperCase(), canvasX, canvasY);
+        ctx.fillStyle = {
+          land: "rgb(50, 50, 50)",
+          space: "rgb(222, 222, 222)",
+        }[theme];
+        ctx.fillText(p.label.toUpperCase(), canvasX, canvasY);
       }
     });
   };
