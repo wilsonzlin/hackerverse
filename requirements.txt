@@ -4,6 +4,7 @@ implicit
 joblib
 msgpipe
 numpy
+opencv-contrib-python-headless
 pandas
 Pillow
 pyarrow
