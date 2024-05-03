@@ -53,8 +53,8 @@ def render_terrain(
     # Some values may lie exactly on the max and will end up with a bucket of `buckets`.
     grid = np.clip(grid, 0, buckets - 1)
 
-    # Map from level to list of paths, where a path is a list of (x, y) points.
-    shapes: Dict[int, List[List[Tuple[float, float]]]] = {}
+    # Map from level to list of paths, where a path is a NumPy matrix of (x, y) points.
+    shapes: Dict[int, List[npt.NDArray[np.float32]]] = {}
     for bucket in range(buckets):
         shapes[bucket] = []
         num_shapes, labelled_image = cv2.connectedComponents(
@@ -81,6 +81,6 @@ def render_terrain(
                 shape_border_points = shape_border_points / upscale
                 shape_border_points[:, 0] = shape_border_points[:, 0] / dpi + x_min
                 shape_border_points[:, 1] = shape_border_points[:, 1] / dpi + y_min
-                shapes[bucket].append(shape_border_points)
+                shapes[bucket].append(shape_border_points.astype(np.float32))
 
     return shapes

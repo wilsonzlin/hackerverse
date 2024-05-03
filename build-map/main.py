@@ -60,13 +60,21 @@ res["meta"] = {
     "lod_levels": lod_levels,
 }
 res["tiles"] = []
-res["terrain"] = render_terrain(
+
+terrain = render_terrain(
     xs=df["x"].to_numpy(),
     ys=df["y"].to_numpy(),
     dpi=32,
-    upscale=16,
+    upscale=32,
 )
-print("Image sizes (KiB):", {k: len(v) / 1024.0 for k, v in res["terrain"].items()})
+terrain_raw = b""
+for level, paths in terrain.items():
+    terrain_raw += struct.pack("<II", level, len(paths))
+    for path in paths:
+        terrain_raw += struct.pack("<I", path.shape[0])
+        terrain_raw += path.tobytes()
+res["terrain"] = terrain_raw
+print("Terrain points (KiB):", len(terrain_raw) / 1024)
 
 df["sampled"] = False
 
