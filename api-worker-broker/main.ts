@@ -19,7 +19,7 @@ import https from "https";
 import { WebSocket, WebSocketServer } from "ws";
 import { lg } from "../common/res";
 
-const TOKEN = assertExists(process.env["API_EMBED_NODE_TOKEN"]);
+const TOKEN = assertExists(process.env["API_WORKER_NODE_TOKEN"]);
 
 let nextReqId = 0;
 const reqs = new Dict<
@@ -54,11 +54,11 @@ const vMessageToBroker = new VStruct({
 
 const wsServer = https.createServer({
   key: Buffer.from(
-    assertExists(process.env["API_EMBED_NODE_KEY_B64"]),
+    assertExists(process.env["API_WORKER_NODE_KEY_B64"]),
     "base64",
   ),
   cert: Buffer.from(
-    assertExists(process.env["API_EMBED_NODE_CERT_B64"]),
+    assertExists(process.env["API_WORKER_NODE_CERT_B64"]),
     "base64",
   ),
 });

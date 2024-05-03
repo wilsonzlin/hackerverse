@@ -1,14 +1,19 @@
+from dataclasses import dataclass
+from serde import serde, field
+from serde.msgpack import from_msgpack
+from FlagEmbedding import BGEM3FlagModel
+from typing import Dict, Iterable
+import base64
+import msgpack
+import numpy as np
+import os
+import requests
+import websocket
 from common.api_data import ApiDataset
 from common.emb_data import load_ann
 from common.heatmap import render_heatmap
 from common.util import env
-from fastapi import FastAPI
-from fastapi import HTTPException
-from fastapi import Response
-from fastapi.middleware.cors import CORSMiddleware
 from FlagEmbedding import BGEM3FlagModel
-from pydantic import BaseModel
-from pydantic import Field
 from sentence_transformers import SentenceTransformer
 from typing import Dict
 from typing import List
@@ -22,23 +27,19 @@ import os
 import pandas as pd
 import struct
 import time
-import uvicorn
+
 
 DATASETS = env("HNDR_API_DATASETS").split(",")
 LOAD_ANN = os.getenv("HNDR_API_LOAD_ANN", "0") == "1"
+TOKEN = env("API_WORKER_NODE_TOKEN")
 
 
 def load_data():
     print("Loading datasets:", DATASETS)
-    models = {
-        "comment": model_jinav2small,
-        "post": model_jinav2small,
-        "toppost": model_bgem3,
-    }
     res = {
         name: (
             ApiDataset.load(name),
-            models[name],
+            DatasetEmbModel(name),
             load_ann(name) if LOAD_ANN else None,
         )
         for name in DATASETS
@@ -52,7 +53,7 @@ def scale_series(raw: pd.Series, clip: "Clip"):
     return (sim - clip.min) / (clip.max - clip.min)
 
 
-def pack_rows(df: pd.DataFrame, cols: List[str]):
+def pack_rows(df: pd.DataFrame, cols: Iterable[str]):
     final_count = len(df)
     out = struct.pack("<I", final_count)
     for col in cols:
@@ -70,34 +71,16 @@ def pack_rows(df: pd.DataFrame, cols: List[str]):
     return out
 
 
-if __name__ != "__main__":
-    print("Loading models")
-    model_bgem3 = BGEM3FlagModel(
-        "BAAI/bge-m3", use_fp16=False, normalize_embeddings=True
-    )
-    model_jinav2small = SentenceTransformer(
-        "jinaai/jina-embeddings-v2-small-en", trust_remote_code=True
-    )
-
-    datasets = load_data()
-    print("All data loaded!")
-
-    app = FastAPI()
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-
-
-class Clip(BaseModel):
+@serde
+@dataclass
+class Clip:
     min: Union[float, int]
     max: Union[float, int]
 
 
-class HeatmapOutput(BaseModel):
+@serde
+@dataclass
+class HeatmapOutput:
     density: float
     color: Tuple[int, int, int]
     alpha_scale: float = 1.0
@@ -121,8 +104,10 @@ class HeatmapOutput(BaseModel):
         return struct.pack("<I", len(webp)) + webp
 
 
-class ItemsOutput(BaseModel):
-    cols: List[str] = ["id", "final_score"]
+@serde
+@dataclass
+class ItemsOutput:
+    cols: Tuple[str, ...] = ("id", "final_score")
     order_by: str = "final_score"
     order_asc: bool = False
     limit: Optional[int] = None
@@ -135,14 +120,16 @@ class ItemsOutput(BaseModel):
 
 
 # To filter groups, filter the original column that is grouped by.
-class GroupByOutput(BaseModel):
+@serde
+@dataclass
+class GroupByOutput:
     # This will replace the ID column, which will instead represent the group.
     by: str
     # If set, each item belongs into the bucket `item[by] // bucket` instead of `item[by]`. Note that this only works on numeric columns.
     bucket: Optional[float] = None
     # Mapping from column to aggregation method.
     # This is a list so that values are returned in a deterministic column order.
-    cols: List[Tuple[str, str]] = [("final_score", "sum")]
+    cols: Tuple[Tuple[str, str], ...] = (("final_score", "sum"),)
     order_by: str = "group"
     order_asc: bool = True
     limit: Optional[int] = None
@@ -159,7 +146,9 @@ class GroupByOutput(BaseModel):
         return pack_rows(df, ["group"] + [c for c, _ in self.cols])
 
 
-class Output(BaseModel):
+@serde
+@dataclass
+class Output:
     # Exactly one of these must be set.
     group_by: Optional[GroupByOutput] = None
     heatmap: Optional[HeatmapOutput] = None
@@ -176,9 +165,14 @@ class Output(BaseModel):
 
 
 # We don't support pre-filtering: it requires selecting arbitrary rows in the embedding matrix, which can literally be tens of gigabytes and is extremely slow. Most of the time, post filtering is better.
-class QueryInput(BaseModel):
+@serde
+@dataclass
+class QueryInput:
+    id: int
+
     dataset: str
-    queries: List[str] = Field(default=[], max_length=3)
+    outputs: List[Output]
+    queries: List[str] = field(default_factory=list)
 
     # How to aggregate the query similarity values into one for each row/item.
     sim_agg: str = "mean"  # mean, min, max.
@@ -189,24 +183,27 @@ class QueryInput(BaseModel):
     pre_filter_ann: Optional[int] = None
 
     # Scale each column into a new column `{col}_scaled`.
-    scales: Dict[str, Clip] = {}
+    scales: Dict[str, Clip] = field(default_factory=dict)
 
     # Map from source column => threshold. Convert the column into 0 or 1, where it's 1 if the original column value is greater than or equal to the threshold. The resulting column will be named `{col}_thresh` and can be used as a weight.
-    thresholds: Dict[str, float] = {}
+    thresholds: Dict[str, float] = field(default_factory=dict)
 
     # How much to scale each column when calculating final score. If it's a str, it's a column name to use as a weight. If it's a float, it's the weight itself.
     # Values can be zero, which is the default implied when omitted.
     # WARNING: This means that if this is empty, all items will have a score of zero.
-    weights: Dict[str, Union[str, float]] = {}
+    weights: Dict[str, Union[str, float]] = field(default_factory=dict)
 
     # Filter out rows where their column values are outside this range.
-    post_filter_clip: Dict[str, Clip] = {}
-
-    outputs: List[Output]
+    post_filter_clip: Dict[str, Clip] = field(default_factory=dict)
 
 
-@app.post("/")
-def query(input: QueryInput):
+def on_error(ws, error):
+    print("WS error:", error)
+
+
+def on_message(ws, raw):
+    input = from_msgpack(QueryInput, raw)
+
     # Perform checks before expensive embedding encoding.
     d, model, ann_idx = datasets[input.dataset]
     # As a precaution, do a shallow copy, in case we accidentally modify the original somewhere below.
@@ -214,20 +211,13 @@ def query(input: QueryInput):
 
     mat_sims = None
     if input.queries:
-        if type(model) == BGEM3FlagModel:
-            q_mat = model.encode(input.queries)["dense_vecs"]
-        elif type(model) == SentenceTransformer:
-            q_mat = model.encode(
-                input.queries, convert_to_numpy=True, normalize_embeddings=True
-            )
-        else:
-            assert False
+        q_mat = model.encode(input.queries)
         assert type(q_mat) == np.ndarray
         assert q_mat.shape[0] == len(input.queries)
 
         if input.pre_filter_ann is not None:
             if ann_idx is None:
-                raise HTTPException(status_code=400, detail="ANN index not loaded")
+                raise ValueError("ANN index not loaded")
             # `ids` and `dists` are matrices of shape (query_count, limit).
             ids, dists = ann_idx.query(q_mat, k=input.pre_filter_ann)
             sims = 1 - dists
@@ -282,28 +272,44 @@ def query(input: QueryInput):
     out = b""
     for o in input.outputs:
         out += o.calculate(d, df)
-    return Response(out)
 
-
-if __name__ == "__main__":
-    print("Starting server")
-
-    def maybe_write_ssl_env(name: str):
-        val = os.getenv("SSL_" + name.upper() + "_BASE64")
-        path = f"/ssl.{name}.pem"
-        if val is not None:
-            with open(path, "wb") as f:
-                raw = base64.standard_b64decode(val)
-                f.write(raw)
-            return path
-
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        log_level="warning",
-        port=int(env("PORT")),
-        ssl_certfile=maybe_write_ssl_env("cert"),
-        ssl_keyfile=maybe_write_ssl_env("key"),
-        ssl_ca_certs=maybe_write_ssl_env("ca"),
-        ssl_cert_reqs=1,
+    ws.send(
+        msgpack.packb(
+            {
+                "id": input.id,
+                "outputs": out,
+            }
+        ),
+        opcode=websocket.ABNF.OPCODE_BINARY,
     )
+
+
+def on_open(ws):
+    print("Opened connection")
+    init_req = msgpack.packb({"token": TOKEN, "ip": public_ip})
+    assert type(init_req) == bytes
+    ws.send(init_req, opcode=websocket.ABNF.OPCODE_BINARY)
+
+
+public_ip = requests.get("https://icanhazip.com").text.strip()
+print("Public IP:", public_ip)
+
+datasets = load_data()
+print("All data loaded!")
+
+websocket.setdefaulttimeout(30)
+wsapp = websocket.WebSocketApp(
+    "wss://api-worker-broker.hndr.wilsonl.in:6000",
+    on_error=on_error,
+    on_message=on_message,
+    on_open=on_open,
+)
+print("Started listener")
+with open("/tmp/cert.pem", "wb") as f:
+    f.write(base64.standard_b64decode(env("API_WORKER_NODE_CERT_B64")))
+wsapp.run_forever(
+    reconnect=30,
+    sslopt={
+        "ca_certs": "/tmp/cert.pem",
+    },
+)

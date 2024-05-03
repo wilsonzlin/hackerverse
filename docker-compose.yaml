@@ -22,17 +22,32 @@ services:
     volumes:
       - "${DOCKER_VOLUME_DIR}:/hndr-data"
 
-  api-embed-node:
-    image: wilsonzlin/hndr-api-embed-node
+  api-worker-broker:
+    network_mode: host
+    image: wilsonzlin/hndr-api-worker-broker
+    init: true
+    build:
+      context: .
+      dockerfile: Dockerfile.nodejs-base
+      args:
+        MAIN: api-worker-broker
+    environment:
+      API_WORKER_NODE_CERT_B64: ${API_WORKER_NODE_CERT_B64}
+      API_WORKER_NODE_KEY_B64: ${API_WORKER_NODE_KEY_B64}
+      API_WORKER_NODE_TOKEN: ${API_WORKER_NODE_TOKEN}
+      STATSD_HOST: telegraf
+
+  api-worker-node:
+    image: wilsonzlin/hndr-api-worker-node
     init: true
     build:
       context: .
       dockerfile: Dockerfile.runpod-base
       args:
-        MAIN: api-embed-node
+        MAIN: api-worker-node
     environment:
-      API_EMBED_NODE_CERT_B64: ${API_EMBED_NODE_CERT_B64}
-      API_EMBED_NODE_TOKEN: ${API_EMBED_NODE_TOKEN}
+      API_WORKER_NODE_CERT_B64: ${API_WORKER_NODE_CERT_B64}
+      API_WORKER_NODE_TOKEN: ${API_WORKER_NODE_TOKEN}
       INFLUXDB_BUCKET: ${INFLUXDB_BUCKET}
       INFLUXDB_ENDPOINT: ${INFLUXDB_ENDPOINT}
       INFLUXDB_ORGANIZATION: ${INFLUXDB_ORGANIZATION}
@@ -40,21 +55,6 @@ services:
       LOKI_BASICAUTH_PASSWORD: ${LOKI_BASICAUTH_PASSWORD}
       LOKI_BASICAUTH_USER: ${LOKI_BASICAUTH_USER}
       LOKI_ENDPOINT: ${LOKI_ENDPOINT}
-
-  api-embed-node-broker:
-    network_mode: host
-    image: wilsonzlin/hndr-api-embed-node-broker
-    init: true
-    build:
-      context: .
-      dockerfile: Dockerfile.nodejs-base
-      args:
-        MAIN: api-embed-node-broker
-    environment:
-      API_EMBED_NODE_CERT_B64: ${API_EMBED_NODE_CERT_B64}
-      API_EMBED_NODE_KEY_B64: ${API_EMBED_NODE_KEY_B64}
-      API_EMBED_NODE_TOKEN: ${API_EMBED_NODE_TOKEN}
-      STATSD_HOST: telegraf
 
   build-ann:
     image: wilsonzlin/hndr-build-ann
