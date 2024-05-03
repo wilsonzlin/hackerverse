@@ -47,14 +47,14 @@ export type PointMapController = {
 export const PointMap = ({
   controllerRef,
   heatmaps,
-  resultPoints,
   height: vpHeightPx,
+  resultPoints,
   width: vpWidthPx,
 }: {
   controllerRef?: MutableRefObject<PointMapController | undefined>;
   heatmaps: ImageBitmap[];
-  resultPoints: undefined | { x: number; y: number }[];
   height: number;
+  resultPoints: undefined | { x: number; y: number }[];
   width: number;
 }) => {
   const nextAnimId = useRef(0);
@@ -109,8 +109,14 @@ export const PointMap = ({
     };
   }
 
+  const [theme, setTheme] = useState<"land" | "space">(
+    localStorage.getItem("hndr-map-theme") || ("land" as any),
+  );
+  useEffect(() => localStorage.setItem("hndr-map-theme", theme), [theme]);
+
   const $canvas = useRef<HTMLCanvasElement>(null);
   const [map, setMap] = useState<ReturnType<typeof createCanvasPointMap>>();
+  useEffect(() => map?.setTheme(theme), [map, theme]);
   useEffect(() => map?.setHeatmaps(heatmaps), [map, heatmaps]);
   const [meta, setMeta] = useState<MapState>();
   useEffect(() => {
@@ -308,12 +314,27 @@ export const PointMap = ({
         }}
       />
 
-      <div className="info">
-        <p>
-          ({vpCtrXPt.toFixed(2)}, {vpCtrYPt.toFixed(2)})
-        </p>
-        <p>LOD: {lod == (meta?.lodLevels ?? 0) - 1 ? "max" : lod}</p>
-        <p>Zoom: {zoom.toFixed(2)}</p>
+      <div className="controls">
+        <button
+          className="theme"
+          style={{
+            background:
+              theme == "land"
+                ? "black"
+                : "linear-gradient(35deg, #6cd2e7 0 50%, #bbecd8 50% 100%)",
+          }}
+          onClick={() => {
+            setTheme(theme === "land" ? "space" : "land");
+          }}
+        />
+
+        <div className="info">
+          <p>
+            ({vpCtrXPt.toFixed(2)}, {vpCtrYPt.toFixed(2)})
+          </p>
+          <p>LOD: {lod == (meta?.lodLevels ?? 0) - 1 ? "max" : lod}</p>
+          <p>Zoom: {zoom.toFixed(2)}</p>
+        </div>
       </div>
     </div>
   );

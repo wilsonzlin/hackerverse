@@ -227,8 +227,6 @@ export const ensureFetchedPostTitleLengths = async (
   }
 };
 
-const POINT_RADIUS = 3;
-
 const LABEL_FONT_SIZE = 13;
 const LABEL_FONT_STYLE = `${LABEL_FONT_SIZE}px InterVariable, sans-serif`;
 const LABEL_POINT_GAP = 4;
@@ -302,6 +300,7 @@ export const createCanvasPointMap = ({
   let latestRenderRequestId = 0;
   let curPoints = Array<Point>(); // This must always be sorted by score descending.
   let curViewport: ViewportState | undefined;
+  let theme: "land" | "space" = "space";
   let heatmaps: ImageBitmap[] = [];
   let resultPoints: { x: number; y: number }[] = [];
 
@@ -403,13 +402,19 @@ export const createCanvasPointMap = ({
       if (!vp) {
         return;
       }
+      const pointRadius = {
+        land: 3,
+        space: 2,
+      }[theme];
       const scale = map.viewportScale(vp);
       const ctx = assertExists(canvas.getContext("2d"));
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = "#6cd2e7";
+      ctx.fillStyle = {
+        land: "#6cd2e7",
+        space: "black",
+      }[theme];
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       for (const { level, points } of terrain) {
-        ctx.fillStyle = ["#6cd2e7", "#bbecd8", "#a7e6cc", "#90e0be"][level];
         ctx.beginPath();
         const toCanvasPos = ({ x, y }: { x: number; y: number }) =>
           [scale.ptToPx(x - vp.x0Pt), scale.ptToPx(y - vp.y0Pt)] as const;
@@ -418,7 +423,16 @@ export const createCanvasPointMap = ({
           ctx.lineTo(...toCanvasPos(p));
         }
         ctx.closePath();
-        ctx.fill();
+        if (theme == "land") {
+          ctx.fillStyle = ["#6cd2e7", "#bbecd8", "#a7e6cc", "#90e0be"][level];
+          ctx.fill();
+        } else if (theme == "space") {
+          ctx.lineWidth = 1;
+          ctx.strokeStyle = `rgba(255, 255, 255, ${level / 8})`;
+          ctx.stroke();
+        } else {
+          throw new UnreachableError();
+        }
       }
       for (const heatmap of heatmaps) {
         renderImage({
@@ -442,12 +456,24 @@ export const createCanvasPointMap = ({
         const alpha =
           (scoreWeight * (1 - minAlpha) + minAlpha) *
           (labelled ? 1 : 0.6 * (vp.zoom / map.zoomMax) + 0.15);
-        ctx.fillStyle = !labelled
-          ? `rgba(120, 120, 120, ${alpha})`
-          : `rgba(3, 165, 252, ${alpha})`;
+        ctx.fillStyle = {
+          land: {
+            true: `rgba(3, 165, 252, ${alpha})`,
+            false: `rgba(120, 120, 120, ${alpha})`,
+          },
+          space: {
+            true: `rgba(255, 255, 255, ${alpha})`,
+            false: `rgba(120, 120, 120, ${alpha})`,
+          },
+        }[theme][`${!!labelled}`];
         ctx.beginPath();
-        ctx.arc(canvasX, canvasY, POINT_RADIUS, 0, Math.PI * 2);
+        ctx.arc(canvasX, canvasY, pointRadius, 0, Math.PI * 2);
         ctx.fill();
+        if (labelled) {
+          ctx.lineWidth = 1;
+          ctx.strokeStyle = "white";
+          ctx.stroke();
+        }
       }
       // Draw result points.
       for (const p of resultPoints) {
@@ -455,7 +481,7 @@ export const createCanvasPointMap = ({
         const canvasY = scale.ptToPx(p.y - vp.y0Pt);
         ctx.fillStyle = `rgb(252, 123, 3)`;
         ctx.beginPath();
-        ctx.arc(canvasX, canvasY, POINT_RADIUS, 0, Math.PI * 2);
+        ctx.arc(canvasX, canvasY, pointRadius, 0, Math.PI * 2);
         ctx.fill();
       }
       // Draw labels over points.
@@ -468,14 +494,20 @@ export const createCanvasPointMap = ({
           continue;
         }
         const canvasX =
-          scale.ptToPx(p.x - vp.x0Pt) + POINT_RADIUS / 2 + LABEL_POINT_GAP;
+          scale.ptToPx(p.x - vp.x0Pt) + pointRadius / 2 + LABEL_POINT_GAP;
         const canvasY =
-          scale.ptToPx(p.y - vp.y0Pt) + LABEL_FONT_SIZE / 2 - POINT_RADIUS / 2;
+          scale.ptToPx(p.y - vp.y0Pt) + LABEL_FONT_SIZE / 2 - pointRadius / 2;
         ctx.font = LABEL_FONT_STYLE;
-        ctx.strokeStyle = "#fff";
+        ctx.strokeStyle = {
+          land: "white",
+          space: "black",
+        }[theme];
         ctx.lineWidth = 2;
         ctx.strokeText(label, canvasX, canvasY);
-        ctx.fillStyle = "black";
+        ctx.fillStyle = {
+          land: "black",
+          space: "white",
+        }[theme];
         ctx.fillText(label, canvasX, canvasY);
       }
     });
@@ -484,6 +516,10 @@ export const createCanvasPointMap = ({
   return {
     destroy: () => {
       abortController.abort();
+    },
+    setTheme: (t: "land" | "space") => {
+      theme = t;
+      render();
     },
     setHeatmaps: (hm: ImageBitmap[]) => {
       heatmaps = hm;

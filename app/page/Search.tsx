@@ -136,7 +136,7 @@ const QueryForm = ({
         </label>
         <input
           className="query"
-          placeholder="Search, ask, visualize"
+          placeholder="Search or ask"
           value={queryRaw}
           onChange={(e) => setQueryRaw(e.currentTarget.value)}
         />
@@ -305,8 +305,8 @@ export const SearchPage = () => {
       <PointMap
         controllerRef={mapCtl}
         heatmaps={heatmaps}
-        resultPoints={results}
         height={rootDim?.height ?? 0}
+        resultPoints={results}
         width={rootDim?.width ?? 0}
       />
 
