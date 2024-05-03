@@ -1,7 +1,10 @@
 from common.data import load_table
+from common.emb_data import DatasetEmbModel
 from common.emb_data import load_umap
 from common.terrain import render_terrain
 from typing import Dict
+from typing import List
+import joblib
 import math
 import msgpack
 import numpy as np
@@ -18,6 +21,70 @@ DATASET = "toppost"
 # ...
 # At the maximum LOD level, we show everything, regardless of distance.
 BASE_LOD_AXIS_POINTS = 32
+
+CITIES_LOD0 = [
+    "Agriculture",
+    "Apple",
+    "Biology",
+    "Cloud computing",
+    "Cryptocurrency",
+    "Database",
+    "Edge computing",
+    "Energy",
+    "Entrepreneurship",
+    "Go",
+    "Google",
+    "Hacker News",
+    "Hardware",
+    "JavaScript",
+    "Large language models",
+    "Mathematics",
+    "Physics",
+    "Politics",
+    "Privacy",
+    "Productivity",
+    "Programming",
+    "Python",
+    "Registrar",
+    "Rust",
+    "Science",
+    "Security",
+    "Self-driving cars",
+    "Society",
+    "Space",
+    "Facebook",
+    "Tesla",
+    "Web3",
+]
+
+CITIES_LOD1 = [
+    "Containerization",
+    "DevOps",
+    "DNS",
+    "Git",
+    "HTTPS",
+    "ICANN",
+    "IPv6",
+    "PostgreSQL",
+    "Reddit",
+    "Semiconductors",
+    "SQLite",
+    "Tor",
+    "VPN",
+]
+
+
+def generate_cities(labels: List[str]):
+    embs = model.encode(labels)
+    umap = umapper.transform(embs)
+    return [
+        {
+            "label": labels[i],
+            "x": x,
+            "y": y,
+        }
+        for i, (x, y) in enumerate(umap.tolist())
+    ]
 
 
 def load_data():
@@ -75,6 +142,16 @@ for level, paths in terrain.items():
         terrain_raw += path.tobytes()
 res["terrain"] = terrain_raw
 print("Terrain points (KiB):", len(terrain_raw) / 1024)
+
+print("Loading UMAP model")
+with open(f"/hndr-data/umap-{DATASET}-model.joblib", "rb") as f:
+    umapper = joblib.load(f)
+print("Loading embedding model")
+model = DatasetEmbModel(DATASET)
+res["cities"] = [
+    {"lod": 0, "cities": generate_cities(CITIES_LOD0)},
+    {"lod": 1, "cities": generate_cities(CITIES_LOD1)},
+]
 
 df["sampled"] = False
 

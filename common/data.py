@@ -40,12 +40,16 @@ def load_mmap_matrix(basename: str, shape: Tuple[int, ...], dtype: npt.DTypeLike
 # - Allocating and then merging/stacking chunks requires temporarily 2x the amount of chunk used VRAM, and may fragment VRAM such that there won't be eventually enough room.
 # - Loading as NumPy matrix and then converting to CuPy matrix requires a full copy in system memory first, even if the NumPy matrix is memory-mapped.
 def load_mmap_matrix_to_gpu(
-    basename: str, shape: Tuple[int, ...], dtype: npt.DTypeLike
+    basename: str,
+    shape: Tuple[int, ...],
+    dtype: npt.DTypeLike,
+    # Use this to downcast the matrix to a smaller dtype (e.g. fit more in VRAM).
+    dest_dtype: Optional[npt.DTypeLike] = None,
 ):
     # Conditionally import, as cupy requires CUDA to even install.
     import cupy as cp
 
-    gpu = cp.empty(shape, dtype)
+    gpu = cp.empty(shape, dest_dtype or dtype)
     cpu = load_mmap_matrix(basename, shape, dtype)
     gpu_view = gpu.ravel()
     cpu_view = cpu.ravel()

@@ -1,5 +1,8 @@
 from common.data import load_mmap_matrix
+from FlagEmbedding import BGEM3FlagModel
 from pynndescent import NNDescent
+from sentence_transformers import SentenceTransformer
+from typing import List
 import numpy as np
 import os
 import pandas as pd
@@ -57,3 +60,37 @@ def load_umap(name: str):
             "y": mat[:, 1],
         }
     )
+
+
+_emb_model_cache = {}
+
+
+class DatasetEmbModel:
+    def __init__(self, dataset: str):
+        global _emb_model_cache
+        if dataset == "toppost":
+            k = "bgem3"
+            if k not in _emb_model_cache:
+                _emb_model_cache[k] = BGEM3FlagModel(
+                    "BAAI/bge-m3", use_fp16=False, normalize_embeddings=True
+                )
+            self.model = _emb_model_cache[k]
+        elif dataset in ("post", "comment"):
+            k = "jinav2small"
+            if k not in _emb_model_cache:
+                _emb_model_cache[k] = SentenceTransformer(
+                    "jinaai/jina-embeddings-v2-small-en", trust_remote_code=True
+                )
+            self.model = _emb_model_cache[k]
+        else:
+            raise ValueError(f"Invalid dataset: {dataset}")
+
+    def encode(self, inputs: List[str]) -> np.ndarray:
+        model = self.model
+        if type(model) == BGEM3FlagModel:
+            return model.encode(inputs)["dense_vecs"]
+        if type(model) == SentenceTransformer:
+            return model.encode(
+                inputs, convert_to_numpy=True, normalize_embeddings=True
+            )
+        assert False

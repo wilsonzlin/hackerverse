@@ -1,6 +1,6 @@
 __pycache__
 .env
-.venv/
+.venv*/
 /wrench/kmeans/*.webp
 /wrench/kmeans/cluster-titles*.json
 Cargo.lock

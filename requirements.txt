@@ -1,20 +1,23 @@
 fastapi
 FlagEmbedding
 implicit
-joblib
 msgpipe
 numpy
 opencv-contrib-python-headless
 pandas
 Pillow
 pyarrow
-pynndescent
 requests
 scikit-learn
 scipy
 sentence_transformers
 service-toolkit
 statsd
-umap-learn
 uvicorn
 websocket-client
+
+# These must be pinned, we pickle UMAP objects which can break across dep. versions. Also, the Python version must be 3.12.
+joblib==1.4.2
+numba==0.59.1
+pynndescent==0.5.12
+umap-learn==0.5.6
