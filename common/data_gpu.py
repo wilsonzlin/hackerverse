@@ -78,8 +78,11 @@ class DatasetEmbModelOnGpu:
             # The FlagEmbedding library is hardcoded to convert GPU Tensor back to CPU NumPy matrix.
             return cp.asarray(model.encode(inputs)["dense_vecs"])
         if type(model) == SentenceTransformer:
-            tensor = model.encode(inputs, normalize_embeddings=True)
-            assert type == torch.Tensor
+            # The default is convert_to_numpy=True, so we must override with convert_to_tensor=True.
+            tensor = model.encode(
+                inputs, normalize_embeddings=True, convert_to_tensor=True
+            )
+            assert type(tensor) == torch.Tensor
             # https://docs.cupy.dev/en/stable/user_guide/interoperability.html#pytorch
             return cp.asarray(tensor)
         assert False

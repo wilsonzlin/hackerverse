@@ -68,7 +68,8 @@ def pack_rows(df: DataFrame, cols: Iterable[str]):
         out += dt.kind.encode()
         if dt == object:
             # Probably strings. Anyway, use msgpack for simplicity (instead of inventing our own mechanism).
-            raw = msgpack.packb(df[col].to_list())
+            # > TypeError: cuDF does not support conversion to host memory via the `tolist()` method. Consider using `.to_arrow().to_pylist()` to construct a Python list.
+            raw = msgpack.packb(df[col].to_arrow().to_pylist())
             assert type(raw) == bytes
             out += struct.pack("<I", len(raw))
             out += raw
@@ -133,7 +134,7 @@ class GroupByOutput:
     # This will replace the ID column, which will instead represent the group.
     by: str
     # If set, each item belongs into the bucket `item[by] // bucket` instead of `item[by]`. Note that this only works on numeric columns.
-    bucket: Optional[Number] = None
+    bucket: Union[None, float, int] = None
     # Mapping from column to aggregation method.
     # This is a list so that values are returned in a deterministic column order.
     cols: Tuple[Tuple[str, str], ...] = (("final_score", "sum"),)

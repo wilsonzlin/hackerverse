@@ -24,7 +24,15 @@ let nextReqId = 0;
 const reqs = new Dict<
   number,
   {
-    resolve: (res: any) => void;
+    resolve: (
+      res:
+        | {
+            output: any;
+          }
+        | {
+            error: any;
+          },
+    ) => void;
     reject: (err: any) => void;
   }
 >();
@@ -81,16 +89,12 @@ ws.on("connection", (conn) => {
     clearTimeout(verifyTimeout);
     conn.on("message", (raw, isBinary) => {
       assertState(isBinary);
-      const msg = vMessageToBroker.parseRoot(
+      const { id, error, output } = vMessageToBroker.parseRoot(
         decode(assertInstanceOf(raw, Buffer)),
       );
-      connToReq.get(conn)!.delete(msg.id);
-      const prom = reqs.remove(msg.id);
-      if (msg.error) {
-        prom?.reject(msg.error);
-      } else {
-        prom?.resolve(msg.output);
-      }
+      connToReq.get(conn)!.delete(id);
+      const prom = reqs.remove(id);
+      prom?.resolve({ error, output });
     });
   });
   conn.on("close", () => {
@@ -102,7 +106,7 @@ ws.on("connection", (conn) => {
 });
 
 const sendToNode = (input: any) =>
-  new Promise((resolve, reject) => {
+  new Promise<{ error?: any; output?: any }>((resolve, reject) => {
     const id = nextReqId++;
     const conn = randomPick([...ws.clients]);
     if (!conn) {
@@ -132,7 +136,7 @@ http
       return res.writeHead(500).end(err.message);
     }
     res
-      .writeHead(200, {
+      .writeHead(resBody.error ? 502 : 200, {
         "content-type": "application/msgpack",
       })
       .end(encode(resBody));
