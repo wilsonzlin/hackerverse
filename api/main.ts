@@ -7,9 +7,12 @@ import readBufferStream from "@xtjs/lib/readBufferStream";
 import uint8ArrayToBuffer from "@xtjs/lib/uint8ArrayToBuffer";
 import { createSecureServer } from "http2";
 import { lg } from "../common/res";
+import { endpointAnalyzePopularity } from "./endpoint/analyzePopularity";
 import { endpointAnalyzeSentiment } from "./endpoint/analyzeSentiment";
 import { endpointHeatmap } from "./endpoint/heatmap";
 import { endpointSearch } from "./endpoint/search";
+import { endpointTopPosts } from "./endpoint/topPosts";
+import { endpointTopUsers } from "./endpoint/topUsers";
 
 const getPemEnv = (name: string) =>
   uint8ArrayToBuffer(
@@ -22,9 +25,12 @@ type Endpoint = {
 };
 
 const ENDPOINTS: Record<string, Endpoint> = {
+  analyzePopularity: endpointAnalyzePopularity,
   analyzeSentiment: endpointAnalyzeSentiment,
   heatmap: endpointHeatmap,
   search: endpointSearch,
+  topPosts: endpointTopPosts,
+  topUsers: endpointTopUsers,
 };
 
 createSecureServer(
