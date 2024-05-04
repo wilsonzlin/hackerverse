@@ -2,6 +2,7 @@ from common.data import dump_mmap_matrix
 from common.data import load_mmap_matrix
 from common.data import load_mmap_matrix_to_gpu
 from dataclasses import dataclass
+from typing import Optional
 import json
 import numpy as np
 import pandas as pd
@@ -15,10 +16,11 @@ class ApiDataset:
 
     table: pd.DataFrame
     emb_mat: np.ndarray
-    x_min: float
-    x_max: float
-    y_min: float
-    y_max: float
+    # These do not exist for datasets without UMAP.
+    x_min: Optional[float] = None
+    x_max: Optional[float] = None
+    y_min: Optional[float] = None
+    y_max: Optional[float] = None
 
     def dump(self):
         pfx = f"/hndr-data/api-{self.name}"
@@ -44,6 +46,7 @@ class ApiDataset:
             meta = json.load(f)
         count = meta.pop("count")
         emb_dim = meta.pop("emb_dim")
+        print("Loading table:", name)
         table = pyarrow.feather.read_feather(f"{pfx}-table.feather", memory_map=True)
         assert type(table) == pd.DataFrame
         if to_gpu:

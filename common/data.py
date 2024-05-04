@@ -50,6 +50,7 @@ def load_mmap_matrix_to_gpu(
     import cupy as cp
 
     gpu = cp.empty(shape, dest_dtype or dtype)
+    print("GPU matrix allocated on device:", gpu.device)
     cpu = load_mmap_matrix(basename, shape, dtype)
     gpu_view = gpu.ravel()
     cpu_view = cpu.ravel()
@@ -58,4 +59,5 @@ def load_mmap_matrix_to_gpu(
     for start in range(0, n, BUFSIZE):
         end = min(n, start + BUFSIZE)
         gpu_view[start:end] = cp.asarray(cpu_view[start:end])
+        print(f"Copied to GPU: {end / n * 100:.2f}%")
     return gpu

@@ -14,6 +14,7 @@ from typing import Optional
 from typing import Tuple
 from typing import Union
 import base64
+import cupy as cp
 import msgpack
 import numpy as np
 import os
@@ -23,7 +24,7 @@ import struct
 import time
 import websocket
 
-DATASETS = env("HNDR_API_DATASETS").split(",")
+DATASETS = os.getenv("API_WORKER_NODE_DATASETS", "comment,post,toppost").split(",")
 LOAD_ANN = os.getenv("HNDR_API_LOAD_ANN", "0") == "1"
 TOKEN = env("API_WORKER_NODE_TOKEN")
 
@@ -32,7 +33,7 @@ def load_data():
     print("Loading datasets:", DATASETS)
     res = {
         name: (
-            ApiDataset.load(name),
+            ApiDataset.load(name, to_gpu=True),
             DatasetEmbModel(name),
             load_ann(name) if LOAD_ANN else None,
         )
@@ -230,12 +231,12 @@ def on_message(ws, raw):
                 raw[f"sim{i}"] = np.float32(0.0)
                 raw.loc[raw["id"].isin(ids[i]), f"sim{i}"] = sims[i]
             cols = [f"sim{i}" for i in range(len(input.queries))]
-            mat_sims = raw[cols].to_numpy()
+            mat_sims = cp.asarray(raw[cols].to_numpy())
             raw.drop(columns=cols, inplace=True)
             # This is why we index "id" in `d.table`.
             df = df.merge(raw, how="inner", on="id")
         else:
-            mat_sims = d.emb_mat @ q_mat.T
+            mat_sims = d.emb_mat @ cp.asarray(q_mat.astype(np.float16).T)
 
     # Reset the index so we can select the `id` column again.
     df = df.reset_index()
@@ -252,7 +253,9 @@ def on_message(ws, raw):
 
     if mat_sims is not None:
         assert mat_sims.shape == (len(df), len(input.queries)), mat_sims.shape
-        assign_then_post_filter("sim", getattr(np, input.sim_agg)(mat_sims, axis=1))
+        assign_then_post_filter(
+            "sim", cp.asnumpy(getattr(cp, input.sim_agg)(mat_sims, axis=1))
+        )
 
     for c, scale in input.scales.items():
         assign_then_post_filter(f"{c}_scaled", scale_series(df[c], scale))

@@ -23,12 +23,15 @@ def normalize_dataset(df: pd.DataFrame, mat_embs: np.ndarray):
     df["ts_day"] = df["ts"] / (60 * 60 * 24)
     df.set_index("id", inplace=True)
 
-    meta = {
-        "x_max": df["x"].max().item(),
-        "x_min": df["x"].min().item(),
-        "y_max": df["y"].max().item(),
-        "y_min": df["y"].min().item(),
-    }
+    if "x" in df and "y" in df:
+        meta = {
+            "x_max": df["x"].max().item(),
+            "x_min": df["x"].min().item(),
+            "y_max": df["y"].max().item(),
+            "y_min": df["y"].min().item(),
+        }
+    else:
+        meta = {}
 
     return df, mat_embs_ordered, meta
 
@@ -106,7 +109,7 @@ def load_comment_data():
     df, mat_emb, meta = normalize_dataset(df, mat_emb)
     print("Comments:", len(df))
     ApiDataset(
-        name="comments",
+        name="comment",
         emb_mat=mat_emb,
         table=df,
         **meta,

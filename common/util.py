@@ -1,4 +1,5 @@
 from typing import Optional
+from typing import TypeVar
 import os
 
 
@@ -9,6 +10,9 @@ def env(name: str):
     return val
 
 
-def assert_exists[T](val: Optional[T]) -> T:
+T = TypeVar("T")
+
+
+def assert_exists(val: Optional[T]) -> T:
     assert val is not None
     return val

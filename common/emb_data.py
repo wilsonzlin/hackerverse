@@ -7,6 +7,7 @@ import numpy as np
 import os
 import pandas as pd
 import pickle
+import torch
 
 
 def load_ids(name: str):
@@ -71,6 +72,7 @@ class DatasetEmbModel:
         if dataset == "toppost":
             k = "bgem3"
             if k not in _emb_model_cache:
+                # BGEM3FlagModel constructor will automatically move the model to GPU if available.
                 _emb_model_cache[k] = BGEM3FlagModel(
                     "BAAI/bge-m3", use_fp16=False, normalize_embeddings=True
                 )
@@ -78,9 +80,12 @@ class DatasetEmbModel:
         elif dataset in ("post", "comment"):
             k = "jinav2small"
             if k not in _emb_model_cache:
-                _emb_model_cache[k] = SentenceTransformer(
+                model = SentenceTransformer(
                     "jinaai/jina-embeddings-v2-small-en", trust_remote_code=True
                 )
+                if torch.cuda.is_available():
+                    model = model.to("cuda")
+                _emb_model_cache[k] = model
             self.model = _emb_model_cache[k]
         else:
             raise ValueError(f"Invalid dataset: {dataset}")
