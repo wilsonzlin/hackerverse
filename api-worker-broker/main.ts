@@ -1,5 +1,12 @@
 import { decode, encode } from "@msgpack/msgpack";
-import { VInteger, VString, VStruct, VUnknown, Valid } from "@wzlin/valid";
+import {
+  VInteger,
+  VOptional,
+  VString,
+  VStruct,
+  VUnknown,
+  Valid,
+} from "@wzlin/valid";
 import Dict from "@xtjs/lib/Dict";
 import assertExists from "@xtjs/lib/assertExists";
 import assertInstanceOf from "@xtjs/lib/assertInstanceOf";
@@ -35,7 +42,8 @@ const vMessageToNode = new VStruct({
 
 const vMessageToBroker = new VStruct({
   id: new VInteger(0),
-  output: new VUnknown(),
+  output: new VOptional(new VUnknown()),
+  error: new VOptional(new VUnknown()),
 });
 
 const wsServer = https.createServer({
@@ -77,7 +85,12 @@ ws.on("connection", (conn) => {
         decode(assertInstanceOf(raw, Buffer)),
       );
       connToReq.get(conn)!.delete(msg.id);
-      reqs.remove(msg.id)?.resolve(msg.output);
+      const prom = reqs.remove(msg.id);
+      if (msg.error) {
+        prom?.reject(msg.error);
+      } else {
+        prom?.resolve(msg.output);
+      }
     });
   });
   conn.on("close", () => {

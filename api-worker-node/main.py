@@ -27,7 +27,7 @@ import traceback
 import websocket
 
 DATASETS = os.getenv("API_WORKER_NODE_DATASETS", "comment,post,toppost").split(",")
-LOAD_ANN = os.getenv("HNDR_API_LOAD_ANN", "0") == "1"
+LOAD_ANN = os.getenv("API_WORKER_NODE_LOAD_ANN", "0") == "1"
 TOKEN = env("API_WORKER_NODE_TOKEN")
 
 
