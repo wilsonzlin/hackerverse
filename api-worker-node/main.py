@@ -51,6 +51,15 @@ def scale_series(raw: pd.Series, clip: "Clip"):
     return (sim - clip.min) / (clip.max - clip.min)
 
 
+
+def assign_then_post_filter(df: pd.DataFrame, filters: Dict[str, Clip], col: str, new):
+    df = df.assign(**{col: new})
+    clip = filters.pop(col, None)
+    if clip is not None:
+        df = df[df[col].between(clip.min, clip.max)]
+    return df
+
+
 def pack_rows(df: pd.DataFrame, cols: Iterable[str]):
     final_count = len(df)
     out = struct.pack("<I", final_count)
@@ -162,6 +171,8 @@ class Output:
         assert False
 
 
+
+
 # We don't support pre-filtering: it requires selecting arbitrary rows in the embedding matrix, which can literally be tens of gigabytes and is extremely slow. Most of the time, post filtering is better.
 @serde
 @dataclass
@@ -245,31 +256,42 @@ def on_message(ws, raw):
     df = df.reset_index()
 
     today = time.time() / (60 * 60 * 24)
-    df["ts_norm"] = np.exp(-input.ts_decay * (today - df["ts_day"]))
-
-    def assign_then_post_filter(col: str, new):
-        nonlocal df
-        df[col] = new
-        clip = input.post_filter_clip.pop(col, None)
-        if clip is not None:
-            df = df[df[col].between(clip.min, clip.max)]
+    df = df.assign(ts_norm=cp.exp(-input.ts_decay * (today - df["ts_day"])))
 
     if mat_sims is not None:
         assert mat_sims.shape == (len(df), len(input.queries)), mat_sims.shape
-        assign_then_post_filter(
-            "sim", cp.asnumpy(getattr(cp, input.sim_agg)(mat_sims, axis=1))
+        df = assign_then_post_filter(
+            df,
+            input.post_filter_clip,
+            "sim",
+            getattr(cp, input.sim_agg)(mat_sims, axis=1),
         )
 
     for c, scale in input.scales.items():
-        assign_then_post_filter(f"{c}_scaled", scale_series(df[c], scale))
+        df = assign_then_post_filter(
+            df,
+            input.post_filter_clip,
+            f"{c}_scaled",
+            scale_series(df[c], scale),
+        )
 
     for c, t in input.thresholds.items():
-        assign_then_post_filter(f"{c}_thresh", df[c] >= t)
+        df = assign_then_post_filter(
+            df,
+            input.post_filter_clip,
+            f"{c}_thresh",
+            df[c] >= t,
+        )
 
     df["final_score"] = np.float32(0.0)
     for c, w in input.weights.items():
         df["final_score"] += df[c] * (df[w] if type(w) == str else w)
-    assign_then_post_filter("final_score", df["final_score"])
+    df = assign_then_post_filter(
+        df,
+        input.post_filter_clip,
+        "final_score",
+        df["final_score"],
+    )
 
     # Process any remaining filters.
     for col, clip in input.post_filter_clip.items():
