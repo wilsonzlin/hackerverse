@@ -1,11 +1,8 @@
-import { VFiniteNumber, VInteger, VStruct, Valid } from "@wzlin/valid";
-import assertInstanceOf from "@xtjs/lib/assertInstanceOf";
+import assertExists from "@xtjs/lib/assertExists";
 import defined from "@xtjs/lib/defined";
 import findAndRemove from "@xtjs/lib/findAndRemove";
 import hexToRgb from "@xtjs/lib/hexToRgb";
 import mapExists from "@xtjs/lib/mapExists";
-import propertyComparator from "@xtjs/lib/propertyComparator";
-import reversedComparator from "@xtjs/lib/reversedComparator";
 import rgbToHex from "@xtjs/lib/rgbToHex";
 import { produce } from "immer";
 import { DateTime } from "luxon";
@@ -14,38 +11,24 @@ import { Ico } from "../component/Ico";
 import { Loading } from "../component/Loading";
 import { PageSwitcher } from "../component/PageSwitcher";
 import { PointMap, PointMapController } from "../component/PointMap";
-import { ApiHeatmapOutput, ApiItemsOutput, apiCall } from "../util/api";
+import { heatmapApiCall, searchApiCall } from "../util/api";
 import { useMeasure } from "../util/dom";
 import { usePromise } from "../util/fetch";
 import { useHnItems } from "../util/item";
-import { MAP_DATASET } from "../util/map";
 import "./Search.css";
 
-const vQueryResultItem = new VStruct({
-  id: new VInteger(1),
-  x: new VFiniteNumber(),
-  y: new VFiniteNumber(),
-  sim: new VFiniteNumber(),
-  final_score: new VFiniteNumber(),
-});
-
-type QueryResults = {
-  items: Array<Valid<typeof vQueryResultItem>>;
-  heatmap: ImageBitmap;
-};
+type QueryResults = Array<{
+  id: number;
+  x: number;
+  y: number;
+  sim: number;
+  final_score: number;
+}>;
 
 const QueryForm = ({
-  canDelete,
-  color,
-  onChangeColor,
   onResults,
-  onDelete,
 }: {
-  canDelete: boolean;
-  color: [number, number, number];
-  onChangeColor: (c: [number, number, number]) => void;
-  onResults: (results: QueryResults | undefined) => void;
-  onDelete: () => void;
+  onResults: (results: QueryResults) => void;
 }) => {
   const [queryRaw, setQueryRaw] = useState("");
   const [weightSimilarity, setWeightSimilarity] = useState(0.7);
@@ -60,80 +43,30 @@ const QueryForm = ({
   return (
     <form
       className="QueryForm"
-      onSubmit={(e) => {
+      onSubmit={async (e) => {
         e.preventDefault();
         const query = queryRaw.trim();
         if (!query) {
           queryReq.clear();
-          onResults(undefined);
+          onResults([]);
           return;
         }
-        queryReq.set(async (signal) => {
-          const data = await apiCall(signal, {
-            dataset: MAP_DATASET,
-            queries: [query],
-            scales: {
-              sim: {
-                post: { min: 0.7, max: 1 },
-                toppost: { min: 0.55, max: 1 },
-              }[MAP_DATASET],
-            },
-            post_filter_clip: {
-              sim_scaled: { min: 0.01, max: 1 },
-            },
-            ts_decay: decayTimestamp,
-            outputs: [
-              {
-                items: {
-                  cols: ["id", "x", "y", "sim", "final_score"],
-                  limit: 20,
-                },
-              },
-              {
-                heatmap: {
-                  alpha_scale: 2, // TODO This is really a hack, investigate distribution of scores.
-                  density: 25,
-                  color,
-                  upscale: 2,
-                  sigma: 4,
-                },
-              },
-            ],
-            weights: {
-              sim_scaled: weightSimilarity,
-              ts_norm: weightTimestamp,
-              votes_norm: weightScore,
-            },
-          });
-          const results = {
-            items: [
-              ...assertInstanceOf(data[0], ApiItemsOutput).items(
-                vQueryResultItem.fields,
-              ),
-            ],
-            heatmap: await createImageBitmap(
-              assertInstanceOf(data[1], ApiHeatmapOutput).blob(),
-            ),
-          };
-          onResults(results);
-          return results;
-        });
+        const results = await queryReq.set((signal) =>
+          searchApiCall(signal, {
+            query,
+            limit: 10,
+            dataset: "toppost",
+            weightSimilarity,
+            weightScore,
+            weightTimestamp,
+            decayTimestamp,
+          }),
+        );
+        onResults(assertExists(results));
+        return results;
       }}
     >
       <div className="main">
-        <label className="color">
-          <input
-            hidden
-            type="color"
-            value={rgbToHex(...color)}
-            onChange={(e) => onChangeColor(hexToRgb(e.currentTarget.value))}
-          />
-          <div
-            style={{
-              backgroundColor: `rgb(${color.join(",")})`,
-            }}
-          />
-        </label>
         <input
           className="query"
           placeholder="Search or ask"
@@ -147,24 +80,13 @@ const QueryForm = ({
         >
           <Ico i="more_horiz" size={20} />
         </button>
-        {!queryRaw.trim() ? (
-          canDelete && (
-            <button
-              type="button"
-              onClick={() => {
-                onDelete();
-              }}
-            >
-              <Ico i="delete" size={20} />
-            </button>
-          )
-        ) : (
+        {!!queryRaw.trim() && (
           <button
             type="button"
             onClick={() => {
               setQueryRaw("");
               queryReq.clear();
-              onResults(undefined);
+              onResults([]);
             }}
           >
             <Ico i="close" size={20} />
@@ -239,10 +161,114 @@ const QueryForm = ({
   );
 };
 
-type QueryState = {
+type HeatmapQueryState = {
   id: number;
   color: [number, number, number];
-  results: QueryResults | undefined;
+  heatmap: ImageBitmap | undefined;
+};
+
+const HeatmapForm = ({
+  canDelete,
+  color,
+  onChangeColor,
+  onHeatmap,
+  onDelete,
+}: {
+  canDelete: boolean;
+  color: [number, number, number];
+  onChangeColor: (c: [number, number, number]) => void;
+  onHeatmap: (hm: ImageBitmap | undefined) => void;
+  onDelete: () => void;
+}) => {
+  const [queryRaw, setQueryRaw] = useState("");
+
+  const queryReq = usePromise<ImageBitmap>();
+  useEffect(() => onHeatmap(queryReq.data), [queryReq.data]);
+
+  return (
+    <form
+      className="HeatmapForm"
+      onSubmit={(e) => {
+        e.preventDefault();
+        queryReq.set(async (signal) => {
+          const query = queryRaw.trim();
+          if (!query) {
+            return;
+          }
+          const heatmapRaw = await heatmapApiCall(signal, {
+            color,
+            dataset: "toppost",
+            query,
+          });
+          const heatmap = await createImageBitmap(
+            new Blob([heatmapRaw], { type: "image/webp" }),
+          );
+          signal.throwIfAborted();
+          return heatmap;
+        });
+      }}
+    >
+      <div className="main">
+        <label className="color">
+          <input
+            hidden
+            type="color"
+            value={rgbToHex(...color)}
+            onChange={(e) => onChangeColor(hexToRgb(e.currentTarget.value))}
+          />
+          <div
+            style={{
+              backgroundColor: `rgb(${color.join(",")})`,
+            }}
+          />
+        </label>
+        <input
+          className="query"
+          placeholder="Search or ask"
+          value={queryRaw}
+          onChange={(e) => setQueryRaw(e.currentTarget.value)}
+        />
+        {!queryRaw.trim() ? (
+          canDelete && (
+            <button
+              type="button"
+              onClick={() => {
+                onDelete();
+              }}
+            >
+              <Ico i="delete" size={20} />
+            </button>
+          )
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              setQueryRaw("");
+              queryReq.clear();
+            }}
+          >
+            <Ico i="close" size={20} />
+          </button>
+        )}
+        {queryReq.loading ? (
+          <Loading size={18} />
+        ) : (
+          <button type="submit">
+            <Ico i="search" size={20} />
+          </button>
+        )}
+        {queryReq.error && (
+          <button
+            type="button"
+            className="error"
+            onClick={() => alert(queryReq.error)}
+          >
+            <Ico i="error" />
+          </button>
+        )}
+      </div>
+    </form>
+  );
 };
 
 export const SearchPage = () => {
@@ -252,25 +278,15 @@ export const SearchPage = () => {
   const mapCtl = useRef<PointMapController>();
 
   // We want to preserve other query states (i.e. don't unmount the existing React component) when deleting one, so we need some identifier and not just the ordinal which shifts.
-  const nextQueryId = useRef(1);
-  const [queries, setQueries] = useState<Array<QueryState>>([
-    {
-      id: 0,
-      color: [49, 185, 235],
-      results: undefined,
-    },
-  ]);
-  const results = useMemo(
-    () =>
-      queries
-        .flatMap((q) => q.results?.items ?? [])
-        .sort(reversedComparator(propertyComparator("final_score"))),
-    [queries],
-  );
+  const nextHeatmapQueryId = useRef(0);
+  const [heatmapQueries, setHeatmapQueries] =
+    useState(Array<HeatmapQueryState>());
   const heatmaps = useMemo(
-    () => queries.map((q) => q.results?.heatmap).filter(defined),
-    [queries],
+    () => heatmapQueries.map((q) => q.heatmap).filter(defined),
+    [heatmapQueries],
   );
+
+  const [results, setResults] = useState<QueryResults>([]);
   const [shouldAnimateToResults, setShouldAnimateToResults] = useState(false);
   useEffect(() => {
     if (!shouldAnimateToResults) {
@@ -312,67 +328,72 @@ export const SearchPage = () => {
 
       <PageSwitcher />
 
+      <div className="heatmaps">
+        {heatmapQueries.map((q) => {
+          const mutQ = (fn: (q: HeatmapQueryState) => unknown) => {
+            // Always use setQueries in callback mode, and always find ID, since `queries` may have changed since we last created and passed the on* callbacks.
+            setHeatmapQueries((queries) =>
+              produce(queries, (queries) => {
+                mapExists(
+                  queries.find((oq) => oq.id === q.id),
+                  fn,
+                );
+              }),
+            );
+          };
+
+          return (
+            <HeatmapForm
+              key={q.id}
+              canDelete={heatmapQueries.length > 1}
+              color={q.color}
+              onChangeColor={(color) => mutQ((q) => (q.color = color))}
+              onDelete={() =>
+                setHeatmapQueries((queries) =>
+                  produce(
+                    queries,
+                    (queries) =>
+                      void findAndRemove(queries, (oq) => oq.id === q.id),
+                  ),
+                )
+              }
+              onHeatmap={(heatmap) => mutQ((q) => (q.heatmap = heatmap))}
+            />
+          );
+        })}
+        <button
+          className="add-heatmap"
+          onClick={() => {
+            setHeatmapQueries([
+              ...heatmapQueries,
+              {
+                id: nextHeatmapQueryId.current++,
+                color: [
+                  Math.floor(Math.random() * 255),
+                  Math.floor(Math.random() * 255),
+                  Math.floor(Math.random() * 255),
+                ],
+                heatmap: undefined,
+              },
+            ]);
+          }}
+        >
+          <Ico i="add" size={18} />
+          <span>Add</span>
+        </button>
+      </div>
+
       <div className="panel">
         <div className="queries">
-          {queries.map((q) => {
-            const mutQ = (fn: (q: QueryState) => unknown) => {
-              // Always use setQueries in callback mode, and always find ID, since `queries` may have changed since we last created and passed the on* callbacks.
-              setQueries((queries) =>
-                produce(queries, (queries) => {
-                  mapExists(
-                    queries.find((oq) => oq.id === q.id),
-                    fn,
-                  );
-                }),
-              );
-            };
-
-            return (
-              <QueryForm
-                key={q.id}
-                canDelete={queries.length > 1}
-                color={q.color}
-                onChangeColor={(color) => mutQ((q) => (q.color = color))}
-                onDelete={() =>
-                  setQueries((queries) =>
-                    produce(
-                      queries,
-                      (queries) =>
-                        void findAndRemove(queries, (oq) => oq.id === q.id),
-                    ),
-                  )
-                }
-                onResults={(results) => {
-                  mutQ((q) => (q.results = results));
-                  // Only animate when results come in, not for any other reason that `results` changes (e.g. clearing, deleting).
-                  if (results?.items.length) {
-                    setShouldAnimateToResults(true);
-                  }
-                }}
-              />
-            );
-          })}
-
-          <button
-            className="add-query"
-            onClick={() => {
-              setQueries([
-                ...queries,
-                {
-                  id: nextQueryId.current++,
-                  color: [
-                    Math.floor(Math.random() * 255),
-                    Math.floor(Math.random() * 255),
-                    Math.floor(Math.random() * 255),
-                  ],
-                  results: undefined,
-                },
-              ]);
+          <QueryForm
+            onResults={(results) => {
+              setResults(results);
+              // Only animate when results come in, not for any other reason that `results` changes (e.g. clearing, deleting).
+              if (results.length) {
+                setShouldAnimateToResults(true);
+              }
             }}
-          >
-            <Ico i="add" size={18} />
-            <span>Add query</span>
-          </button>
+          />
         </div>
 
         <div className="results">

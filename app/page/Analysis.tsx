@@ -1,18 +1,20 @@
-import { VFiniteNumber, VInteger, VString } from "@wzlin/valid";
-import assertInstanceOf from "@xtjs/lib/assertInstanceOf";
 import bounded from "@xtjs/lib/bounded";
 import defined from "@xtjs/lib/defined";
 import mapExists from "@xtjs/lib/mapExists";
 import mapNonEmpty from "@xtjs/lib/mapNonEmpty";
 import maybeParseNumber from "@xtjs/lib/maybeParseNumber";
-import withoutUndefined from "@xtjs/lib/withoutUndefined";
 import { produce } from "immer";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Plot from "react-plotly.js";
 import { Ico } from "../component/Ico";
 import { Loading } from "../component/Loading";
 import { PageSwitcher } from "../component/PageSwitcher";
-import { ApiGroupByOutput, ApiItemsOutput, apiCall } from "../util/api";
+import {
+  analyzePopularityApiCall,
+  analyzeSentimentApiCall,
+  topPostsApiCall,
+  topUsersApiCall,
+} from "../util/api";
 import { useMeasure } from "../util/dom";
 import { usePromise } from "../util/fetch";
 import { useHnItems } from "../util/item";
@@ -36,6 +38,8 @@ const SentimentSection = ({
     useState<HTMLDivElement | null>(null);
   const chartContainerRect = useMeasure($chartContainer);
 
+  const simMinHundredths = Math.floor(simThreshold * 100);
+
   const sentReq = usePromise<{
     timestamps: Date[];
     positives: number[];
@@ -53,68 +57,24 @@ const SentimentSection = ({
 
   useEffect(() => {
     sentReq.set(async (signal) => {
-      const res = await apiCall(signal, {
-        dataset: "comments",
-        queries: [query].filter(defined),
-        thresholds: withoutUndefined({
-          sim: mapExists(query, () => simThreshold),
-          sent_pos: 0.5,
-          sent_neg: 0.5,
-        }),
-        post_filter_clip: mapExists(query, () => ({
-          sim_thresh: { min: 1.0, max: 1.0 },
-        })),
-        outputs: [
-          {
-            group_by: {
-              by: "ts_day",
-              bucket: 7,
-              cols: [
-                ["sent_pos_thresh", "sum"],
-                ["sent_neg_thresh", "sum"],
-              ],
-            },
-          },
-        ],
+      if (!query) {
+        return;
+      }
+      return await analyzeSentimentApiCall(signal, {
+        query,
+        simMinHundredths,
       });
-      const data = assertInstanceOf(res[0], ApiGroupByOutput);
-      return {
-        timestamps: [...data.groups(new VInteger())].map(
-          (d) => new Date(d * 7 * 24 * 60 * 60 * 1000),
-        ),
-        positives: [...data.column("sent_pos_thresh", new VFiniteNumber())],
-        negatives: [...data.column("sent_neg_thresh", new VFiniteNumber())],
-      };
     });
 
     topPostsReq.set(async (signal) => {
       if (!query) {
         return;
       }
-      const res = await apiCall(signal, {
-        dataset: "posts",
-        queries: [query],
-        post_filter_clip: {
-          sim: { min: simThreshold, max: 1 },
-        },
-        outputs: [
-          {
-            items: {
-              cols: ["id", "sim"],
-              limit: 8,
-              order_asc: false,
-              order_by: "votes",
-            },
-          },
-        ],
+      return await topPostsApiCall(signal, {
+        limit: 8,
+        query,
+        simMinHundredths,
       });
-      const data = assertInstanceOf(res[0], ApiItemsOutput);
-      return [
-        ...data.items({
-          id: new VInteger(1),
-          sim: new VFiniteNumber(),
-        }),
-      ];
     });
   }, [query, simThreshold]);
 
@@ -257,6 +217,7 @@ const TopUsersSection = ({
   query: string;
   simThreshold: number;
 }) => {
+  const simMinHundredths = Math.floor(simThreshold * 100);
   const req = usePromise<Array<{ user: string; score: number }>>();
   useEffect(() => {
     if (!query) {
@@ -264,40 +225,11 @@ const TopUsersSection = ({
       return;
     }
     req.set(async (signal) => {
-      const res = await apiCall(signal, {
-        dataset: "comments",
-        queries: [query],
-        scales: {
-          sim: {
-            min: simThreshold,
-            max: 1,
-          },
-        },
-        weights: {
-          // We can't multiply by votes, because the HN API does not expose votes for anything except posts.
-          sim_scaled: 1,
-        },
-        outputs: [
-          {
-            group_by: {
-              by: "user",
-              cols: [["final_score", "sum"]],
-              order_by: "final_score",
-              order_asc: false,
-              limit: 20,
-            },
-          },
-        ],
+      return await topUsersApiCall(signal, {
+        limit: 20,
+        query,
+        simMinHundredths,
       });
-      const data = assertInstanceOf(res[0], ApiGroupByOutput);
-      return [
-        ...data.entries(new VString(), {
-          final_score: new VFiniteNumber(),
-        }),
-      ].map((e) => ({
-        user: e[0],
-        score: e[1].final_score,
-      }));
     });
   }, [query, simThreshold]);
 
@@ -378,37 +310,10 @@ const PopularitySectionQuery = ({
         onResults(undefined);
         return;
       }
-      const res = await apiCall(signal, {
-        dataset: "posts",
-        queries: [query],
-        scales: {
-          sim: { min: simThreshold, max: 1.0 },
-        },
-        post_filter_clip: {
-          sim: { min: simThreshold, max: 1.0 },
-          // Some posts have UNIX timestamp 0.
-          ts_day: { min: 1, max: Number.MAX_SAFE_INTEGER },
-        },
-        weights: {
-          votes: "sim",
-        },
-        outputs: [
-          {
-            group_by: {
-              by: "ts_day",
-              bucket: 7,
-              cols: [["final_score", "sum"]],
-            },
-          },
-        ],
+      const results = await analyzePopularityApiCall(signal, {
+        query,
+        simMinHundredths: Math.floor(simThreshold * 100),
       });
-      const data = assertInstanceOf(res[0], ApiGroupByOutput);
-      const results = {
-        timestamps: [...data.groups(new VInteger())].map(
-          (d) => new Date(d * 7 * 24 * 60 * 60 * 1000),
-        ),
-        scores: [...data.column("final_score", new VFiniteNumber())],
-      };
       onResults(results);
       return results;
     });

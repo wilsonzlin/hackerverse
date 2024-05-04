@@ -55,16 +55,14 @@ export const endpointSearch = {
       ],
     });
     const data = assertInstanceOf(res[0], QueryItemsOutput);
-    return {
-      items: Array.from(
-        data.items({
-          id: new VInteger(1),
-          x: new VFiniteNumber(),
-          y: new VFiniteNumber(),
-          sim: new VFiniteNumber(),
-          final_score: new VFiniteNumber(),
-        }),
-      ),
-    };
+    return [
+      ...data.items({
+        id: new VInteger(1),
+        x: new VFiniteNumber(),
+        y: new VFiniteNumber(),
+        sim: new VFiniteNumber(),
+        final_score: new VFiniteNumber(),
+      }),
+    ];
   },
 };
