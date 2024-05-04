@@ -1,3 +1,4 @@
+from common.util import Number
 from io import BytesIO
 from PIL import Image
 from scipy.ndimage import gaussian_filter
@@ -47,12 +48,12 @@ def render_heatmap(
     *,
     # How to combine weights of points that map to the same grid cell.
     agg: str = "sum",
-    x_range: Tuple[float, float],
-    y_range: Tuple[float, float],
-    density: float,
+    x_range: Tuple[Number, Number],
+    y_range: Tuple[Number, Number],
+    density: Number,
     # RGB, [0, 255].
     color: Tuple[int, int, int],
-    alpha_scale: float = 1.0,
+    alpha_scale: Number = 1.0,
     sigma: int = 1,
     upscale: int = 1,
 ):

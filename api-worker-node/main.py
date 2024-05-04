@@ -1,8 +1,11 @@
-from common.api_data import ApiDataset
-from common.emb_data import DatasetEmbModel
-from common.emb_data import load_ann
+from common.data import load_ann
+from common.data_gpu import ApiDatasetOnGpu
+from common.data_gpu import DatasetEmbModelOnGpu
 from common.heatmap import render_heatmap
 from common.util import env
+from common.util import Number
+from cudf import DataFrame
+from cudf import Series
 from dataclasses import dataclass
 from serde import field
 from serde import serde
@@ -16,28 +19,24 @@ from typing import Union
 import base64
 import cupy as cp
 import msgpack
-import numpy as np
 import os
-import pandas as pd
 import requests
 import struct
 import time
+import traceback
 import websocket
 
 DATASETS = os.getenv("API_WORKER_NODE_DATASETS", "comment,post,toppost").split(",")
 LOAD_ANN = os.getenv("HNDR_API_LOAD_ANN", "0") == "1"
 TOKEN = env("API_WORKER_NODE_TOKEN")
 
-# pyserde will reject an integer for a float field.
-Number = Union[float, int]
-
 
 def load_data():
     print("Loading datasets:", DATASETS)
     res = {
         name: (
-            ApiDataset.load(name, to_gpu=True),
-            DatasetEmbModel(name),
+            ApiDatasetOnGpu.load(name, to_gpu=True),
+            DatasetEmbModelOnGpu(name),
             load_ann(name) if LOAD_ANN else None,
         )
         for name in DATASETS
@@ -46,13 +45,14 @@ def load_data():
     return res
 
 
-def scale_series(raw: pd.Series, clip: "Clip"):
+def scale_series(raw: Series, clip: "Clip"):
     sim = raw.clip(lower=clip.min, upper=clip.max)
     return (sim - clip.min) / (clip.max - clip.min)
 
 
-
-def assign_then_post_filter(df: pd.DataFrame, filters: Dict[str, Clip], col: str, new):
+def assign_then_post_filter(
+    df: DataFrame, filters: Dict[str, "Clip"], col: str, new: Series
+):
     df = df.assign(**{col: new})
     clip = filters.pop(col, None)
     if clip is not None:
@@ -60,7 +60,7 @@ def assign_then_post_filter(df: pd.DataFrame, filters: Dict[str, Clip], col: str
     return df
 
 
-def pack_rows(df: pd.DataFrame, cols: Iterable[str]):
+def pack_rows(df: DataFrame, cols: Iterable[str]):
     final_count = len(df)
     out = struct.pack("<I", final_count)
     for col in cols:
@@ -94,7 +94,7 @@ class HeatmapOutput:
     sigma: int = 1
     upscale: int = 1  # Max 4.
 
-    def calculate(self, d: ApiDataset, df: pd.DataFrame):
+    def calculate(self, d: ApiDatasetOnGpu, df: DataFrame):
         webp = render_heatmap(
             xs=df["x"].to_numpy(),
             ys=df["y"].to_numpy(),
@@ -119,7 +119,7 @@ class ItemsOutput:
     order_asc: bool = False
     limit: Optional[int] = None
 
-    def calculate(self, d: ApiDataset, df: pd.DataFrame):
+    def calculate(self, d: ApiDatasetOnGpu, df: DataFrame):
         df = df.sort_values(self.order_by, ascending=self.order_asc)
         if self.limit is not None:
             df = df[: self.limit]
@@ -141,7 +141,7 @@ class GroupByOutput:
     order_asc: bool = True
     limit: Optional[int] = None
 
-    def calculate(self, d: ApiDataset, df: pd.DataFrame):
+    def calculate(self, d: ApiDatasetOnGpu, df: DataFrame):
         if self.bucket is not None:
             df = df.assign(group=(df[self.by] // self.bucket).astype("int32"))
         else:
@@ -161,7 +161,7 @@ class Output:
     heatmap: Optional[HeatmapOutput] = None
     items: Optional[ItemsOutput] = None
 
-    def calculate(self, d: ApiDataset, df: pd.DataFrame):
+    def calculate(self, d: ApiDatasetOnGpu, df: DataFrame):
         if self.group_by is not None:
             return self.group_by.calculate(d, df)
         if self.heatmap is not None:
@@ -169,8 +169,6 @@ class Output:
         if self.items is not None:
             return self.items.calculate(d, df)
         assert False
-
-
 
 
 # We don't support pre-filtering: it requires selecting arbitrary rows in the embedding matrix, which can literally be tens of gigabytes and is extremely slow. Most of the time, post filtering is better.
@@ -204,21 +202,7 @@ class QueryInput:
     post_filter_clip: Dict[str, Clip] = field(default_factory=dict)
 
 
-@serde
-@dataclass
-class BrokerRequest:
-    id: int
-    input: QueryInput
-
-
-def on_error(ws, error):
-    print("WS error:", error)
-
-
-def on_message(ws, raw):
-    req = from_msgpack(BrokerRequest, raw)
-    input = req.input
-
+def request_handler(input: QueryInput):
     # Perform checks before expensive embedding encoding.
     d, model, ann_idx = datasets[input.dataset]
     # As a precaution, do a shallow copy, in case we accidentally modify the original somewhere below.
@@ -226,9 +210,11 @@ def on_message(ws, raw):
 
     mat_sims = None
     if input.queries:
-        q_mat = model.encode(input.queries)
-        assert type(q_mat) == np.ndarray
+        # Our dataset embedding matrix is loaded as float16.
+        q_mat = model.encode_f16(input.queries)
+        assert type(q_mat) == cp.ndarray
         assert q_mat.shape[0] == len(input.queries)
+        assert q_mat.dtype == cp.float16
 
         if input.pre_filter_ann is not None:
             if ann_idx is None:
@@ -236,21 +222,21 @@ def on_message(ws, raw):
             # `ids` and `dists` are matrices of shape (query_count, limit).
             ids, dists = ann_idx.query(q_mat, k=input.pre_filter_ann)
             sims = 1 - dists
-            raw = pd.DataFrame(
+            raw = DataFrame(
                 {
-                    "id": np.unique(ids).astype(np.uint32),
+                    "id": cp.unique(ids).astype(cp.uint32),
                 }
             )
             for i in range(len(input.queries)):
-                raw[f"sim{i}"] = np.float32(0.0)
+                raw[f"sim{i}"] = cp.float32(0.0)
                 raw.loc[raw["id"].isin(ids[i]), f"sim{i}"] = sims[i]
             cols = [f"sim{i}" for i in range(len(input.queries))]
-            mat_sims = cp.asarray(raw[cols].to_numpy())
+            mat_sims = raw[cols].to_cupy()
             raw.drop(columns=cols, inplace=True)
             # This is why we index "id" in `d.table`.
             df = df.merge(raw, how="inner", on="id")
         else:
-            mat_sims = d.emb_mat @ cp.asarray(q_mat.astype(np.float16).T)
+            mat_sims = d.emb_mat @ q_mat.T
 
     # Reset the index so we can select the `id` column again.
     df = df.reset_index()
@@ -264,7 +250,9 @@ def on_message(ws, raw):
             df,
             input.post_filter_clip,
             "sim",
-            getattr(cp, input.sim_agg)(mat_sims, axis=1),
+            # cuDF doesn't support float16, a TypeError is raised.
+            # https://github.com/rapidsai/cudf/issues/5770
+            getattr(cp, input.sim_agg)(mat_sims, axis=1).astype(cp.float32),
         )
 
     for c, scale in input.scales.items():
@@ -283,7 +271,7 @@ def on_message(ws, raw):
             df[c] >= t,
         )
 
-    df["final_score"] = np.float32(0.0)
+    df["final_score"] = cp.float32(0.0)
     for c, w in input.weights.items():
         df["final_score"] += df[c] * (df[w] if type(w) == str else w)
     df = assign_then_post_filter(
@@ -300,12 +288,44 @@ def on_message(ws, raw):
     out = b""
     for o in input.outputs:
         out += o.calculate(d, df)
+    return out
+
+
+def on_error(ws, error):
+    print("WS error:", error)
+
+
+@serde
+@dataclass
+class BrokerMessage:
+    id: int
+    input: QueryInput
+
+
+def on_message(ws, raw):
+    msg = from_msgpack(BrokerMessage, raw)
+
+    try:
+        res = {
+            "output": request_handler(msg.input),
+        }
+    except Exception as err:
+        typ = type(err).__name__
+        trace = traceback.format_exc()
+        print("Handler error:", typ, err, trace)
+        res = {
+            "error": {
+                "type": typ,
+                "message": str(err),
+                "trace": trace,
+            }
+        }
 
     ws.send(
         msgpack.packb(
             {
-                "id": req.id,
-                "output": out,
+                "id": msg.id,
+                **res,
             }
         ),
         opcode=websocket.ABNF.OPCODE_BINARY,
