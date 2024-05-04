@@ -1,16 +1,18 @@
-import { decode } from "@msgpack/msgpack";
+import { decode, encode } from "@msgpack/msgpack";
 import { Validator } from "@wzlin/valid";
 import UnreachableError from "@xtjs/lib/UnreachableError";
+import assertInstanceOf from "@xtjs/lib/assertInstanceOf";
 import assertState from "@xtjs/lib/assertState";
 import bigIntToNumber from "@xtjs/lib/bigIntToNumber";
+import isArrayOf from "@xtjs/lib/isArrayOf";
 import map from "@xtjs/lib/map";
-
-export type Clip = { min: number; max: number };
+const { Float16Array } = require("@petamoriken/float16");
 
 type ColVal = string | number;
+// A column's raw data could be a packed array of floats/ints, or a MessagePack-encoded list of strings. If the packed array is of 64-bit integers, it's converted into an array of numbers.
 type Col = ArrayLike<ColVal> & Iterable<ColVal>;
 
-export class ApiGroupByOutput {
+export class QueryGroupByOutput {
   constructor(
     private readonly groupsArray: Col,
     private readonly colArrays: Record<string, Col>,
@@ -50,7 +52,7 @@ export class ApiGroupByOutput {
   }
 }
 
-export class ApiItemsOutput {
+export class QueryItemsOutput {
   private length: number = -1;
 
   constructor(private readonly colArrays: Record<string, Col>) {
@@ -77,11 +79,11 @@ export class ApiItemsOutput {
   }
 }
 
-export class ApiHeatmapOutput {
-  constructor(private readonly rawWebp: ArrayBuffer) {}
+export class QueryHeatmapOutput {
+  constructor(readonly raw: ArrayBuffer) {}
 
   blob() {
-    return new Blob([this.rawWebp], { type: "image/webp" });
+    return new Blob([this.raw], { type: "image/webp" });
   }
 
   url() {
@@ -89,64 +91,80 @@ export class ApiHeatmapOutput {
   }
 }
 
-export const apiCall = async (
-  signal: AbortSignal,
-  req: {
-    dataset: string;
-    queries: string[];
-    sim_agg?: "mean" | "min" | "max";
-    ts_decay?: number;
-    pre_filter_hnsw?: number;
-    scales?: Record<string, Clip>;
-    thresholds?: Record<string, number>;
-    weights?: Record<string, string | number>;
-    post_filter_clip?: Record<string, Clip>;
-    outputs: Array<
-      | {
-          group_by: {
-            by: string;
-            bucket?: number;
-            cols: [string, "mean" | "min" | "max" | "sum" | "count"][];
-            order_by?: string;
-            order_asc?: boolean;
-            limit?: number;
-          };
-        }
-      | {
-          heatmap: {
-            density: number;
-            color: [number, number, number];
-            alpha_scale?: number;
-            sigma?: number;
-            upscale?: number;
-          };
-        }
-      | {
-          items: {
-            cols: string[];
-            order_by?: string;
-            order_asc?: boolean;
-            limit?: number;
-          };
-        }
-    >;
-  },
-) => {
-  const res = await fetch("https://api-hndr.wilsonl.in/", {
-    signal,
+export type QueryInputOutput =
+  | {
+      group_by: {
+        by: string;
+        bucket?: number;
+        cols: Array<[string, "mean" | "min" | "max" | "sum" | "count"]>;
+        order_by?: string;
+        order_asc?: boolean;
+        limit?: number;
+      };
+    }
+  | {
+      items: {
+        cols: Array<string>;
+        order_by?: string;
+        order_asc?: boolean;
+        limit?: number;
+      };
+    }
+  | {
+      heatmap: {
+        density: number;
+        color: readonly [number, number, number];
+        alpha_scale?: number;
+        sigma?: number;
+        upscale?: number;
+      };
+    };
+
+export type QueryClip = {
+  min: number;
+  max: number;
+};
+
+export type QueryInput = {
+  dataset: "comment" | "post" | "toppost";
+  outputs: Array<QueryInputOutput>;
+  queries: Array<string>;
+
+  sim_agg?: "mean" | "min" | "max";
+
+  ts_decay?: number;
+
+  pre_filter_ann?: number;
+
+  scales?: Record<string, QueryClip>;
+
+  thresholds?: Record<string, number>;
+
+  weights?: Record<string, string | number>;
+
+  post_filter_clip?: Record<string, QueryClip>;
+};
+
+export const makeQuery = async (q: QueryInput) => {
+  const res = await fetch("http://localhost:6050/", {
     method: "POST",
-    headers: {
-      "content-type": "application/json",
-    },
-    body: JSON.stringify(req),
+    body: encode(q),
   });
   if (!res.ok) {
-    throw new Error(`Bad status ${res.status}: ${await res.text()}`);
+    throw new Error(`Failed to query: ${res.status}`);
   }
-  const payload = await res.arrayBuffer();
+  const payloadBuf = assertInstanceOf(
+    decode(await res.arrayBuffer()),
+    Uint8Array,
+  );
+  // We want `payload` to be an ArrayBuffer, not an Uint8Array, as the latter is treated as a list of numbers, not the underlying raw bytes, when passed to a TypedArray or DataView constructor.
+  const payload = payloadBuf.buffer.slice(
+    payloadBuf.byteOffset,
+    payloadBuf.byteOffset + payloadBuf.byteLength,
+  );
   const dv = new DataView(payload);
   let i = 0;
-  const out = req.outputs.map((out) => {
+  const out = q.outputs.map((out) => {
     const unpackRows = (count: number, cols: string[]) => {
       const colArrays: Record<string, Col> = {};
       for (const col of cols) {
@@ -154,13 +172,20 @@ export const apiCall = async (
         if (kind === "O") {
           const rawLen = dv.getUint32(i, true);
           i += 4;
-          const decoded: any = decode(new Uint8Array(payload, i, rawLen));
+          const decoded = decode(new Uint8Array(payload, i, rawLen));
+          if (
+            !Array.isArray(decoded) ||
+            !isArrayOf(decoded, (v): v is string => typeof v == "string")
+          ) {
+            throw new TypeError(`Object column "${col}" isn't list of strings`);
+          }
           colArrays[col] = decoded;
           i += rawLen;
         } else {
           const itemSize = dv.getUint8(i++);
           const k = `${kind}${itemSize}`;
           const ctor = {
+            f2: Float16Array,
             f4: Float32Array,
             f8: Float64Array,
             i1: Int8Array,
@@ -193,24 +218,22 @@ export const apiCall = async (
         "group",
         ...out.group_by.cols.map((c) => c[0]),
       ]);
-      return new ApiGroupByOutput(group, colArrays);
+      return new QueryGroupByOutput(group, colArrays);
     }
     if ("heatmap" in out) {
       const rawLen = dv.getUint32(i, true);
       i += 4;
       const raw = payload.slice(i, (i += rawLen));
-      return new ApiHeatmapOutput(raw);
+      return new QueryHeatmapOutput(raw);
     }
     if ("items" in out) {
       const count = dv.getUint32(i, true);
       i += 4;
       const colArrays = unpackRows(count, out.items.cols);
-      return new ApiItemsOutput(colArrays);
+      return new QueryItemsOutput(colArrays);
     }
     throw new UnreachableError();
   });
   assertState(i === payload.byteLength);
   return out;
 };
-
-export type ApiResponse = Awaited<ReturnType<typeof apiCall>>;

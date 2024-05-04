@@ -15,6 +15,7 @@
     "@aws-sdk/client-ec2": "^3.554.0",
     "@msgpack/msgpack": "^2",
     "@msgpipe/nodejs": "^0.1.0",
+    "@petamoriken/float16": "^3.8.6",
     "@types/jest": "^29.5.12",
     "@types/luxon": "^3.4.2",
     "@types/node": "^20.12.5",

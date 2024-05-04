@@ -6,12 +6,13 @@ import {
   VStruct,
   Valid,
 } from "@wzlin/valid";
-import serialiseToQueryString from "@xtjs/lib/serialiseToQueryString";
+import assertInstanceOf from "@xtjs/lib/assertInstanceOf";
+import { QueryItemsOutput, makeQuery } from "../query";
 
 const input = new VStruct({
   query: new VHumanString(1, 512),
   limit: new VInteger(1, 128),
-  dataset: new VMember(["posts", "posts_bgem3", "comments"]),
+  dataset: new VMember(["post", "toppost"] as const),
   weightSimilarity: new VFiniteNumber(),
   weightScore: new VFiniteNumber(),
   weightTimestamp: new VFiniteNumber(),
@@ -29,17 +30,41 @@ export const endpointSearch = {
     weightSimilarity,
     weightTimestamp,
   }: Valid<typeof input>) => {
-    const results = await fetch(
-      `http://127.0.0.1:7001/${serialiseToQueryString({
-        query,
-        limit: 128,
-        dataset,
-        w_sim: weightSimilarity,
-        w_score: weightScore,
-        w_ts: weightTimestamp,
-        decay_ts: decayTimestamp,
-      })}`,
-    ).then((r) => r.json());
-    return { results: results.slice(0, limit) };
+    const res = await makeQuery({
+      dataset,
+      queries: [query],
+      ts_decay: decayTimestamp,
+      scales: {
+        sim: {
+          post: { min: 0.7, max: 1 },
+          toppost: { min: 0.55, max: 1 },
+        }[dataset],
+      },
+      weights: {
+        sim_scaled: weightSimilarity,
+        ts_norm: weightTimestamp,
+        votes_norm: weightScore,
+      },
+      outputs: [
+        {
+          items: {
+            cols: ["id", "x", "y", "sim", "final_score"],
+            limit,
+          },
+        },
+      ],
+    });
+    const data = assertInstanceOf(res[0], QueryItemsOutput);
+    return {
+      items: Array.from(
+        data.items({
+          id: new VInteger(1),
+          x: new VFiniteNumber(),
+          y: new VFiniteNumber(),
+          sim: new VFiniteNumber(),
+          final_score: new VFiniteNumber(),
+        }),
+      ),
+    };
   },
 };

@@ -7,11 +7,13 @@ import readBufferStream from "@xtjs/lib/readBufferStream";
 import uint8ArrayToBuffer from "@xtjs/lib/uint8ArrayToBuffer";
 import { createSecureServer } from "http2";
 import { lg } from "../common/res";
+import { endpointAnalyzeSentiment } from "./endpoint/analyzeSentiment";
+import { endpointHeatmap } from "./endpoint/heatmap";
 import { endpointSearch } from "./endpoint/search";
 
 const getPemEnv = (name: string) =>
   uint8ArrayToBuffer(
-    decodeBase64(assertExists(process.env[`API_SSL_${name}_BASE64`])),
+    decodeBase64(assertExists(process.env[`SSL_${name}_BASE64`])),
   );
 
 type Endpoint = {
@@ -20,6 +22,8 @@ type Endpoint = {
 };
 
 const ENDPOINTS: Record<string, Endpoint> = {
+  analyzeSentiment: endpointAnalyzeSentiment,
+  heatmap: endpointHeatmap,
   search: endpointSearch,
 };
 
@@ -66,7 +70,19 @@ createSecureServer(
     try {
       resBody = await endpoint.handler(reqBody);
     } catch (error) {
-      lg.error({ error, endpoint: endpointName }, "endpoint error");
+      lg.error(
+        {
+          error: {
+            trace: error.stack,
+            message: error.message,
+            type: error.constructor?.name,
+            name: error.name,
+            data: { ...error },
+          },
+          endpoint: endpointName,
+        },
+        "endpoint error",
+      );
       return res.writeHead(500).end();
     }
     return res
