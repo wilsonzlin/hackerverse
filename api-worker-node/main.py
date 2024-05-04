@@ -3,13 +3,11 @@ from common.data_gpu import ApiDatasetOnGpu
 from common.data_gpu import DatasetEmbModelOnGpu
 from common.heatmap import render_heatmap
 from common.util import env
-from common.util import Number
 from cudf import DataFrame
 from cudf import Series
 from dataclasses import dataclass
-from serde import field
-from serde import serde
-from serde.msgpack import from_msgpack
+from dataclasses import field
+from dataclasses_json import dataclass_json
 from typing import Dict
 from typing import Iterable
 from typing import List
@@ -79,19 +77,19 @@ def pack_rows(df: DataFrame, cols: Iterable[str]):
     return out
 
 
-@serde
+@dataclass_json
 @dataclass
 class Clip:
-    min: Number
-    max: Number
+    min: float
+    max: float
 
 
-@serde
+@dataclass_json
 @dataclass
 class HeatmapOutput:
-    density: Number
+    density: float
     color: Tuple[int, int, int]
-    alpha_scale: Number = 1.0
+    alpha_scale: float = 1.0
     sigma: int = 1
     upscale: int = 1  # Max 4.
 
@@ -112,7 +110,7 @@ class HeatmapOutput:
         return struct.pack("<I", len(webp)) + webp
 
 
-@serde
+@dataclass_json
 @dataclass
 class ItemsOutput:
     cols: Tuple[str, ...] = ("id", "final_score")
@@ -128,13 +126,13 @@ class ItemsOutput:
 
 
 # To filter groups, filter the original column that is grouped by.
-@serde
+@dataclass_json
 @dataclass
 class GroupByOutput:
     # This will replace the ID column, which will instead represent the group.
     by: str
     # If set, each item belongs into the bucket `item[by] // bucket` instead of `item[by]`. Note that this only works on numeric columns.
-    bucket: Union[None, float, int] = None
+    bucket: Optional[float] = None
     # Mapping from column to aggregation method.
     # This is a list so that values are returned in a deterministic column order.
     cols: Tuple[Tuple[str, str], ...] = (("final_score", "sum"),)
@@ -154,7 +152,7 @@ class GroupByOutput:
         return pack_rows(df, ["group"] + [c for c, _ in self.cols])
 
 
-@serde
+@dataclass_json
 @dataclass
 class Output:
     # Exactly one of these must be set.
@@ -173,7 +171,7 @@ class Output:
 
 
 # We don't support pre-filtering: it requires selecting arbitrary rows in the embedding matrix, which can literally be tens of gigabytes and is extremely slow. Most of the time, post filtering is better.
-@serde
+@dataclass_json
 @dataclass
 class QueryInput:
     dataset: str
@@ -183,7 +181,7 @@ class QueryInput:
     # How to aggregate the query similarity values into one for each row/item.
     sim_agg: str = "mean"  # mean, min, max.
 
-    ts_decay: Number = 0.1
+    ts_decay: float = 0.1
 
     # If provided, will first filter to this many ANN rows using the ANN index.
     pre_filter_ann: Optional[int] = None
@@ -192,12 +190,12 @@ class QueryInput:
     scales: Dict[str, Clip] = field(default_factory=dict)
 
     # Map from source column => threshold. Convert the column into 0 or 1, where it's 1 if the original column value is greater than or equal to the threshold. The resulting column will be named `{col}_thresh` and can be used as a weight.
-    thresholds: Dict[str, Number] = field(default_factory=dict)
+    thresholds: Dict[str, float] = field(default_factory=dict)
 
     # How much to scale each column when calculating final score. If it's a str, it's a column name to use as a weight. If it's a float, it's the weight itself.
     # Values can be zero, which is the default implied when omitted.
     # WARNING: This means that if this is empty, all items will have a score of zero.
-    weights: Dict[str, Union[str, int, float]] = field(default_factory=dict)
+    weights: Dict[str, Union[str, float]] = field(default_factory=dict)
 
     # Filter out rows where their column values are outside this range.
     post_filter_clip: Dict[str, Clip] = field(default_factory=dict)
@@ -296,7 +294,7 @@ def on_error(ws, error):
     print("WS error:", error)
 
 
-@serde
+@dataclass_json
 @dataclass
 class BrokerMessage:
     id: int
@@ -304,7 +302,7 @@ class BrokerMessage:
 
 
 def on_message(ws, raw):
-    msg = from_msgpack(BrokerMessage, raw)
+    msg = BrokerMessage.from_json(raw)
 
     try:
         res = {

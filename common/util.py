@@ -1,10 +1,6 @@
 from typing import Optional
 from typing import TypeVar
-from typing import Union
 import os
-
-# pyserde will reject an integer for a float field.
-Number = Union[float, int]
 
 
 def env(name: str):

@@ -1,3 +1,4 @@
+dataclasses-json
 fastapi
 FlagEmbedding
 implicit
@@ -7,7 +8,6 @@ opencv-contrib-python-headless
 pandas
 Pillow
 pyarrow
-pyserde
 requests
 scikit-learn
 scipy

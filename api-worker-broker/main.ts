@@ -115,7 +115,7 @@ const sendToNode = (input: any) =>
     reqs.set(id, { resolve, reject });
     connToReq.get(conn)!.add(id);
     const msg: Valid<typeof vMessageToNode> = { id, input };
-    conn.send(encode(msg), { binary: true });
+    conn.send(JSON.stringify(msg));
   });
 
 http
@@ -139,6 +139,6 @@ http
       .writeHead(resBody.error ? 502 : 200, {
         "content-type": "application/msgpack",
       })
-      .end(encode(resBody));
+      .end(encode(resBody.error ?? resBody.output));
   })
   .listen(6050, () => lg.info("API server started"));
