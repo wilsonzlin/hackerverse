@@ -1,5 +1,6 @@
 from common.data import dump_mmap_matrix
 from common.data import load_mmap_matrix
+from common.data import load_mmap_matrix_to_gpu
 from dataclasses import dataclass
 import json
 import numpy as np
@@ -37,7 +38,7 @@ class ApiDataset:
             )
 
     @staticmethod
-    def load(name: str):
+    def load(name: str, *, to_gpu=False):
         pfx = f"/hndr-data/api-{name}"
         with open(f"{pfx}-meta.json", "r") as f:
             meta = json.load(f)
@@ -45,7 +46,12 @@ class ApiDataset:
         emb_dim = meta.pop("emb_dim")
         table = pyarrow.feather.read_feather(f"{pfx}-table.feather", memory_map=True)
         assert type(table) == pd.DataFrame
-        emb_mat = load_mmap_matrix(f"api-{name}-emb", (count, emb_dim), np.float32)
+        if to_gpu:
+            emb_mat = load_mmap_matrix_to_gpu(
+                f"api-{name}-emb", (count, emb_dim), np.float32, np.float16
+            )
+        else:
+            emb_mat = load_mmap_matrix(f"api-{name}-emb", (count, emb_dim), np.float32)
         return ApiDataset(
             name=name,
             table=table,

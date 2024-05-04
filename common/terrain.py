@@ -32,7 +32,7 @@ def render_terrain(
             "y": ((ys - y_min) * dpi).clip(0, grid_height - 1).astype("int32"),
         }
     )
-    gv = gv.groupby(["x", "y"]).value_counts().reset_index(name="density")
+    gv = gv.groupby(["x", "y"]).size().reset_index(name="density")
     if use_log_scale:
         gv["density"] = np.log(gv["density"] + 1)
 

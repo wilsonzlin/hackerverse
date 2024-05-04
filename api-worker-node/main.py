@@ -162,8 +162,6 @@ class Output:
 @serde
 @dataclass
 class QueryInput:
-    id: int
-
     dataset: str
     outputs: List[Output]
     queries: List[str] = field(default_factory=list)
@@ -191,12 +189,20 @@ class QueryInput:
     post_filter_clip: Dict[str, Clip] = field(default_factory=dict)
 
 
+@serde
+@dataclass
+class BrokerRequest:
+    id: int
+    input: QueryInput
+
+
 def on_error(ws, error):
     print("WS error:", error)
 
 
 def on_message(ws, raw):
-    input = from_msgpack(QueryInput, raw)
+    req = from_msgpack(BrokerRequest, raw)
+    input = req.input
 
     # Perform checks before expensive embedding encoding.
     d, model, ann_idx = datasets[input.dataset]
@@ -270,8 +276,8 @@ def on_message(ws, raw):
     ws.send(
         msgpack.packb(
             {
-                "id": input.id,
-                "outputs": out,
+                "id": req.id,
+                "output": out,
             }
         ),
         opcode=websocket.ABNF.OPCODE_BINARY,

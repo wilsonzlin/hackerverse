@@ -1,19 +1,11 @@
 import { decode, encode } from "@msgpack/msgpack";
-import {
-  VBytes,
-  VFiniteNumber,
-  VInteger,
-  VObjectMap,
-  VString,
-  VStruct,
-  Valid,
-} from "@wzlin/valid";
+import { VInteger, VString, VStruct, VUnknown, Valid } from "@wzlin/valid";
 import Dict from "@xtjs/lib/Dict";
 import assertExists from "@xtjs/lib/assertExists";
 import assertInstanceOf from "@xtjs/lib/assertInstanceOf";
 import assertState from "@xtjs/lib/assertState";
 import randomPick from "@xtjs/lib/randomPick";
-import readStringStream from "@xtjs/lib/readStringStream";
+import readBufferStream from "@xtjs/lib/readBufferStream";
 import http from "http";
 import https from "https";
 import { WebSocket, WebSocketServer } from "ws";
@@ -25,16 +17,11 @@ let nextReqId = 0;
 const reqs = new Dict<
   number,
   {
-    resolve: (res: ApiResponseBody) => void;
+    resolve: (res: any) => void;
     reject: (err: any) => void;
   }
 >();
 const connToReq = new WeakMap<WebSocket, Set<number>>();
-
-type ApiResponseBody = {
-  embeddingDense: Uint8Array;
-  embeddingSparse: Record<string, number>;
-};
 
 const vNodeInitMessage = new VStruct({
   ip: new VString(),
@@ -43,13 +30,12 @@ const vNodeInitMessage = new VStruct({
 
 const vMessageToNode = new VStruct({
   id: new VInteger(0),
-  text: new VString(),
+  input: new VUnknown(),
 });
 
 const vMessageToBroker = new VStruct({
   id: new VInteger(0),
-  emb_dense: new VBytes(1024 * 4, 1024 * 4),
-  emb_sparse: new VObjectMap(new VFiniteNumber()),
+  output: new VUnknown(),
 });
 
 const wsServer = https.createServer({
@@ -91,10 +77,7 @@ ws.on("connection", (conn) => {
         decode(assertInstanceOf(raw, Buffer)),
       );
       connToReq.get(conn)!.delete(msg.id);
-      reqs.remove(msg.id)?.resolve({
-        embeddingDense: msg.emb_dense,
-        embeddingSparse: msg.emb_sparse,
-      });
+      reqs.remove(msg.id)?.resolve(msg.output);
     });
   });
   conn.on("close", () => {
@@ -105,8 +88,8 @@ ws.on("connection", (conn) => {
   });
 });
 
-const sendToNode = (text: string) =>
-  new Promise<ApiResponseBody>((resolve, reject) => {
+const sendToNode = (input: any) =>
+  new Promise((resolve, reject) => {
     const id = nextReqId++;
     const conn = randomPick([...ws.clients]);
     if (!conn) {
@@ -114,7 +97,7 @@ const sendToNode = (text: string) =>
     }
     reqs.set(id, { resolve, reject });
     connToReq.get(conn)!.add(id);
-    const msg: Valid<typeof vMessageToNode> = { id, text };
+    const msg: Valid<typeof vMessageToNode> = { id, input };
     conn.send(encode(msg), { binary: true });
   });
 
@@ -123,15 +106,15 @@ http
     if (req.method !== "POST") {
       return res.writeHead(405).end();
     }
-    let text;
+    let input;
     try {
-      text = await readStringStream(req);
+      input = decode(await readBufferStream(req));
     } catch (err) {
       return res.writeHead(400).end(err.message);
     }
     let resBody;
     try {
-      resBody = await sendToNode(text);
+      resBody = await sendToNode(input);
     } catch (err) {
       return res.writeHead(500).end(err.message);
     }

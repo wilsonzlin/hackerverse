@@ -34,8 +34,12 @@ service ssh start
 # Wait for log collector to start, as it won't export existing log entries before it starts.
 sleep 5
 
+if [[ -d /workspace ]]; then
+  ln -s /workspace/hndr-data /hndr-data
+fi
+
 if [[ -f /app/$MAIN/main.py ]]; then
-  python3 /app/$MAIN/main.py |& tee /app.log
+  python3 -m cudf.pandas /app/$MAIN/main.py |& tee /app.log
 else
   # We cannot use ts-node as it doesn't support node:worker.
   node /app/$MAIN/main.js |& tee /app.log
