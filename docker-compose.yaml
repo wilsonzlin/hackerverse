@@ -7,20 +7,17 @@ services:
     init: true
     build:
       context: .
-      dockerfile: Dockerfile.python-base
+      dockerfile: Dockerfile.nodejs-base
       args:
         MAIN: api
     environment:
       DB_RPC_API_KEY: ${DB_RPC_API_KEY}
-      HNDR_API_DATASETS: ${HNDR_API_DATASETS}
       PORT: 7000
       QUEUED_API_KEY: ${QUEUED_API_KEY}
       SSL_CA_BASE64: ${API_SSL_CA_BASE64}
       SSL_CERT_BASE64: ${API_SSL_CERT_BASE64}
       SSL_KEY_BASE64: ${API_SSL_KEY_BASE64}
       STATSD_HOST: telegraf
-    volumes:
-      - "${DOCKER_VOLUME_DIR}:/hndr-data"
 
   api-worker-broker:
     network_mode: host
