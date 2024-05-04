@@ -28,6 +28,9 @@ DATASETS = os.getenv("API_WORKER_NODE_DATASETS", "comment,post,toppost").split("
 LOAD_ANN = os.getenv("HNDR_API_LOAD_ANN", "0") == "1"
 TOKEN = env("API_WORKER_NODE_TOKEN")
 
+# pyserde will reject an integer for a float field.
+Number = Union[float, int]
+
 
 def load_data():
     print("Loading datasets:", DATASETS)
@@ -69,16 +72,16 @@ def pack_rows(df: pd.DataFrame, cols: Iterable[str]):
 @serde
 @dataclass
 class Clip:
-    min: Union[float, int]
-    max: Union[float, int]
+    min: Number
+    max: Number
 
 
 @serde
 @dataclass
 class HeatmapOutput:
-    density: float
+    density: Number
     color: Tuple[int, int, int]
-    alpha_scale: float = 1.0
+    alpha_scale: Number = 1.0
     sigma: int = 1
     upscale: int = 1  # Max 4.
 
@@ -121,7 +124,7 @@ class GroupByOutput:
     # This will replace the ID column, which will instead represent the group.
     by: str
     # If set, each item belongs into the bucket `item[by] // bucket` instead of `item[by]`. Note that this only works on numeric columns.
-    bucket: Optional[float] = None
+    bucket: Optional[Number] = None
     # Mapping from column to aggregation method.
     # This is a list so that values are returned in a deterministic column order.
     cols: Tuple[Tuple[str, str], ...] = (("final_score", "sum"),)
@@ -170,7 +173,7 @@ class QueryInput:
     # How to aggregate the query similarity values into one for each row/item.
     sim_agg: str = "mean"  # mean, min, max.
 
-    ts_decay: float = 0.1
+    ts_decay: Number = 0.1
 
     # If provided, will first filter to this many ANN rows using the ANN index.
     pre_filter_ann: Optional[int] = None
@@ -179,12 +182,12 @@ class QueryInput:
     scales: Dict[str, Clip] = field(default_factory=dict)
 
     # Map from source column => threshold. Convert the column into 0 or 1, where it's 1 if the original column value is greater than or equal to the threshold. The resulting column will be named `{col}_thresh` and can be used as a weight.
-    thresholds: Dict[str, float] = field(default_factory=dict)
+    thresholds: Dict[str, Number] = field(default_factory=dict)
 
     # How much to scale each column when calculating final score. If it's a str, it's a column name to use as a weight. If it's a float, it's the weight itself.
     # Values can be zero, which is the default implied when omitted.
     # WARNING: This means that if this is empty, all items will have a score of zero.
-    weights: Dict[str, Union[str, float]] = field(default_factory=dict)
+    weights: Dict[str, Union[str, int, float]] = field(default_factory=dict)
 
     # Filter out rows where their column values are outside this range.
     post_filter_clip: Dict[str, Clip] = field(default_factory=dict)
