@@ -522,14 +522,14 @@ export const createCanvasPointMap = ({
         }[theme];
         ctx.fillText(label, canvasX, canvasY);
       }
-      // Draw labels over points.
+      // Draw cities.
       for (const p of lp?.cities ?? []) {
         const fontSize = 13;
         const canvasX = scale.ptToPx(p.x - vp.x0Pt);
         const canvasY = scale.ptToPx(p.y - vp.y0Pt);
         ctx.font = `${fontSize}px InterVariable, sans-serif`;
         ctx.strokeStyle = {
-          land: "rgb(250, 250, 250)",
+          land: "white",
           space: "black",
         }[theme];
         ctx.lineWidth = 2;

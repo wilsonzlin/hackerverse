@@ -38,7 +38,7 @@ const SentimentSection = ({
     useState<HTMLDivElement | null>(null);
   const chartContainerRect = useMeasure($chartContainer);
 
-  const simMinHundredths = Math.floor(simThreshold * 100);
+  const simMinHundredths = Math.ceil(simThreshold * 100);
 
   const sentReq = usePromise<{
     timestamps: Date[];
@@ -217,7 +217,6 @@ const TopUsersSection = ({
   query: string;
   simThreshold: number;
 }) => {
-  const simMinHundredths = Math.floor(simThreshold * 100);
   const req = usePromise<Array<{ user: string; score: number }>>();
   useEffect(() => {
     if (!query) {
@@ -228,7 +227,7 @@ const TopUsersSection = ({
       return await topUsersApiCall(signal, {
         limit: 20,
         query,
-        simMinHundredths,
+        simMinHundredths: Math.ceil(simThreshold * 100),
       });
     });
   }, [query, simThreshold]);
@@ -312,7 +311,7 @@ const PopularitySectionQuery = ({
       }
       const results = await analyzePopularityApiCall(signal, {
         query,
-        simMinHundredths: Math.floor(simThreshold * 100),
+        simMinHundredths: Math.ceil(simThreshold * 100),
       });
       onResults(results);
       return results;

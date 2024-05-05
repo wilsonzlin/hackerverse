@@ -132,7 +132,7 @@ export const topUsersApiCall = async (
 ) =>
   apiCall(
     signal,
-    "topPosts",
+    "topUsers",
     req,
     new VArray(
       new VStruct({
