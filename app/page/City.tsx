@@ -206,6 +206,13 @@ export const CityPage = ({ params: [query] }: { params: string[] }) => {
         </div>
 
         <div className="panel">
+          <a
+            className="link-to-analysis"
+            href={`/a/${encodeURIComponent(query)}`}
+          >
+            <Ico i="open_in_new" size={20} />
+            <span>Analyze popularity and sentiment</span>
+          </a>
           <TopUsersSection query={query} simThreshold={simThreshold} />
         </div>
       </main>

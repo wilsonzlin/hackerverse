@@ -55,7 +55,11 @@
     flex-shrink: 0;
     border-left: 1px solid #eee;
     overflow: auto;
-    padding: 0 1rem;
+    padding: 1rem;
+
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
 
     > section {
       display: flex;
@@ -71,6 +75,20 @@
           font-weight: bolder;
         }
       }
+    }
+
+    > .link-to-analysis {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.75rem;
+      font-size: 0.9rem;
+      text-decoration: none;
+      color: #333;
+
+      background: white;
+      box-shadow: 0 2px 1rem rgba(0, 0, 0, 0.25);
+      border-radius: 0.25rem;
     }
   }
 
