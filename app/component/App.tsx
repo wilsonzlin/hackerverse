@@ -32,7 +32,7 @@ export const App = () => {
       console.log("Closest edge:", edge);
       setEdge(edge);
     })();
-    return ac.abort();
+    return () => ac.abort();
   }, []);
 
   return (

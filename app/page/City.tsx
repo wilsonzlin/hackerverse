@@ -2,13 +2,14 @@ import { VObjectMap } from "@wzlin/valid";
 import defined from "@xtjs/lib/defined";
 import mapExists from "@xtjs/lib/mapExists";
 import mapNonEmpty from "@xtjs/lib/mapNonEmpty";
-import { useContext, useEffect, useState } from "react";
+import { DateTime } from "luxon";
+import { useEffect, useState } from "react";
 import { UrlMeta, vUrlMeta } from "../../common/const";
 import { Ico } from "../component/Ico";
 import { PageSwitcher } from "../component/PageSwitcher";
 import { apiCall, topPostsApiCall } from "../util/api";
 import { usePromise } from "../util/fetch";
-import { EdgeContext, useEdgePosts } from "../util/item";
+import { useEdgePosts } from "../util/item";
 import "./City.css";
 
 const Image = ({ className, src }: { className?: string; src: string }) => {
@@ -32,10 +33,9 @@ export const CityPage = ({}: {}) => {
   const [queryRaw, setQueryRaw] = useState("");
   const [query, setQuery] = useState("");
 
-  const edge = useContext(EdgeContext);
   const postsReq = usePromise<Array<{ id: number; sim: number }>>();
   // Use edge post data as it has the normalized (not raw original) URL, required for `urlMetasReq`.
-  const postMetas = useEdgePosts(edge, postsReq.data?.map((i) => i.id) ?? []);
+  const postMetas = useEdgePosts(postsReq.data?.map((i) => i.id) ?? []);
   const urlMetasReq = usePromise<Record<string, UrlMeta>>();
   const posts = postsReq.data
     ?.map(({ id, sim }) =>
@@ -120,9 +120,13 @@ export const CityPage = ({}: {}) => {
                       className="favicon"
                       src={`https://${domain}/favicon.ico`}
                     />
-                    <div className="right">
+                    <div className="main">
                       <div className="site">{domain}</div>
                       <h2>{p.title}</h2>
+                      <div className="sub">
+                        {p.score} points by {p.author}{" "}
+                        {DateTime.fromSeconds(p.ts).toRelative()}
+                      </div>
                     </div>
                   </div>
                   {snippet && <p className="snippet">{snippet}</p>}

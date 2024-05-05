@@ -1,7 +1,7 @@
 import { decode } from "@msgpack/msgpack";
 import { Item, fetchHnItem } from "@wzlin/crawler-toolkit-hn";
 import { VBoolean, VInteger, VString, VStruct, Valid } from "@wzlin/valid";
-import { createContext, useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { CACHED_FETCH_404, cachedFetch } from "./fetch";
 
 const EDGES = [
@@ -29,6 +29,7 @@ export const EdgeContext = createContext(DEFAULT_EDGE);
 
 const vEdgePost = new VStruct({
   author: new VString(),
+  score: new VInteger(),
   ts: new VInteger(),
   title: new VString(),
   url: new VString(),
@@ -54,7 +55,8 @@ export const cachedFetchEdgePost = async (
     : vEdgePost.parseRoot(decode(res.body));
 };
 
-export const useEdgePosts = (edge: string, ids: number[]) => {
+export const useEdgePosts = (ids: number[]) => {
+  const edge = useContext(EdgeContext);
   const fetchStarted = useRef(new Set<number>());
   const [items, setItems] = useState<Record<number, EdgePost>>({});
   useEffect(() => {

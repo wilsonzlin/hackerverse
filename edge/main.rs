@@ -65,6 +65,7 @@ struct Map {
 #[derive(Clone, Deserialize, Serialize)]
 struct Post {
   author: String,
+  score: i16,
   ts: i64, // UNIX epoch seconds.
   title: String,
   url: String,            // Empty string if NULL.

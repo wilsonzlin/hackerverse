@@ -1,5 +1,5 @@
 from common.data import load_table
-from common.emb_data import load_umap
+from common.data import load_umap
 import msgpack
 
 
@@ -12,7 +12,7 @@ def load_umap_as_dict(dataset: str):
 
 def load_posts():
     print("Loading posts")
-    df = load_table("posts", columns=["id", "author", "ts", "url"]).rename(
+    df = load_table("posts", columns=["id", "author", "score", "ts", "url"]).rename(
         columns={"author": "author_id", "url": "url_id"}
     )
     df["ts"] = df["ts"].astype("int64")

@@ -57,12 +57,12 @@
     flex-grow: 1;
     overflow: auto;
 
-    padding: 1rem;
+    padding: 1.75rem 1rem;
 
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 2rem;
+    gap: 1.75rem;
 
     > .post {
       flex-shrink: 0;
@@ -80,16 +80,17 @@
       > .text {
         display: flex;
         flex-direction: column;
-        gap: 0.5rem;
+        gap: 0.75rem;
 
         padding: 0.75rem;
 
         > .header {
           display: flex;
-          gap: 0.75rem;
           align-items: center;
+          gap: 0.75rem;
 
           > .favicon {
+            flex-shrink: 0;
             width: 2rem;
             height: 2rem;
             border-radius: 100%;
@@ -97,14 +98,24 @@
             object-fit: contain;
           }
 
-          > .right {
+          > .main {
+            min-width: 0;
+            flex-grow: 1;
+
+            word-wrap: break-word;
+
             > .site {
-              font-size: 0.8rem;
+              font-size: 0.9rem;
               color: #555;
             }
 
             > h2 {
               font-size: 1.2rem;
+            }
+
+            > .sub {
+              color: #555;
+              font-size: 0.9rem;
             }
           }
         }
