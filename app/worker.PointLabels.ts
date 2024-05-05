@@ -19,11 +19,13 @@ import {
   vPointLabelsMessageToWorker,
 } from "./util/const";
 import {
+  DEBUG_BBOX,
   MAP_DATASET,
   MapState,
   ZOOM_PER_LOD,
   cachedFetchTile,
-  calcLabelBBox,
+  calcCityLabelBBox,
+  calcPointLabelBBox,
   ensureFetchedPostTitleLengths,
 } from "./util/map";
 
@@ -57,6 +59,7 @@ const createPointLabelsPicker = ({
       zoom: z,
       picked: labelledPoints[z].picked,
       cities: labelledPoints[z].cities,
+      bboxes: DEBUG_BBOX ? labelledPoints[z].tree.all() : undefined,
     };
     self.postMessage(msg);
   };
@@ -94,19 +97,17 @@ const createPointLabelsPicker = ({
           for (const city of cities) {
             for (let z = lod * ZOOM_PER_LOD; z < labelledPoints.length; z++) {
               const lp = labelledPoints[z];
-              const scaled = map.viewportScale({
-                ...curViewport!,
-                zoom: z,
-              });
               lp.cities.push(city);
-              const Y_PX_PER_CHAR = 24;
-              const X_PX_PER_CHAR = Y_PX_PER_CHAR * (9 / 16);
-              lp.tree.insert({
-                minX: scaled.ptToPx(city.x),
-                minY: scaled.ptToPx(city.y),
-                maxX: scaled.ptToPx(city.x) + city.label.length * X_PX_PER_CHAR,
-                maxY: scaled.ptToPx(city.y) + Y_PX_PER_CHAR,
-              });
+              lp.tree.insert(
+                calcCityLabelBBox(
+                  map,
+                  {
+                    ...curViewport!,
+                    zoom: z,
+                  },
+                  city,
+                ),
+              );
             }
           }
         }
@@ -148,7 +149,7 @@ const createPointLabelsPicker = ({
             if (lp.picked.has(p.id) || lp.skipped.has(p.id)) {
               continue;
             }
-            const box = calcLabelBBox(
+            const box = calcPointLabelBBox(
               map,
               {
                 ...vp,
@@ -163,7 +164,7 @@ const createPointLabelsPicker = ({
               if (picked) {
                 // We can't just cache and reuse the previous zoom's BBox values for points, because each zoom has different margin pt. sizes.
                 lpn.tree.insert(
-                  calcLabelBBox(
+                  calcPointLabelBBox(
                     map,
                     {
                       ...vp,

@@ -1,3 +1,4 @@
+import assertExists from "@xtjs/lib/assertExists";
 import { useEffect, useState } from "react";
 
 export const useMeasure = (elem: HTMLElement | null | undefined) => {
@@ -14,4 +15,11 @@ export const useMeasure = (elem: HTMLElement | null | undefined) => {
     return () => observer.disconnect();
   }, [elem]);
   return rect;
+};
+
+const canvas = document.createElement("canvas");
+const ctx = assertExists(canvas.getContext("2d"));
+export const measureText = ({ font, text }: { font: string; text: string }) => {
+  ctx.font = font;
+  return ctx.measureText(text);
 };

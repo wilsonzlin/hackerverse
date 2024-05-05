@@ -2,6 +2,7 @@ import {
   VArray,
   VFiniteNumber,
   VInteger,
+  VOptional,
   VSet,
   VString,
   VStruct,
@@ -49,6 +50,17 @@ export const vPointLabelsMessageToMain = new VTagged("$type", {
         x: new VFiniteNumber(),
         y: new VFiniteNumber(),
       }),
+    ),
+    // Only set if DEBUG_BBOX.
+    bboxes: new VOptional(
+      new VArray(
+        new VStruct({
+          minX: new VFiniteNumber(),
+          maxX: new VFiniteNumber(),
+          minY: new VFiniteNumber(),
+          maxY: new VFiniteNumber(),
+        }),
+      ),
     ),
   }),
 });

@@ -34,6 +34,7 @@
 
     margin: var(--panel-margin-from-edge);
     margin-bottom: 0;
+    margin-right: 4.5rem; /* Leave room for PageSelector. */
 
     .QueryForm,
     .add-query {

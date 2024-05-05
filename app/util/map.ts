@@ -18,6 +18,8 @@ import {
 import { CACHED_FETCH_404, cachedFetch } from "./fetch";
 import { DEFAULT_EDGE } from "./item";
 
+export const DEBUG_BBOX = false;
+
 export const MAP_DATASET = "toppost";
 
 export const ZOOM_PER_LOD = 3;
@@ -228,22 +230,53 @@ export const ensureFetchedPostTitleLengths = async (
   }
 };
 
-const LABEL_FONT_SIZE = 13;
-const LABEL_POINT_GAP = 4;
-const LABEL_MARGIN = 13;
+const POINT_LABEL_FONT_SIZE = 13;
+const POINT_LABEL_POINT_GAP = 4;
+const POINT_LABEL_MARGIN_Y = 6;
+const POINT_LABEL_RADIUS = 3;
 
-export const calcLabelBBox = (map: MapState, vp: ViewportState, p: Point) => {
+const CITY_LABEL_FONT_SIZE = 14.5;
+const CITY_LABEL_MARGIN_Y = 6;
+const CITY_LABEL_FONT_STYLE = `550 ${CITY_LABEL_FONT_SIZE}px InterVariable, sans-serif`;
+
+export const calcPointLabelBBox = (
+  map: MapState,
+  vp: ViewportState,
+  p: Point,
+) => {
   const scale = map.viewportScale(vp);
   const canvasX = scale.ptToPx(p.x);
   const canvasY = scale.ptToPx(p.y);
   const titleLen = assertExists(postTitleLengths[p.id]);
+  // Guessed approximate width based on title length.
+  // (We can't reasonably fetch millions of titles just to measure their text and filter down to ~10.)
+  const textWidth = titleLen * POINT_LABEL_FONT_SIZE * 0.6;
+  const height = POINT_LABEL_FONT_SIZE + POINT_LABEL_MARGIN_Y * 2;
+  const width = POINT_LABEL_RADIUS + POINT_LABEL_POINT_GAP + textWidth;
   const box: BBox = {
-    minX: canvasX - LABEL_MARGIN,
-    // Guessed approximate width based on title length.
-    // (We can't reasonably fetch millions of titles just to measure their text and filter down to ~10.)
-    maxX: canvasX + titleLen * (LABEL_FONT_SIZE / 1.6) + LABEL_MARGIN,
-    minY: canvasY - LABEL_MARGIN,
-    maxY: canvasY + LABEL_FONT_SIZE + LABEL_MARGIN,
+    minX: canvasX,
+    maxX: canvasX + width,
+    minY: canvasY - height / 2,
+    maxY: canvasY + height / 2,
+  };
+  return box;
+};
+
+export const calcCityLabelBBox = (
+  map: MapState,
+  vp: ViewportState,
+  p: { x: number; y: number; label: string },
+) => {
+  const scale = map.viewportScale(vp);
+  const canvasX = scale.ptToPx(p.x);
+  const canvasY = scale.ptToPx(p.y);
+  // Guessed approximate width based on title length. Canvas (and therefore measureText()) is not available from Web Workers.
+  const width = p.label.length * CITY_LABEL_FONT_SIZE * 0.75;
+  const box: BBox = {
+    minX: canvasX,
+    maxX: canvasX + width,
+    minY: canvasY - CITY_LABEL_FONT_SIZE,
+    maxY: canvasY + CITY_LABEL_MARGIN_Y,
   };
   return box;
 };
@@ -343,6 +376,8 @@ export const createCanvasPointMap = ({
   const labelledPoints = new Dict<
     number,
     {
+      // Only set if DEBUG_BBOX.
+      bboxes?: BBox[];
       points: Set<number>;
       cities: Array<{
         label: string;
@@ -357,6 +392,7 @@ export const createCanvasPointMap = ({
     const msg = vPointLabelsMessageToMain.parseRoot(e.data);
     if (msg.$type === "update") {
       labelledPoints.set(msg.zoom, {
+        bboxes: msg.bboxes,
         points: msg.picked,
         cities: msg.cities,
       });
@@ -414,10 +450,6 @@ export const createCanvasPointMap = ({
       if (!vp) {
         return;
       }
-      const pointRadius = {
-        land: 3,
-        space: 2,
-      }[theme];
       const scale = map.viewportScale(vp);
       const ctx = assertExists(canvas.getContext("2d"));
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -456,6 +488,18 @@ export const createCanvasPointMap = ({
         });
       }
       const lp = labelledPoints.get(Math.floor(vp.zoom));
+      if (DEBUG_BBOX) {
+        for (const bbox of lp?.bboxes ?? []) {
+          ctx.strokeStyle = "red";
+          ctx.lineWidth = 1;
+          ctx.strokeRect(
+            bbox.minX - scale.ptToPx(vp.x0Pt),
+            bbox.minY - scale.ptToPx(vp.y0Pt),
+            bbox.maxX - bbox.minX,
+            bbox.maxY - bbox.minY,
+          );
+        }
+      }
       for (const p of curPoints) {
         const scoreWeight = Math.max(
           0,
@@ -479,7 +523,7 @@ export const createCanvasPointMap = ({
           },
         }[theme][`${!!labelled}`];
         ctx.beginPath();
-        ctx.arc(canvasX, canvasY, pointRadius, 0, Math.PI * 2);
+        ctx.arc(canvasX, canvasY, POINT_LABEL_RADIUS, 0, Math.PI * 2);
         ctx.fill();
         if (labelled) {
           ctx.lineWidth = 1;
@@ -493,7 +537,7 @@ export const createCanvasPointMap = ({
         const canvasY = scale.ptToPx(p.y - vp.y0Pt);
         ctx.fillStyle = `rgb(252, 123, 3)`;
         ctx.beginPath();
-        ctx.arc(canvasX, canvasY, pointRadius, 0, Math.PI * 2);
+        ctx.arc(canvasX, canvasY, POINT_LABEL_RADIUS, 0, Math.PI * 2);
         ctx.fill();
       }
       // Draw labels over points.
@@ -506,10 +550,14 @@ export const createCanvasPointMap = ({
           continue;
         }
         const canvasX =
-          scale.ptToPx(p.x - vp.x0Pt) + pointRadius / 2 + LABEL_POINT_GAP;
+          scale.ptToPx(p.x - vp.x0Pt) +
+          POINT_LABEL_RADIUS / 2 +
+          POINT_LABEL_POINT_GAP;
         const canvasY =
-          scale.ptToPx(p.y - vp.y0Pt) + LABEL_FONT_SIZE / 2 - pointRadius / 2;
-        ctx.font = `${LABEL_FONT_SIZE}px InterVariable, sans-serif`;
+          scale.ptToPx(p.y - vp.y0Pt) +
+          POINT_LABEL_FONT_SIZE / 2 -
+          POINT_LABEL_RADIUS / 2;
+        ctx.font = `${POINT_LABEL_FONT_SIZE}px InterVariable, sans-serif`;
         ctx.strokeStyle = {
           land: "white",
           space: "black",
@@ -524,10 +572,9 @@ export const createCanvasPointMap = ({
       }
       // Draw cities.
       for (const p of lp?.cities ?? []) {
-        const fontSize = 14.5;
         const canvasX = scale.ptToPx(p.x - vp.x0Pt);
         const canvasY = scale.ptToPx(p.y - vp.y0Pt);
-        ctx.font = `550 ${fontSize}px InterVariable, sans-serif`;
+        ctx.font = CITY_LABEL_FONT_STYLE;
         ctx.strokeStyle = {
           land: "white",
           space: "black",

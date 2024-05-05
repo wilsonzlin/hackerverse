@@ -11,7 +11,7 @@ export const PageSwitcher = () => {
   return (
     <div className="PageSwitcher">
       <button onClick={() => setShow(!show)}>
-        <Ico i="apps" size={24} />
+        <Ico i="apps" size={32} />
       </button>
       {show && (
         <div className="menu">
