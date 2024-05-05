@@ -1,12 +1,11 @@
 import assertExists from "@xtjs/lib/assertExists";
 import defined from "@xtjs/lib/defined";
 import findAndRemove from "@xtjs/lib/findAndRemove";
-import hexToRgb from "@xtjs/lib/hexToRgb";
 import mapExists from "@xtjs/lib/mapExists";
-import rgbToHex from "@xtjs/lib/rgbToHex";
 import { produce } from "immer";
 import { DateTime } from "luxon";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ColorInput } from "../component/ColorInput";
 import { Ico } from "../component/Ico";
 import { Loading } from "../component/Loading";
 import { PageSwitcher } from "../component/PageSwitcher";
@@ -209,19 +208,11 @@ const HeatmapForm = ({
       }}
     >
       <div className="main">
-        <label className="color">
-          <input
-            hidden
-            type="color"
-            value={rgbToHex(...color)}
-            onChange={(e) => onChangeColor(hexToRgb(e.currentTarget.value))}
-          />
-          <div
-            style={{
-              backgroundColor: `rgb(${color.join(",")})`,
-            }}
-          />
-        </label>
+        <ColorInput
+          color={color}
+          onChange={(color) => onChangeColor(color)}
+          size={24}
+        />
         <input
           className="query"
           placeholder="Search or ask"

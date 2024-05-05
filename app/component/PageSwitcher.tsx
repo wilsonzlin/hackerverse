@@ -19,11 +19,11 @@ export const PageSwitcher = () => {
             <span>Search</span>
             <Ico i="public" size={ICO_SIZE} />
           </RouteLink>
-          <RouteLink href="/city">
-            <span>City</span>
+          <RouteLink href="/c/">
+            <span>Community</span>
             <Ico i="groups" size={ICO_SIZE} />
           </RouteLink>
-          <RouteLink href="/analysis">
+          <RouteLink href="/a/">
             <span>Analysis</span>
             <Ico i="monitoring" size={ICO_SIZE} />
           </RouteLink>

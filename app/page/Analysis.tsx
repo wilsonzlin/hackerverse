@@ -3,9 +3,10 @@ import defined from "@xtjs/lib/defined";
 import mapExists from "@xtjs/lib/mapExists";
 import mapNonEmpty from "@xtjs/lib/mapNonEmpty";
 import maybeParseNumber from "@xtjs/lib/maybeParseNumber";
-import { produce } from "immer";
-import { useEffect, useMemo, useRef, useState } from "react";
+import shuffleArray from "@xtjs/lib/shuffleArray";
+import { useEffect, useMemo, useState } from "react";
 import Plot from "react-plotly.js";
+import seedrandom from "seedrandom";
 import { Ico } from "../component/Ico";
 import { Loading } from "../component/Loading";
 import { PageSwitcher } from "../component/PageSwitcher";
@@ -13,48 +14,96 @@ import {
   analyzePopularityApiCall,
   analyzeSentimentApiCall,
   topPostsApiCall,
-  topUsersApiCall,
 } from "../util/api";
 import { useMeasure } from "../util/dom";
 import { usePromise } from "../util/fetch";
-import { useHnItems } from "../util/item";
+import { useEdgePosts } from "../util/item";
+import { router } from "../util/router";
 import "./Analysis.css";
 
 const SIM_THRESHOLD_MIN = 0.8;
 const SIM_THRESHOLD_MAX = 1;
 
-const SentimentSection = ({
-  areaMode,
-  query,
-  simThreshold,
-  onChangeSimThreshold,
-}: {
-  areaMode: boolean;
-  query: string;
-  simThreshold: number;
-  onChangeSimThreshold: (v: number) => void;
-}) => {
-  const [$chartContainer, setChartContainerElem] =
-    useState<HTMLDivElement | null>(null);
-  const chartContainerRect = useMeasure($chartContainer);
+const queryColor = (query: string) => {
+  const rng = seedrandom(query);
+  return `hsl(${Math.floor(rng() * 360)}, 92%, 50%)`;
+};
 
+type PopularityQueryResults = {
+  timestamps: Date[];
+  scores: number[];
+};
+
+type SentimentQueryResults = {
+  timestamps: Date[];
+  positives: number[];
+  negatives: number[];
+};
+
+type TopPost = {
+  id: number;
+  sim: number;
+  title: string;
+  ts: Date;
+  url?: string;
+};
+
+type QueryResults = {
+  popularity?: PopularityQueryResults;
+  sentiment?: SentimentQueryResults;
+  topPosts?: TopPost[];
+};
+
+const Query = ({
+  onChangeQuery,
+  onChangeSimThreshold,
+  onDelete,
+  onResults,
+  query,
+  simThreshold = SIM_THRESHOLD_MIN,
+}: {
+  onChangeQuery: (q: string) => void;
+  onChangeSimThreshold: (v: number) => void;
+  onDelete: () => void;
+  onResults: (results: QueryResults) => void;
+  query: string;
+  simThreshold?: number;
+}) => {
+  const toSimThresholdRaw = (v: number) => v.toFixed(2);
+  const [simThresholdRaw, setSimThresholdRaw] = useState(
+    toSimThresholdRaw(simThreshold),
+  );
+  const setSimThreshold = (v: number) => {
+    v = bounded(v, SIM_THRESHOLD_MIN, SIM_THRESHOLD_MAX);
+    setSimThresholdRaw(toSimThresholdRaw(v));
+    onChangeSimThreshold(v);
+  };
   const simMinHundredths = Math.ceil(simThreshold * 100);
+
+  const [queryRaw, setQueryRaw] = useState(query);
+  useEffect(() => setQueryRaw(query), [query]);
+
+  const popReq = usePromise<{
+    timestamps: Date[];
+    scores: number[];
+  }>();
+  useEffect(() => {
+    popReq.set(async (signal) => {
+      if (!query) {
+        return;
+      }
+      return await analyzePopularityApiCall(signal, {
+        query,
+        simMinHundredths,
+      });
+    });
+  }, [query, simMinHundredths]);
 
   const sentReq = usePromise<{
     timestamps: Date[];
     positives: number[];
     negatives: number[];
   }>();
-  const topPostsReq = usePromise<Array<{ id: number; sim: number }>>();
-  const items = useHnItems(topPostsReq.data?.map((i) => i.id) ?? []);
-  const topPosts = topPostsReq.data
-    ?.map(({ id, sim }) =>
-      mapExists(items[id], (item) =>
-        mapNonEmpty(item.title ?? "", () => ({ ...item, sim })),
-      ),
-    )
-    .filter(defined);
-
   useEffect(() => {
     sentReq.set(async (signal) => {
       if (!query) {
@@ -65,7 +114,23 @@ const SentimentSection = ({
         simMinHundredths,
       });
     });
+  }, [query, simMinHundredths]);
 
+  const [showTopPosts, setShowTopPosts] = useState(true);
+  const topPostsReq = usePromise<Array<{ id: number; sim: number }>>();
+  const items = useEdgePosts(topPostsReq.data?.map((i) => i.id) ?? []);
+  const topPosts = useMemo(
+    () =>
+      topPostsReq.data
+        ?.map(({ id, sim }) =>
+          mapExists(items[id], (item) =>
+            mapNonEmpty(item.title ?? "", () => ({ ...item, id, sim })),
+          ),
+        )
+        .filter(defined),
+    [topPostsReq.data, items],
+  );
+  useEffect(() => {
     topPostsReq.set(async (signal) => {
       if (!query) {
         return;
@@ -76,39 +141,127 @@ const SentimentSection = ({
         simMinHundredths,
       });
     });
-  }, [query, simThreshold]);
+  }, [query, simMinHundredths]);
+
+  useEffect(() => {
+    onResults({
+      popularity: popReq.data,
+      sentiment: sentReq.data,
+      topPosts: showTopPosts ? topPosts : undefined,
+    });
+  }, [popReq.data, sentReq.data, topPosts, showTopPosts]);
+
+  const loading = popReq.loading || sentReq.loading;
+  const error = popReq.error || sentReq.error;
+
+  return (
+    <form
+      className="query"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onChangeQuery(queryRaw.trim());
+      }}
+    >
+      {error ? (
+        <p className="err" onClick={() => alert(error)}>
+          <Ico i="error" />
+        </p>
+      ) : query ? (
+        <div
+          className="color"
+          style={{
+            background: queryColor(query),
+          }}
+        />
+      ) : null}
+      <input
+        className="value"
+        value={queryRaw}
+        placeholder="Query"
+        onChange={(e) => setQueryRaw(e.currentTarget.value)}
+      />
+      <button
+        type="button"
+        onClick={() => setShowTopPosts(!showTopPosts)}
+        style={{
+          opacity: showTopPosts ? 1 : 0.4,
+        }}
+      >
+        <Ico i="history" size={22} />
+      </button>
+      <input
+        className="sim"
+        type="text"
+        min={SIM_THRESHOLD_MIN}
+        max={SIM_THRESHOLD_MAX}
+        step={0.01}
+        value={simThresholdRaw}
+        onChange={(e) => setSimThresholdRaw(e.currentTarget.value)}
+        onBlur={(e) => {
+          const parsed = maybeParseNumber(e.currentTarget.value.trim());
+          if (!parsed || !Number.isFinite(parsed)) {
+            setSimThresholdRaw(toSimThresholdRaw(simThreshold));
+          } else {
+            setSimThreshold(parsed);
+          }
+        }}
+      />
+      {loading && <Loading size={18} />}
+      <button type="button" onClick={onDelete}>
+        <Ico i="delete" size={22} />
+      </button>
+    </form>
+  );
+};
+
+const SentimentSection = ({
+  onChangeSimThreshold,
+  results,
+  topPosts,
+}: {
+  onChangeSimThreshold: (query: string, v: number) => void;
+  results: {
+    data: SentimentQueryResults;
+    query: string;
+  }[];
+  topPosts?: (TopPost & {
+    query: string;
+  })[];
+}) => {
+  const [$chartContainer, setChartContainerElem] =
+    useState<HTMLDivElement | null>(null);
+  const chartContainerRect = useMeasure($chartContainer);
 
   const chartData = useMemo(
     () =>
-      mapExists(sentReq.data, ({ negatives, positives, timestamps }) => {
-        const common = {
-          x: timestamps,
-          stackgroup: areaMode ? ("one" as const) : undefined,
-          groupnorm: areaMode ? ("percent" as const) : undefined,
-          type: areaMode ? ("scatter" as const) : ("bar" as const),
-          line: areaMode ? { width: 0 } : undefined,
-          hoverlabel: {
-            font: {
-              family: "InterVariable",
+      results.flatMap(
+        ({ query, data: { positives, negatives, timestamps } }) => {
+          const common = {
+            x: timestamps,
+            type: "scatter" as const,
+            hoverlabel: {
+              font: {
+                family: "InterVariable",
+              },
             },
-          },
-        };
-        return [
-          {
-            ...common,
-            name: "Positive",
-            y: positives,
-            marker: { color: "#30D5C8" },
-          },
-          {
-            ...common,
-            name: "Negative",
-            y: negatives,
-            marker: { color: "#800020" },
-          },
-        ];
-      }),
-    [sentReq.data, areaMode],
+          };
+          return [
+            {
+              ...common,
+              name: `${query} (positive)`,
+              y: positives,
+              marker: { color: queryColor(query) },
+            },
+            {
+              ...common,
+              name: `${query} (negative)`,
+              y: negatives.map((v) => -v),
+              marker: { color: queryColor(query) },
+            },
+          ];
+        },
+      ),
+    [results],
   );
   const chartLayout = useMemo(
     () => ({
@@ -127,10 +280,10 @@ const SentimentSection = ({
           `<b>${item.title}</b>`,
           mapNonEmpty(
             item.url ?? "",
-            (url) => `<br><sub>${new URL(url).hostname}</sub>`,
+            (url) => `<br><sub>${url.split("/")[0]}</sub>`,
           ),
         ].join(""),
-        x: item.time?.toISOString(),
+        x: item.ts.toISOString(),
         xanchor: "right" as const,
         xref: "x" as const,
         y: (10 - (i % 10)) / 10,
@@ -149,8 +302,8 @@ const SentimentSection = ({
       },
       shapes: topPosts?.map((item) => ({
         type: "line" as const,
-        x0: item.time?.toISOString(),
-        x1: item.time?.toISOString(),
+        x0: item.ts.toISOString(),
+        x1: item.ts.toISOString(),
         xref: "x" as const,
         y0: 0,
         y1: 1,
@@ -167,12 +320,12 @@ const SentimentSection = ({
       yaxis: {
         showgrid: false,
         title: {
-          text: areaMode ? "Percentage of comments" : "Comments",
+          text: "Comments",
           size: 14,
         },
       },
     }),
-    [chartContainerRect, areaMode, topPostsReq.data, items],
+    [chartContainerRect, topPosts],
   );
 
   return (
@@ -181,221 +334,57 @@ const SentimentSection = ({
         <Ico i="sentiment_satisfied" size={24} />
         <span>Sentiment over time</span>
       </h2>
-      {!!query && (
-        <div className="info">
-          <Ico i="info" size={20} />
-          <p>
-            If any labelled post isn't relevant, select it to dismiss it and
-            tune the similarity threshold.
-          </p>
-        </div>
-      )}
-      {sentReq.loading && <Loading size={24} />}
-      {sentReq.error && <p className="err">{sentReq.error}</p>}
-      {chartData && (
-        <div ref={setChartContainerElem}>
-          <Plot
-            data={chartData}
-            layout={chartLayout}
-            onClickAnnotation={(a) => {
-              const post = topPosts?.at(a.index);
-              if (post) {
-                onChangeSimThreshold(post.sim + 0.01);
-              }
-            }}
-          />
-        </div>
-      )}
-    </section>
-  );
-};
-
-const TopUsersSection = ({
-  query,
-  simThreshold,
-}: {
-  query: string;
-  simThreshold: number;
-}) => {
-  const req = usePromise<Array<{ user: string; score: number }>>();
-  useEffect(() => {
-    if (!query) {
-      req.clear();
-      return;
-    }
-    req.set(async (signal) => {
-      return await topUsersApiCall(signal, {
-        limit: 20,
-        query,
-        simMinHundredths: Math.ceil(simThreshold * 100),
-      });
-    });
-  }, [query, simThreshold]);
-
-  if (!query) {
-    return null;
-  }
-
-  return (
-    <section>
-      <h2>
-        <Ico i="social_leaderboard" size={24} />
-        <span>Top users</span>
-      </h2>
-      {req.loading && <Loading size={24} />}
-      {req.error && <p className="err">{req.error}</p>}
-      {req.data && (
-        <table>
-          <thead>
-            <tr>
-              <th>Rank</th>
-              <th>User</th>
-              <th>Score</th>
-            </tr>
-          </thead>
-          <tbody>
-            {req.data.map((r, i) => (
-              <tr key={i}>
-                <th>{i + 1}</th>
-                <td>
-                  <a
-                    href={`https://news.ycombinator.com/user?id=${encodeURIComponent(r.user)}`}
-                    target="_blank"
-                    rel="noopener"
-                  >
-                    {r.user}
-                  </a>
-                </td>
-                <td>{r.score}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </section>
-  );
-};
-
-type PopularitySectionQueryResults = {
-  timestamps: Date[];
-  scores: number[];
-};
-
-const PopularitySectionQuery = ({
-  onChangeQuery,
-  onDelete,
-  onResults,
-  query,
-  readonly,
-  simThreshold,
-}: {
-  onChangeQuery: (q: string) => void;
-  onDelete: () => void;
-  onResults: (results: PopularitySectionQueryResults | undefined) => void;
-  query: string;
-  readonly: boolean;
-  simThreshold: number;
-}) => {
-  const [queryRaw, setQueryRaw] = useState(query);
-  useEffect(() => setQueryRaw(query), [query]);
-
-  const req = usePromise<{
-    timestamps: Date[];
-    scores: number[];
-  }>();
-  useEffect(() => {
-    req.set(async (signal) => {
-      if (!query) {
-        onResults(undefined);
-        return;
-      }
-      const results = await analyzePopularityApiCall(signal, {
-        query,
-        simMinHundredths: Math.ceil(simThreshold * 100),
-      });
-      onResults(results);
-      return results;
-    });
-  }, [query, simThreshold]);
-
-  return (
-    <div className="PopularitySectionQuery">
-      {req.error && <p className="err">{req.error}</p>}
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          onChangeQuery(queryRaw.trim());
-        }}
-      >
-        {req.loading && <Loading size={16} />}
-        <input
-          value={queryRaw}
-          onChange={(e) => setQueryRaw(e.currentTarget.value)}
-          readOnly={readonly}
+      <div className="info">
+        <Ico i="info" size={20} />
+        <p>
+          If any labelled post isn't relevant, select it to dismiss it and tune
+          the similarity threshold.
+        </p>
+      </div>
+      <div ref={setChartContainerElem}>
+        <Plot
+          data={chartData}
+          layout={chartLayout}
+          onClickAnnotation={(a) => {
+            const post = topPosts?.at(a.index);
+            if (post) {
+              onChangeSimThreshold(post.query, post.sim + 0.01);
+            }
+          }}
         />
-        {!readonly && (
-          <button type="button" onClick={onDelete}>
-            <Ico i="delete" />
-          </button>
-        )}
-      </form>
-    </div>
+      </div>
+    </section>
   );
 };
 
 const PopularitySection = ({
-  query,
-  simThreshold,
+  results,
 }: {
-  query: string;
-  simThreshold: number;
+  results: {
+    query: string;
+    data: PopularityQueryResults;
+  }[];
 }) => {
   const [$chartContainer, setChartContainerElem] =
     useState<HTMLDivElement | null>(null);
   const chartContainerRect = useMeasure($chartContainer);
 
-  // ID -1 is reserved for main query.
-  const nextQueryId = useRef(0);
-  type QueryState = {
-    id: number;
-    query: string;
-    results: PopularitySectionQueryResults | undefined;
-  };
-  const [queries, setQueries] = useState<Array<QueryState>>([
-    { id: -1, query, results: undefined },
-  ]);
-  useEffect(
-    () =>
-      setQueries((queries) =>
-        produce(queries, (queries) => {
-          for (const q of queries) {
-            if (q.id === -1) {
-              q.query = query;
-              break;
-            }
-          }
-        }),
-      ),
-    [query],
-  );
-
   const chartData = useMemo(
     () =>
-      queries
-        .map((q) =>
-          mapExists(q.results, ({ scores, timestamps }) => ({
-            x: timestamps,
-            hoverlabel: {
-              font: {
-                family: "InterVariable",
-              },
-            },
-            name: q.query,
-            y: scores,
-          })),
-        )
-        .filter(defined),
-    [queries],
+      results.map(({ query, data: { scores, timestamps } }) => ({
+        x: timestamps,
+        hoverlabel: {
+          font: {
+            family: "InterVariable",
+          },
+        },
+        name: query,
+        y: scores,
+        marker: {
+          color: queryColor(query),
+        },
+      })),
+    [results],
   );
   const chartLayout = useMemo(
     () => ({
@@ -432,145 +421,147 @@ const PopularitySection = ({
     [chartContainerRect],
   );
 
-  if (!query) {
-    return null;
-  }
-
   return (
     <section className="PopularitySection">
       <h2>
         <Ico i="trending_up" size={24} />
         <span>Popularity over time</span>
       </h2>
-      <div className="queries">
-        {queries.map((q) => {
-          const id = q.id;
-          const mutQ = (fn: (q: QueryState) => unknown) =>
-            setQueries((queries) =>
-              produce(queries, (queries) => {
-                for (const q2 of queries) {
-                  if (q2.id === id) {
-                    fn(q2);
-                    break;
-                  }
-                }
-              }),
-            );
-          return (
-            <PopularitySectionQuery
-              key={id}
-              onChangeQuery={(query) => mutQ((q) => (q.query = query))}
-              onDelete={() =>
-                setQueries((queries) => queries.filter((q2) => q2.id !== id))
-              }
-              onResults={(results) => mutQ((q) => (q.results = results))}
-              query={q.query}
-              readonly={id === -1}
-              simThreshold={simThreshold}
-            />
-          );
-        })}
-        <button
-          className="add-comparison"
-          type="button"
-          onClick={() => {
-            setQueries((queries) => [
-              ...queries,
-              { id: nextQueryId.current++, query: "", results: undefined },
-            ]);
-          }}
-        >
-          <Ico i="add" size={20} />
-          <span>Add comparison</span>
-        </button>
+      <div ref={setChartContainerElem}>
+        <Plot data={chartData} layout={chartLayout} />
       </div>
-      {chartData && (
-        <div ref={setChartContainerElem}>
-          <Plot data={chartData} layout={chartLayout} />
-        </div>
-      )}
     </section>
   );
 };
 
-export const AnalysisPage = () => {
-  const [query, setQuery] = useState("");
-  const [simThreshold, setSimThreshold_doNotUse] = useState(SIM_THRESHOLD_MIN);
-  const setSimThreshold = (v: number) => {
-    v = bounded(v, SIM_THRESHOLD_MIN, SIM_THRESHOLD_MAX);
-    setSimThresholdRaw(toSimThresholdRaw(v));
-    setSimThreshold_doNotUse(v);
-  };
+export const AnalysisPage = ({ params }: { params: string[] }) => {
+  const queries = useMemo(() => params.filter((q) => q), [params]);
 
-  const toSimThresholdRaw = (v: number) => v.toFixed(2);
-  const [queryRaw, setQueryRaw] = useState("");
-  const [simThresholdRaw, setSimThresholdRaw] = useState(
-    toSimThresholdRaw(simThreshold),
+  const [simThresholds, setSimThresholds] = useState<Record<string, number>>(
+    {},
   );
-  const [areaMode, setAreaMode] = useState(false);
+  useEffect(() => {
+    const newThresholds: Record<string, number> = {};
+    for (const q of queries) {
+      newThresholds[q] = simThresholds[q] ?? {};
+    }
+    setSimThresholds(simThresholds);
+  }, [queries]);
+
+  const [queryResults, setQueryResults] = useState<
+    Record<string, QueryResults>
+  >({});
+  useEffect(() => {
+    const newResults: Record<string, QueryResults> = {};
+    for (const q of queries) {
+      newResults[q] = queryResults[q] ?? {};
+    }
+    setQueryResults(newResults);
+  }, [queries]);
+
+  const sentResults = useMemo(
+    () =>
+      queries
+        .map((q) =>
+          mapExists(queryResults[q]?.sentiment, (data) => ({ query: q, data })),
+        )
+        .filter(defined),
+    [queryResults],
+  );
+  const popResults = useMemo(
+    () =>
+      queries
+        .map((q) =>
+          mapExists(queryResults[q]?.popularity, (data) => ({
+            query: q,
+            data,
+          })),
+        )
+        .filter(defined),
+    [queryResults],
+  );
+  const topPosts = useMemo(
+    () =>
+      shuffleArray(
+        queries.flatMap(
+          (q) =>
+            queryResults[q]?.topPosts?.map((p) => ({ ...p, query: q })) ?? [],
+        ),
+      ).slice(0, 12),
+    [queryResults],
+  );
+
+  const [newQuery, setNewQuery] = useState("");
+
+  const go = (newQueries: string[]) => {
+    router.change(
+      "/a/" +
+        newQueries
+          .sort()
+          .map((q) => encodeURIComponent(q))
+          .join("/"),
+    );
+  };
 
   return (
     <div className="AnalysisPage">
-      <section>
+      <div className="queries">
+        {queries.map((q) => (
+          <Query
+            key={q}
+            onChangeQuery={(newQuery) =>
+              go(queries.filter((oq) => oq !== q).concat(newQuery))
+            }
+            onDelete={() => go(queries.filter((oq) => oq !== q))}
+            onResults={(results) =>
+              setQueryResults((qr) => ({
+                ...qr,
+                [q]: results,
+              }))
+            }
+            onChangeSimThreshold={(v) =>
+              setSimThresholds((st) => ({
+                ...st,
+                [q]: v,
+              }))
+            }
+            simThreshold={simThresholds[q]}
+            query={q}
+          />
+        ))}
+
         <form
-          className="query-form"
+          className="query"
           onSubmit={(e) => {
             e.preventDefault();
-            setQuery(queryRaw.trim());
+            const q = newQuery.trim();
+            if (q) {
+              go(queries.concat(q));
+            }
+            setNewQuery("");
           }}
         >
           <input
+            className="new-query"
             placeholder="Query"
-            value={queryRaw}
-            onChange={(e) => setQueryRaw(e.currentTarget.value)}
+            value={newQuery}
+            onChange={(e) => setNewQuery(e.currentTarget.value)}
           />
-          <button type="submit">
-            <Ico i="query_stats" size={20} />
-          </button>
         </form>
-
-        <div className="controls">
-          <label>
-            <input
-              type="checkbox"
-              checked={areaMode}
-              onChange={(e) => setAreaMode(e.currentTarget.checked)}
-            />
-            <span>Area graph</span>
-          </label>
-          <label hidden={!query}>
-            <span>Similarity threshold</span>
-            <input
-              type="text"
-              min={SIM_THRESHOLD_MIN}
-              max={SIM_THRESHOLD_MAX}
-              step={0.01}
-              value={simThresholdRaw}
-              onChange={(e) => setSimThresholdRaw(e.currentTarget.value)}
-              onBlur={(e) => {
-                const parsed = maybeParseNumber(e.currentTarget.value.trim());
-                if (!parsed || !Number.isFinite(parsed)) {
-                  setSimThresholdRaw(toSimThresholdRaw(simThreshold));
-                } else {
-                  setSimThreshold(parsed);
-                }
-              }}
-            />
-          </label>
-        </div>
-      </section>
+      </div>
 
       <SentimentSection
-        areaMode={areaMode}
-        query={query}
-        simThreshold={simThreshold}
-        onChangeSimThreshold={setSimThreshold}
+        results={sentResults}
+        topPosts={topPosts}
+        onChangeSimThreshold={(query, v) =>
+          setSimThresholds((st) => ({
+            ...st,
+            [query]: v,
+          }))
+        }
       />
 
-      <div className="layout-row">
-        <TopUsersSection query={query} simThreshold={simThreshold} />
-        <PopularitySection query={query} simThreshold={simThreshold} />
-      </div>
+      <PopularitySection results={popResults} />
 
       <PageSwitcher />
     </div>

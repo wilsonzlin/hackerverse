@@ -1,6 +1,13 @@
 import { decode } from "@msgpack/msgpack";
 import { Item, fetchHnItem } from "@wzlin/crawler-toolkit-hn";
-import { VBoolean, VInteger, VString, VStruct, Valid } from "@wzlin/valid";
+import {
+  VBoolean,
+  VInteger,
+  VString,
+  VStruct,
+  VUnixSecTimestamp,
+  Valid,
+} from "@wzlin/valid";
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { CACHED_FETCH_404, cachedFetch } from "./fetch";
 
@@ -30,7 +37,7 @@ export const EdgeContext = createContext(DEFAULT_EDGE);
 const vEdgePost = new VStruct({
   author: new VString(),
   score: new VInteger(),
-  ts: new VInteger(),
+  ts: new VUnixSecTimestamp(),
   title: new VString(),
   url: new VString(),
   proto: new VString(),

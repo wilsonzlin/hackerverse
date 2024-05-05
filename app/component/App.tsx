@@ -14,15 +14,19 @@ export const App = () => {
     router.addListener(handler);
     return () => router.removeListener(handler);
   }, []);
-  const Page = useMemo(
-    () =>
-      ({
-        "/": SearchPage,
-        "/city": CityPage,
-        "/analysis": AnalysisPage,
-      })[path] ?? NotFoundPage,
-    [path],
-  );
+  const [Page, params] = useMemo(() => {
+    const [pfx, ...params] = path
+      .slice(1)
+      .split("/")
+      .map((c) => decodeURIComponent(c));
+    const Page =
+      {
+        "": SearchPage,
+        c: CityPage,
+        a: AnalysisPage,
+      }[pfx] ?? NotFoundPage;
+    return [Page, params] as const;
+  }, [path]);
 
   const [edge, setEdge] = useState(DEFAULT_EDGE);
   useEffect(() => {
@@ -37,7 +41,7 @@ export const App = () => {
 
   return (
     <EdgeContext.Provider value={edge}>
-      <Page />
+      <Page params={params} />
     </EdgeContext.Provider>
   );
 };

@@ -6,32 +6,98 @@ import { DateTime } from "luxon";
 import { useEffect, useState } from "react";
 import { UrlMeta, vUrlMeta } from "../../common/const";
 import { Ico } from "../component/Ico";
+import { Loading } from "../component/Loading";
 import { PageSwitcher } from "../component/PageSwitcher";
-import { apiCall, topPostsApiCall } from "../util/api";
+import { apiCall, topPostsApiCall, topUsersApiCall } from "../util/api";
 import { usePromise } from "../util/fetch";
 import { useEdgePosts } from "../util/item";
+import { router } from "../util/router";
 import "./City.css";
 
 const Image = ({ className, src }: { className?: string; src: string }) => {
   const [loaded, setLoaded] = useState(false);
-  const [errored, setErrored] = useState(false);
   return (
-    // Don't remove from DOM if not loaded, as the browser may never load it if not present.
-    // "load" event is still fired even if it failed to load, so we need to also listen on "error".
     <img
       className={className}
-      data-loaded={loaded && !errored}
+      data-loaded={loaded}
       src={src}
       referrerPolicy="no-referrer"
       onLoad={() => setLoaded(true)}
-      onError={() => setErrored(true)}
     />
   );
 };
 
-export const CityPage = ({}: {}) => {
+const TopUsersSection = ({
+  query,
+  simThreshold,
+}: {
+  query: string;
+  simThreshold: number;
+}) => {
+  const req = usePromise<Array<{ user: string; score: number }>>();
+  useEffect(() => {
+    if (!query) {
+      req.clear();
+      return;
+    }
+    req.set(async (signal) => {
+      return await topUsersApiCall(signal, {
+        limit: 20,
+        query,
+        simMinHundredths: Math.ceil(simThreshold * 100),
+      });
+    });
+  }, [query, simThreshold]);
+
+  if (!query) {
+    return null;
+  }
+
+  return (
+    <section>
+      <h2>
+        <Ico i="social_leaderboard" size={24} />
+        <span>Top users</span>
+      </h2>
+      {req.loading && <Loading size={24} />}
+      {req.error && <p className="err">{req.error}</p>}
+      {req.data && (
+        <table>
+          <thead>
+            <tr>
+              <th>Rank</th>
+              <th>User</th>
+              <th>Score</th>
+            </tr>
+          </thead>
+          <tbody>
+            {req.data.map((r, i) => (
+              <tr key={i}>
+                <th>{i + 1}</th>
+                <td>
+                  <a
+                    href={`https://news.ycombinator.com/user?id=${encodeURIComponent(r.user)}`}
+                    target="_blank"
+                    rel="noopener"
+                  >
+                    {r.user}
+                  </a>
+                </td>
+                <td>{r.score.toFixed(2)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
+  );
+};
+
+export const CityPage = ({ params: [query] }: { params: string[] }) => {
+  const simThreshold = 0.8;
+
   const [queryRaw, setQueryRaw] = useState("");
-  const [query, setQuery] = useState("");
+  useEffect(() => setQueryRaw(query), [query]);
 
   const postsReq = usePromise<Array<{ id: number; sim: number }>>();
   // Use edge post data as it has the normalized (not raw original) URL, required for `urlMetasReq`.
@@ -58,7 +124,7 @@ export const CityPage = ({}: {}) => {
       return await topPostsApiCall(signal, {
         limit: 20,
         query,
-        simMinHundredths: 80,
+        simMinHundredths: Math.ceil(simThreshold * 100),
       });
     });
   }, [query]);
@@ -81,20 +147,22 @@ export const CityPage = ({}: {}) => {
 
   return (
     <div className="City">
-      <form
-        className="query-form"
-        onSubmit={(e) => {
-          e.preventDefault();
-          setQuery(queryRaw.trim());
-        }}
-      >
-        <Ico i="groups" size={32} />
-        <input
-          placeholder="Find your community"
-          value={queryRaw}
-          onChange={(e) => setQueryRaw(e.target.value)}
-        />
-      </form>
+      <div className="query-form-container">
+        <form
+          className="query-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            router.change(`/c/${encodeURIComponent(queryRaw.trim())}`);
+          }}
+        >
+          <Ico i="groups" size={32} />
+          <input
+            placeholder="Find your community"
+            value={queryRaw}
+            onChange={(e) => setQueryRaw(e.target.value)}
+          />
+        </form>
+      </div>
       <PageSwitcher />
       <main>
         <div className="posts">
@@ -125,7 +193,7 @@ export const CityPage = ({}: {}) => {
                       <h2>{p.title}</h2>
                       <div className="sub">
                         {p.score} points by {p.author}{" "}
-                        {DateTime.fromSeconds(p.ts).toRelative()}
+                        {DateTime.fromJSDate(p.ts).toRelative()}
                       </div>
                     </div>
                   </div>
@@ -137,7 +205,9 @@ export const CityPage = ({}: {}) => {
           })}
         </div>
 
-        <div className="panel"></div>
+        <div className="panel">
+          <TopUsersSection query={query} simThreshold={simThreshold} />
+        </div>
       </main>
     </div>
   );

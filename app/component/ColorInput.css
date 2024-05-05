@@ -1,0 +1,7 @@
+.ColorInput {
+  cursor: pointer;
+
+  > div {
+    border-radius: 100%;
+  }
+}

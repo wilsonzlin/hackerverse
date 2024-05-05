@@ -12,15 +12,20 @@
     opacity: 0;
   }
 
-  .query-form {
+  .query-form-container {
     flex-shrink: 0;
+    padding: 1rem;
+    display: flex;
+  }
+
+  .query-form {
+    margin: auto;
 
     background: white;
     border-radius: 0.25rem;
     box-shadow: 0 2px 1rem rgba(0, 0, 0, 0.25);
 
     padding: 0.75rem;
-    margin: 1rem;
 
     display: flex;
     align-items: center;
@@ -33,7 +38,7 @@
 
     > input {
       flex-grow: 1;
-      font-size: 1.5rem;
+      font-size: 1.125rem;
     }
   }
 
@@ -50,6 +55,23 @@
     flex-shrink: 0;
     border-left: 1px solid #eee;
     overflow: auto;
+    padding: 0 1rem;
+
+    > section {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+
+      > h2 {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+
+        > span {
+          font-weight: bolder;
+        }
+      }
+    }
   }
 
   .posts {
