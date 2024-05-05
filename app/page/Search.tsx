@@ -1,4 +1,3 @@
-import assertExists from "@xtjs/lib/assertExists";
 import defined from "@xtjs/lib/defined";
 import findAndRemove from "@xtjs/lib/findAndRemove";
 import mapExists from "@xtjs/lib/mapExists";
@@ -11,9 +10,10 @@ import { Loading } from "../component/Loading";
 import { PageSwitcher } from "../component/PageSwitcher";
 import { PointMap, PointMapController } from "../component/PointMap";
 import { heatmapApiCall, searchApiCall } from "../util/api";
+import { Point } from "../util/const";
 import { useMeasure } from "../util/dom";
 import { usePromise } from "../util/fetch";
-import { useHnItems } from "../util/item";
+import { EdgePost, useEdgePosts } from "../util/item";
 import "./Search.css";
 
 type QueryResults = Array<{
@@ -25,9 +25,11 @@ type QueryResults = Array<{
 }>;
 
 const QueryForm = ({
+  onSubmit,
   onResults,
 }: {
-  onResults: (results: QueryResults) => void;
+  onSubmit: () => void;
+  onResults: (results: QueryResults | undefined) => void;
 }) => {
   const [queryRaw, setQueryRaw] = useState("");
   const [weightSimilarity, setWeightSimilarity] = useState(0.7);
@@ -38,20 +40,20 @@ const QueryForm = ({
   const [showParams, setShowParams] = useState(false);
 
   const queryReq = usePromise<QueryResults>();
+  useEffect(() => onResults(queryReq.data), [queryReq.data]);
 
   return (
     <form
       className="QueryForm"
-      onSubmit={async (e) => {
+      onSubmit={(e) => {
         e.preventDefault();
-        const query = queryRaw.trim();
-        if (!query) {
-          queryReq.clear();
-          onResults([]);
-          return;
-        }
-        const results = await queryReq.set((signal) =>
-          searchApiCall(signal, {
+        queryReq.set(async (signal) => {
+          const query = queryRaw.trim();
+          if (!query) {
+            return;
+          }
+          onSubmit();
+          return await searchApiCall(signal, {
             query,
             limit: 10,
             dataset: "toppost",
@@ -59,10 +61,8 @@ const QueryForm = ({
             weightScore,
             weightTimestamp,
             decayTimestamp,
-          }),
-        );
-        onResults(assertExists(results));
-        return results;
+          });
+        });
       }}
     >
       <div className="main">
@@ -262,6 +262,45 @@ const HeatmapForm = ({
   );
 };
 
+const Result = ({ id, item }: { id: number; item: EdgePost }) => {
+  if (!item || !item.ts || !item.author || !item.title) {
+    return null;
+  }
+  const hnUrl = `https://news.ycombinator.com/item?id=${id}`;
+  let url, site;
+  if (item.url) {
+    url = `${item.proto}//${item.url}`;
+    site = item.url.split("/")[0];
+  } else {
+    url = hnUrl;
+    site = "news.ycombinator.com";
+  }
+  const ts = DateTime.fromJSDate(item.ts);
+  const ago = ts.toRelative();
+  return (
+    <div key={id} className="result">
+      <p className="site">{site}</p>
+      <a href={url} target="_blank" rel="noopener noreferrer">
+        <h1 dangerouslySetInnerHTML={{ __html: item.title ?? "" }} />
+      </a>
+      <p className="sub">
+        <a href={hnUrl} target="_blank" rel="noopener noreferrer">
+          {item.score} point{item.score == 1 ? "" : "s"}
+        </a>{" "}
+        by{" "}
+        <a
+          href={`https://news.ycombinator.com/user?id=${item.author}`}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {item.author}
+        </a>{" "}
+        {ago}
+      </p>
+    </div>
+  );
+};
+
 export const SearchPage = () => {
   const [$root, setRootElem] = useState<HTMLDivElement | null>(null);
   const rootDim = useMeasure($root);
@@ -277,18 +316,21 @@ export const SearchPage = () => {
     [heatmapQueries],
   );
 
-  const [results, setResults] = useState<QueryResults>([]);
+  const [queryResults, setQueryResults] = useState<QueryResults>();
   const [shouldAnimateToResults, setShouldAnimateToResults] = useState(false);
   useEffect(() => {
     if (!shouldAnimateToResults) {
       return;
     }
     setShouldAnimateToResults(false);
+    if (!queryResults?.length) {
+      return;
+    }
     let xMinPt = Infinity;
     let xMaxPt = -Infinity;
     let yMinPt = Infinity;
     let yMaxPt = -Infinity;
-    for (const p of results) {
+    for (const p of queryResults) {
       xMinPt = Math.min(xMinPt, p.x);
       xMaxPt = Math.max(xMaxPt, p.x);
       yMinPt = Math.min(yMinPt, p.y);
@@ -305,7 +347,17 @@ export const SearchPage = () => {
       ANIM_MS,
     );
   }, [shouldAnimateToResults]);
-  const items = useHnItems(results.map((r) => r.id));
+  const [nearbyQuery, setNearbyQuery] = useState<{ x: number; y: number }>();
+  const [nearbyResults, setNearbyResults] = useState<Point[]>();
+  const itemIds = useMemo(
+    () => [
+      ...(queryResults?.map((r) => r.id) ?? []),
+      ...(nearbyResults?.map((r) => r.id) ?? []),
+    ],
+    [queryResults, nearbyResults],
+  );
+  const items = useEdgePosts(itemIds);
+  const results = nearbyResults ?? queryResults;
 
   return (
     <div ref={setRootElem} className="SearchPage">
@@ -313,7 +365,10 @@ export const SearchPage = () => {
         controllerRef={mapCtl}
         heatmaps={heatmaps}
         height={rootDim?.height ?? 0}
-        resultPoints={results}
+        nearbyQuery={nearbyQuery}
+        onNearbyQuery={setNearbyQuery}
+        onNearbyQueryResults={setNearbyResults}
+        resultPoints={nearbyQuery ? undefined : queryResults}
         width={rootDim?.width ?? 0}
       />
 
@@ -375,72 +430,41 @@ export const SearchPage = () => {
       </div>
 
       <div className="panel">
-        <div className="queries">
+        <div className="query-container">
           <QueryForm
+            onSubmit={() => {
+              setNearbyQuery(undefined);
+              setNearbyResults(undefined);
+            }}
             onResults={(results) => {
-              setResults(results);
+              setQueryResults(results);
               // Only animate when results come in, not for any other reason that `results` changes (e.g. clearing, deleting).
-              if (results.length) {
+              if (results?.length && !nearbyQuery) {
                 setShouldAnimateToResults(true);
               }
             }}
           />
+
+          {nearbyResults && queryResults && (
+            <button
+              className="back-to-search"
+              onClick={() => {
+                setNearbyQuery(undefined);
+                setNearbyResults(undefined);
+                setShouldAnimateToResults(true);
+              }}
+            >
+              Back to search
+            </button>
+          )}
         </div>
 
         <div className="results">
-          {results?.map(({ id, sim, final_score }) => {
-            const item = items[id];
-            if (!item || !item.time || !item.by || !item.title) {
-              return;
-            }
-            const hnUrl = `https://news.ycombinator.com/item?id=${id}`;
-            let url, site;
-            if (item.url) {
-              try {
-                const parsed = new URL(item.url);
-                url = item.url;
-                site = parsed.hostname.replace(/^www\./, "");
-              } catch {
-                return;
-              }
-            } else {
-              url = hnUrl;
-              site = "news.ycombinator.com";
-            }
-            const ts = DateTime.fromJSDate(item.time);
-            const ago = DateTime.now()
-              .diff(ts)
-              .rescale()
-              .toHuman({ unitDisplay: "long" })
-              .split(",")[0];
-            return (
-              <div key={id} className="result">
-                <div>
-                  <p className="site">{site}</p>
-                  <div>
-                    {sim} {final_score}
-                  </div>
-                </div>
-                <a href={url} target="_blank" rel="noopener noreferrer">
-                  <h1 dangerouslySetInnerHTML={{ __html: item.title ?? "" }} />
-                </a>
-                <p>
-                  <a href={hnUrl} target="_blank" rel="noopener noreferrer">
-                    {item.score} point{item.score == 1 ? "" : "s"}
-                  </a>{" "}
-                  by{" "}
-                  <a
-                    href={`https://news.ycombinator.com/user?id=${item.by}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    {item.by}
-                  </a>{" "}
-                  {ago} ago
-                </p>
-              </div>
-            );
-          })}
+          {results?.map(({ id }) =>
+            mapExists(items[id], (item) => (
+              <Result key={id} id={id} item={item} />
+            )),
+          )}
         </div>
       </div>
     </div>

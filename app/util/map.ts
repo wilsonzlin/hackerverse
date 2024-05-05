@@ -321,6 +321,9 @@ export const createCanvasPointMap = ({
   let resultPoints: { x: number; y: number }[] = [];
   let nearbyPoints: { x: number; y: number }[] = [];
   let latestNearbyReqId = 0;
+  let nearbyQueryResultsCallback:
+    | ((points: Point[] | undefined) => void)
+    | undefined;
 
   let terrain = Array<{ level: number; points: { x: number; y: number }[] }>();
   (async () => {
@@ -379,6 +382,7 @@ export const createCanvasPointMap = ({
     if (msg.$type === "nearby") {
       if (msg.requestId === latestNearbyReqId) {
         nearbyPoints = msg.points;
+        nearbyQueryResultsCallback?.(msg.points);
         render();
       }
     } else if (msg.$type === "update") {
@@ -594,6 +598,12 @@ export const createCanvasPointMap = ({
     destroy: () => {
       abortController.abort();
     },
+    onNearbyQueryResults: (handler: (points: Point[] | undefined) => void) => {
+      nearbyQueryResultsCallback = handler;
+    },
+    offNearbyQueryResults: () => {
+      nearbyQueryResultsCallback = undefined;
+    },
     setNearbyQuery: (pt: { x: number; y: number } | undefined) => {
       if (!curViewport) {
         return;
@@ -611,6 +621,7 @@ export const createCanvasPointMap = ({
         worker.postMessage(msg);
       } else {
         nearbyPoints = [];
+        nearbyQueryResultsCallback?.(undefined);
         render();
       }
     },

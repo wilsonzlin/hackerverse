@@ -12,6 +12,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { Point } from "../util/const";
 import { EdgeContext } from "../util/item";
 import {
   MAP_DATASET,
@@ -49,12 +50,18 @@ export const PointMap = ({
   controllerRef,
   heatmaps,
   height: vpHeightPx,
+  nearbyQuery,
+  onNearbyQuery,
+  onNearbyQueryResults,
   resultPoints,
   width: vpWidthPx,
 }: {
   controllerRef?: MutableRefObject<PointMapController | undefined>;
   heatmaps: ImageBitmap[];
   height: number;
+  nearbyQuery: { x: number; y: number } | undefined;
+  onNearbyQuery: (pt: { x: number; y: number } | undefined) => void;
+  onNearbyQueryResults: (points: Point[] | undefined) => void;
   resultPoints: undefined | { x: number; y: number }[];
   width: number;
 }) => {
@@ -135,6 +142,14 @@ export const PointMap = ({
   useEffect(() => map?.setEdge(edge), [map, edge]);
   useEffect(() => map?.setHeatmaps(heatmaps), [map, heatmaps]);
   useEffect(() => map?.setTheme(theme), [map, theme]);
+  useEffect(() => {
+    map?.setNearbyQuery(nearbyQuery);
+    return () => map?.setNearbyQuery(undefined);
+  }, [map, nearbyQuery]);
+  useEffect(() => {
+    map?.onNearbyQueryResults(onNearbyQueryResults);
+    return () => map?.offNearbyQueryResults();
+  }, [map, onNearbyQueryResults]);
   useEffect(() => {
     const ac = new AbortController();
     (async () => {
@@ -218,7 +233,8 @@ export const PointMap = ({
         className="canvas"
         onPointerDown={(e) => {
           e.currentTarget.setPointerCapture(e.pointerId);
-          ptrs.putIfAbsentOrThrow(e.pointerId, {
+          // Weirdly, duplicate keys can happen (either pointer can have multiple pointerdown events, or pointerId values can be reused), so don't assert it doesn't exist.
+          ptrs.set(e.pointerId, {
             start: e.nativeEvent,
             prev: e.nativeEvent,
             cur: e.nativeEvent,
@@ -285,7 +301,7 @@ export const PointMap = ({
               x: vpCtrXPt + scale.pxToPt(ptr.cur.clientX - vpWidthPx / 2),
               y: vpCtrYPt + scale.pxToPt(ptr.cur.clientY - vpHeightPx / 2),
             };
-            map?.setNearbyQuery(pt);
+            onNearbyQuery(pt);
           }
         }}
         onWheel={(e) => {

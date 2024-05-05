@@ -14,6 +14,7 @@ import reversedComparator from "@xtjs/lib/reversedComparator";
 import RBush, { BBox } from "rbush";
 import {
   MapStateInit,
+  Point,
   PointTree,
   ViewportState,
   vPointLabelsMessageToMain,
@@ -46,6 +47,46 @@ const createPointLabelsPicker = ({
     tree: new PointTree(),
     tilesProcessed: new Set<string>(),
   }));
+  const ensureLoadedPoints = async ({
+    x0Pt,
+    y0Pt,
+    zoom: z,
+  }: {
+    x0Pt: number;
+    y0Pt: number;
+    zoom: number;
+  }) => {
+    const lod = map.calcLod(z);
+    const { tileXMax, tileXMin, tileYMax, tileYMin } = map.viewportTiles({
+      x0Pt,
+      y0Pt,
+      heightPx: curViewport!.heightPx,
+      widthPx: curViewport!.widthPx,
+      zoom: z,
+    });
+    return await Promise.all(
+      (function* () {
+        for (let x = tileXMin; x <= tileXMax; x++) {
+          for (let y = tileYMin; y <= tileYMax; y++) {
+            const k = `${x}-${y}`;
+            yield cachedFetchTile(undefined, edge, lod, x, y).then((points) => {
+              const lodTree = assertExists(lodTrees[lod]);
+              if (!lodTree.tilesProcessed.has(k)) {
+                lodTree.tilesProcessed.add(k);
+                for (const p of points) {
+                  lodTree.tree.insert(p);
+                }
+              }
+              return {
+                tile: [x, y],
+                points,
+              };
+            });
+          }
+        }
+      })(),
+    );
+  };
 
   // One for each integer zoom level [0, map.zoomMax] (inclusive).
   const labelledPoints = Array.from({ length: map.zoomMax + 1 }, () => ({
@@ -124,39 +165,19 @@ const createPointLabelsPicker = ({
         const req = latestPickLabelledPointsReqId;
         const vp = assertExists(curViewport);
         for (let z = 0; z <= vp.zoom; z++) {
-          const lod = map.calcLod(z);
-          const { tileXMax, tileXMin, tileYMax, tileYMin } = map.viewportTiles({
-            ...vp,
-            zoom: z,
-          });
           const lp = assertExists(labelledPoints[z]);
-          const points = await Promise.all(
-            (function* () {
-              for (let x = tileXMin; x <= tileXMax; x++) {
-                for (let y = tileYMin; y <= tileYMax; y++) {
-                  const k = `${x}-${y}`;
-                  if (lp.processedTiles.has(k)) {
-                    continue;
-                  }
-                  lp.processedTiles.add(k);
-                  yield cachedFetchTile(undefined, edge, lod, x, y).then(
-                    (points) => {
-                      const lodTree = assertExists(lodTrees[lod]);
-                      if (!lodTree.tilesProcessed.has(k)) {
-                        lodTree.tilesProcessed.add(k);
-                        for (const p of points) {
-                          lodTree.tree.insert(p);
-                        }
-                      }
-                      return points;
-                    },
-                  );
-                }
+          const points = Array<Point>();
+          await ensureLoadedPoints(curViewport!).then(async (tiles) => {
+            for (const t of tiles) {
+              const k = t.tile.join("-");
+              if (lp.processedTiles.has(k)) {
+                continue;
               }
-            })(),
-          ).then((res) =>
-            res.flat().sort(reversedComparator(propertyComparator("score"))),
-          );
+              lp.processedTiles.add(k);
+              points.push(...t.points);
+            }
+          });
+          points.sort(reversedComparator(propertyComparator("score")));
           // Do not bail out early here in case request has now expired, as we've marked the tiles as processed (but the processing is up next).
           await ensureFetchedPostTitleLengths(
             edge,
@@ -216,9 +237,15 @@ const createPointLabelsPicker = ({
       sendUpdate(vp.zoom);
       pickLabelledPoints();
     },
-    nearby: (lod: number, xPt: number, yPt: number) => {
+    nearby: (requestId: number, lod: number, xPt: number, yPt: number) => {
       const { tree } = assertExists(lodTrees[lod]);
-      return knn(tree, xPt, yPt, 10);
+      const points = knn(tree, xPt, yPt, 10);
+      const res: Valid<typeof vPointLabelsMessageToMain> = {
+        $type: "nearby",
+        requestId,
+        points,
+      };
+      self.postMessage(res);
     },
   };
 };
@@ -230,13 +257,7 @@ addEventListener("message", (e) => {
   if (msg.$type === "calculate") {
     pointLabelsPicker!.calculate(msg.viewport);
   } else if (msg.$type === "nearby") {
-    const points = pointLabelsPicker!.nearby(msg.lod, msg.xPt, msg.yPt);
-    const res: Valid<typeof vPointLabelsMessageToMain> = {
-      $type: "nearby",
-      requestId: msg.requestId,
-      points,
-    };
-    self.postMessage(res);
+    pointLabelsPicker!.nearby(msg.requestId, msg.lod, msg.xPt, msg.yPt);
   } else if (msg.$type === "init") {
     pointLabelsPicker = createPointLabelsPicker(msg);
   } else {

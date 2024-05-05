@@ -26,7 +26,7 @@
     }
   }
 
-  .queries {
+  .query-container {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
@@ -34,10 +34,9 @@
 
     margin: var(--panel-margin-from-edge);
     margin-bottom: 0;
-    margin-right: 4.5rem; /* Leave room for PageSelector. */
 
     .QueryForm,
-    .add-query {
+    .back-to-search {
       background: var(--card-background);
       border-radius: var(--card-border-radius);
       box-shadow: var(--card-shadow);
@@ -92,13 +91,17 @@
       }
     }
 
-    .add-query {
+    .back-to-search {
       padding: 0.5rem;
       display: flex;
       align-items: center;
       gap: 0.5rem;
       font-size: 0.8rem;
     }
+  }
+
+  @media screen and (max-width: 799px) {
+    margin-right: 4.5rem; /* Leave room for PageSelector. */
   }
 
   .results {
@@ -109,6 +112,12 @@
     > .result {
       h1 {
         font-size: 1.25rem;
+      }
+
+      > .site,
+      > .sub {
+        color: #444;
+        font-size: 0.9rem;
       }
     }
   }

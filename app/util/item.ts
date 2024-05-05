@@ -43,7 +43,7 @@ const vEdgePost = new VStruct({
   proto: new VString(),
   found_in_archive: new VBoolean(),
 });
-type EdgePost = Valid<typeof vEdgePost>;
+export type EdgePost = Valid<typeof vEdgePost>;
 
 // Use fast edge.
 export const cachedFetchEdgePost = async (
