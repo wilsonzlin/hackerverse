@@ -109,11 +109,24 @@
       display: none; /* Hide padding. */
     }
 
-    > .result {
-      h1 {
-        font-size: 1.25rem;
-      }
+    h1 {
+      font-size: 1.25rem;
+    }
 
+    > .city-result {
+      > p {
+        display: flex;
+        align-items: center;
+        gap: 0.375rem;
+
+        > span {
+          color: #444;
+          font-size: 0.9rem;
+        }
+      }
+    }
+
+    > .result {
       .color {
         height: 0.75rem;
         width: 0.75rem;

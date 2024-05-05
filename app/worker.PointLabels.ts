@@ -15,7 +15,7 @@ import RBush, { BBox } from "rbush";
 import {
   MapStateInit,
   Point,
-  PointTree,
+  PointOrCityTree,
   ViewportState,
   vPointLabelsMessageToMain,
   vPointLabelsMessageToWorker,
@@ -44,7 +44,7 @@ const createPointLabelsPicker = ({
   let citiesLoadPromise: Promise<any> | undefined;
 
   const lodTrees = Array.from({ length: map.lodLevels }, () => ({
-    tree: new PointTree(),
+    tree: new PointOrCityTree(),
     tilesProcessed: new Set<string>(),
   }));
   const ensureLoadedPoints = async ({
@@ -143,6 +143,7 @@ const createPointLabelsPicker = ({
         );
         for (const { lod, cities } of vCities.parseRoot(raw)) {
           for (const city of cities) {
+            lodTrees[lod].tree.insert(city);
             for (let z = lod * ZOOM_PER_LOD; z < labelledPoints.length; z++) {
               const lp = labelledPoints[z];
               lp.cities.push(city);

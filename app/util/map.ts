@@ -11,6 +11,7 @@ import slices from "@xtjs/lib/slices";
 import { BBox } from "rbush";
 import seedrandom from "seedrandom";
 import {
+  City,
   MapStateInit,
   Point,
   PointTree,
@@ -325,10 +326,10 @@ export const createCanvasPointMap = ({
   let theme: "land" | "space" = "space";
   let heatmaps: ImageBitmap[] = [];
   let resultPoints: { id: number; x: number; y: number }[] = [];
-  let nearbyPoints: { id: number; x: number; y: number }[] = [];
+  let nearbyPoints = Array<Point | City>();
   let latestNearbyReqId = 0;
   let nearbyQueryResultsCallback:
-    | ((points: Point[] | undefined) => void)
+    | ((points: Array<Point | City> | undefined) => void)
     | undefined;
 
   let terrain = Array<{ level: number; points: { x: number; y: number }[] }>();
@@ -534,6 +535,9 @@ export const createCanvasPointMap = ({
       }
       // Draw result and nearby points.
       for (const p of [...resultPoints, ...nearbyPoints] as const) {
+        if (!("id" in p)) {
+          continue;
+        }
         const canvasX = scale.ptToPx(p.x - vp.x0Pt);
         const canvasY = scale.ptToPx(p.y - vp.y0Pt);
         ctx.fillStyle = resultPointColor(p.id);
@@ -595,7 +599,9 @@ export const createCanvasPointMap = ({
     destroy: () => {
       abortController.abort();
     },
-    onNearbyQueryResults: (handler: (points: Point[] | undefined) => void) => {
+    onNearbyQueryResults: (
+      handler: (points: Array<Point | City> | undefined) => void,
+    ) => {
       nearbyQueryResultsCallback = handler;
     },
     offNearbyQueryResults: () => {

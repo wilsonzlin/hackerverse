@@ -9,6 +9,7 @@ import { UrlMeta, vUrlMeta } from "../../common/const";
 import { Ico } from "../component/Ico";
 import { Loading } from "../component/Loading";
 import { PageSwitcher } from "../component/PageSwitcher";
+import { RouteLink } from "../component/RouteLink";
 import { apiCall, topPostsApiCall, topUsersApiCall } from "../util/api";
 import { useBrowserDimensions } from "../util/dom";
 import { usePromise } from "../util/fetch";
@@ -224,13 +225,13 @@ export const CityPage = ({ params: [query] }: { params: string[] }) => {
                 <Ico i="groups" size={32} />
               </div>
             )}
-            <a
+            <RouteLink
               className="link-to-analysis"
               href={`/a/${encodeURIComponent(query)}`}
             >
               <Ico i="open_in_new" size={20} />
               <span>Analyze popularity and sentiment</span>
-            </a>
+            </RouteLink>
             <TopUsersSection query={query} simThreshold={simThreshold} />
             {onMobile && (
               <button

@@ -9,8 +9,9 @@ import { Ico } from "../component/Ico";
 import { Loading } from "../component/Loading";
 import { PageSwitcher } from "../component/PageSwitcher";
 import { PointMap, PointMapController } from "../component/PointMap";
+import { RouteLink } from "../component/RouteLink";
 import { heatmapApiCall, searchApiCall } from "../util/api";
-import { Point } from "../util/const";
+import { City, Point } from "../util/const";
 import { useMeasure } from "../util/dom";
 import { usePromise } from "../util/fetch";
 import { EdgePost, useEdgePosts } from "../util/item";
@@ -357,11 +358,13 @@ export const SearchPage = () => {
     );
   }, [shouldAnimateToResults]);
   const [nearbyQuery, setNearbyQuery] = useState<{ x: number; y: number }>();
-  const [nearbyResults, setNearbyResults] = useState<Point[]>();
+  const [nearbyResults, setNearbyResults] = useState<Array<Point | City>>();
   const itemIds = useMemo(
     () => [
       ...(queryResults?.map((r) => r.id) ?? []),
-      ...(nearbyResults?.map((r) => r.id) ?? []),
+      ...(nearbyResults
+        ?.filter((r): r is Point => "id" in r)
+        .map((r) => r.id) ?? []),
     ],
     [queryResults, nearbyResults],
   );
@@ -469,10 +472,22 @@ export const SearchPage = () => {
         </div>
 
         <div className="results">
-          {results?.map(({ id }) =>
-            mapExists(items[id], (item) => (
-              <Result key={id} id={id} item={item} />
-            )),
+          {results?.map((r) =>
+            "id" in r ? (
+              mapExists(items[r.id], (item) => (
+                <Result key={r.id} id={r.id} item={item} />
+              ))
+            ) : (
+              <div key={r.label} className="city-result">
+                <RouteLink href={`/c/${encodeURIComponent(r.label)}`}>
+                  <h1>{r.label}</h1>
+                </RouteLink>
+                <p>
+                  <Ico i="open_in_new" size={24} />
+                  <span>Visit community</span>
+                </p>
+              </div>
+            ),
           )}
         </div>
       </div>

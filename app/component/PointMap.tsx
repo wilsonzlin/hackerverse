@@ -12,7 +12,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Point } from "../util/const";
+import { City, Point } from "../util/const";
 import { EdgeContext } from "../util/item";
 import {
   MAP_DATASET,
@@ -61,7 +61,7 @@ export const PointMap = ({
   height: number;
   nearbyQuery: { x: number; y: number } | undefined;
   onNearbyQuery: (pt: { x: number; y: number } | undefined) => void;
-  onNearbyQueryResults: (points: Point[] | undefined) => void;
+  onNearbyQueryResults: (points: Array<Point | City> | undefined) => void;
   resultPoints: undefined | { id: number; x: number; y: number }[];
   width: number;
 }) => {
