@@ -1,4 +1,5 @@
 import { VObjectMap } from "@wzlin/valid";
+import classNames from "@xtjs/lib/classNames";
 import defined from "@xtjs/lib/defined";
 import mapExists from "@xtjs/lib/mapExists";
 import mapNonEmpty from "@xtjs/lib/mapNonEmpty";
@@ -9,6 +10,7 @@ import { Ico } from "../component/Ico";
 import { Loading } from "../component/Loading";
 import { PageSwitcher } from "../component/PageSwitcher";
 import { apiCall, topPostsApiCall, topUsersApiCall } from "../util/api";
+import { useBrowserDimensions } from "../util/dom";
 import { usePromise } from "../util/fetch";
 import { useEdgePosts } from "../util/item";
 import { router } from "../util/router";
@@ -99,6 +101,10 @@ export const CityPage = ({ params: [query] }: { params: string[] }) => {
   const [queryRaw, setQueryRaw] = useState("");
   useEffect(() => setQueryRaw(query), [query]);
 
+  const onMobile = useBrowserDimensions().width <= 1024;
+  const [showPanelOnMobile, setShowPanelOnMobile] = useState(false);
+  const showPanel = showPanelOnMobile || !onMobile;
+
   const postsReq = usePromise<Array<{ id: number; sim: number }>>();
   // Use edge post data as it has the normalized (not raw original) URL, required for `urlMetasReq`.
   const postMetas = useEdgePosts(postsReq.data?.map((i) => i.id) ?? []);
@@ -146,7 +152,7 @@ export const CityPage = ({ params: [query] }: { params: string[] }) => {
   }, [postMetas]);
 
   return (
-    <div className="City">
+    <div className={classNames("City", onMobile && "mobile")}>
       <div className="query-form-container">
         <form
           className="query-form"
@@ -155,7 +161,9 @@ export const CityPage = ({ params: [query] }: { params: string[] }) => {
             router.change(`/c/${encodeURIComponent(queryRaw.trim())}`);
           }}
         >
-          <Ico i="groups" size={32} />
+          <button onClick={() => setShowPanelOnMobile(true)}>
+            <Ico i={onMobile ? "menu" : "groups"} size={24} />
+          </button>
           <input
             placeholder="Find your community"
             value={queryRaw}
@@ -205,16 +213,35 @@ export const CityPage = ({ params: [query] }: { params: string[] }) => {
           })}
         </div>
 
-        <div className="panel">
-          <a
-            className="link-to-analysis"
-            href={`/a/${encodeURIComponent(query)}`}
-          >
-            <Ico i="open_in_new" size={20} />
-            <span>Analyze popularity and sentiment</span>
-          </a>
-          <TopUsersSection query={query} simThreshold={simThreshold} />
-        </div>
+        {showPanel && (
+          <div className="panel">
+            {onMobile && (
+              <div className="header">
+                <div className="text">
+                  <h1>{query}</h1>
+                  <p>Details</p>
+                </div>
+                <Ico i="groups" size={32} />
+              </div>
+            )}
+            <a
+              className="link-to-analysis"
+              href={`/a/${encodeURIComponent(query)}`}
+            >
+              <Ico i="open_in_new" size={20} />
+              <span>Analyze popularity and sentiment</span>
+            </a>
+            <TopUsersSection query={query} simThreshold={simThreshold} />
+            {onMobile && (
+              <button
+                className="close"
+                onClick={() => setShowPanelOnMobile(false)}
+              >
+                Close
+              </button>
+            )}
+          </div>
+        )}
       </main>
     </div>
   );

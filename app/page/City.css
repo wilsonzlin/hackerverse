@@ -15,6 +15,7 @@
   .query-form-container {
     flex-shrink: 0;
     padding: 1rem;
+    padding-right: 4.5rem; /* Leave room for PageSwitcher. */
     display: flex;
   }
 
@@ -25,12 +26,13 @@
     border-radius: 0.25rem;
     box-shadow: 0 2px 1rem rgba(0, 0, 0, 0.25);
 
-    padding: 0.75rem;
+    padding: 0.62rem;
 
     display: flex;
     align-items: center;
     gap: 0.75rem;
-    width: 35rem;
+    max-width: 35rem;
+    width: 100%;
 
     > .Ico {
       flex-shrink: 0;
@@ -38,7 +40,6 @@
 
     > input {
       flex-grow: 1;
-      font-size: 1.125rem;
     }
   }
 
@@ -92,6 +93,38 @@
     }
   }
 
+  &.mobile .panel {
+    background: white;
+    position: fixed;
+    inset: 0;
+    width: auto;
+    border: 0;
+
+    > .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+
+      > .text {
+        > h1 {
+          font-weight: bolder;
+          font-size: 1.25rem;
+        }
+
+        > p {
+          color: #555;
+          font-size: 0.875rem;
+        }
+      }
+    }
+
+    > .close {
+      border: 1px solid #ddd;
+      border-radius: 0.25rem;
+      padding: 0.5rem;
+    }
+  }
+
   .posts {
     min-width: 0;
     flex-grow: 1;
@@ -106,7 +139,8 @@
 
     > .post {
       flex-shrink: 0;
-      width: 45rem;
+      width: 100%;
+      max-width: 45rem;
 
       border: 1px solid #eee;
       border-radius: 0.5rem;

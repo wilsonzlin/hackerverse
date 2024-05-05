@@ -45,16 +45,13 @@
   }
 
   .queries {
-    display: flex;
-    align-items: flex-start;
+    display: grid;
     gap: 1rem;
+    grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
 
-    margin-right: 3.5rem; /* Make room for PageSwitcher. */
+    margin-right: 4rem; /* Make room for PageSwitcher. */
 
     .query {
-      min-width: 0;
-      flex: 1 1 0;
-
       border: 1px solid #ccc;
       padding: 0.5rem;
 

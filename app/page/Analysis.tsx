@@ -239,6 +239,9 @@ const SentimentSection = ({
           const common = {
             x: timestamps,
             type: "scatter" as const,
+            line: {
+              width: 1,
+            },
             hoverlabel: {
               font: {
                 family: "InterVariable",
@@ -373,6 +376,9 @@ const PopularitySection = ({
     () =>
       results.map(({ query, data: { scores, timestamps } }) => ({
         x: timestamps,
+        line: {
+          width: 1,
+        },
         hoverlabel: {
           font: {
             family: "InterVariable",
