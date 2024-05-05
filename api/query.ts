@@ -146,7 +146,7 @@ export type QueryInput = {
 };
 
 export const makeQuery = async (q: QueryInput) => {
-  const res = await fetch("http://localhost:6050/", {
+  const res = await fetch(`http://localhost:6050/${q.dataset}`, {
     method: "POST",
     body: encode(q),
   });

@@ -1,5 +1,6 @@
 import { decode, encode } from "@msgpack/msgpack";
 import {
+  VArray,
   VInteger,
   VOptional,
   VString,
@@ -11,6 +12,7 @@ import Dict from "@xtjs/lib/Dict";
 import assertExists from "@xtjs/lib/assertExists";
 import assertInstanceOf from "@xtjs/lib/assertInstanceOf";
 import assertState from "@xtjs/lib/assertState";
+import findAndRemove from "@xtjs/lib/findAndRemove";
 import randomPick from "@xtjs/lib/randomPick";
 import readBufferStream from "@xtjs/lib/readBufferStream";
 import http from "http";
@@ -33,14 +35,22 @@ const reqs = new Dict<
             error: any;
           },
     ) => void;
-    reject: (err: any) => void;
+    reject: (err: Error) => void;
   }
 >();
-const connToReq = new WeakMap<WebSocket, Set<number>>();
+const channelToConns: Record<string, WebSocket[]> = {};
+const connStates = new WeakMap<
+  WebSocket,
+  {
+    requests: Set<number>;
+    channels: Set<string>;
+  }
+>();
 
 const vNodeInitMessage = new VStruct({
   ip: new VString(),
   token: new VString(),
+  channels: new VArray(new VString(1), 1),
 });
 
 const vMessageToNode = new VStruct({
@@ -70,7 +80,6 @@ const ws = new WebSocketServer({
 });
 ws.on("connection", (conn) => {
   lg.info("node connected");
-  connToReq.set(conn, new Set());
   const verifyTimeout = setTimeout(() => {
     lg.warn("did not receive token within reasonable time");
     conn.close();
@@ -85,35 +94,50 @@ ws.on("connection", (conn) => {
       conn.close();
       return;
     }
-    lg.info({ ip: msg.ip }, "node verified");
     clearTimeout(verifyTimeout);
+    lg.info({ ip: msg.ip, channels: msg.channels }, "node verified");
+    // Set up connection.
+    const connState = {
+      requests: new Set<number>(),
+      channels: new Set(msg.channels),
+    };
+    connStates.set(conn, connState);
+    for (const ch of msg.channels) {
+      (channelToConns[ch] ??= []).push(conn);
+    }
     conn.on("message", (raw, isBinary) => {
       assertState(isBinary);
       const { id, error, output } = vMessageToBroker.parseRoot(
         decode(assertInstanceOf(raw, Buffer)),
       );
-      connToReq.get(conn)!.delete(id);
+      connState.requests.delete(id);
       const prom = reqs.remove(id);
       prom?.resolve({ error, output });
     });
   });
   conn.on("close", () => {
     lg.info("node disconnected");
-    for (const id of connToReq.get(conn)!) {
-      reqs.remove(id)?.reject(new Error("Node disconnected"));
+    const connState = connStates.get(conn);
+    if (connState) {
+      for (const id of connState.requests) {
+        reqs.remove(id)?.reject(new Error("Node disconnected"));
+      }
+      for (const ch of connState.channels) {
+        findAndRemove(channelToConns[ch], (oc) => oc === conn);
+      }
     }
   });
 });
 
-const sendToNode = (input: any) =>
+const sendToNode = (channel: string, input: any) =>
   new Promise<{ error?: any; output?: any }>((resolve, reject) => {
     const id = nextReqId++;
-    const conn = randomPick([...ws.clients]);
+    const conn = randomPick(channelToConns[channel] ?? []);
     if (!conn) {
       return reject(new Error("No node available"));
     }
     reqs.set(id, { resolve, reject });
-    connToReq.get(conn)!.add(id);
+    connStates.get(conn)!.requests.add(id);
     const msg: Valid<typeof vMessageToNode> = { id, input };
     conn.send(JSON.stringify(msg));
   });
@@ -123,6 +147,7 @@ http
     if (req.method !== "POST") {
       return res.writeHead(405).end();
     }
+    const channel = req.url?.slice(1) ?? "";
     let input;
     try {
       input = decode(await readBufferStream(req));
@@ -131,7 +156,7 @@ http
     }
     let resBody;
     try {
-      resBody = await sendToNode(input);
+      resBody = await sendToNode(channel, input);
     } catch (err) {
       return res.writeHead(500).end(err.message);
     }

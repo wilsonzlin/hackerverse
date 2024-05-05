@@ -201,8 +201,7 @@ class QueryInput:
     post_filter_clip: Dict[str, Clip] = field(default_factory=dict)
 
 
-def request_handler(input: QueryInput):
-    # Perform checks before expensive embedding encoding.
+def request_handler(input: QueryInput) -> bytes:
     d, model, ann_idx = datasets[input.dataset]
     # As a precaution, do a shallow copy, in case we accidentally modify the original somewhere below.
     df = d.table.copy(deep=False)
@@ -333,7 +332,7 @@ def on_message(ws, raw):
 
 def on_open(ws):
     print("Opened connection")
-    init_req = msgpack.packb({"token": TOKEN, "ip": public_ip})
+    init_req = msgpack.packb({"token": TOKEN, "ip": public_ip, "channels": DATASETS})
     assert type(init_req) == bytes
     ws.send(init_req, opcode=websocket.ABNF.OPCODE_BINARY)
 
