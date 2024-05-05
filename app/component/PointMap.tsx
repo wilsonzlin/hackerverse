@@ -263,8 +263,30 @@ export const PointMap = ({
           ptrs.remove(e.pointerId);
         }}
         onPointerUp={(e) => {
-          // Might not exist if started elsewhere or already removed by onPointerCancel.
-          ptrs.remove(e.pointerId);
+          // May not exist (pointer started elsewhere, moved to over this element).
+          const ptr = ptrs.remove(e.pointerId);
+          if (!ptr) {
+            return;
+          }
+          if (!scale) {
+            return;
+          }
+          e.preventDefault();
+          ptr.prev = ptr.cur;
+          ptr.cur = e.nativeEvent;
+          if (
+            Math.hypot(
+              ptr.start.clientX - ptr.cur.clientX,
+              ptr.start.clientY - ptr.cur.clientY,
+            ) < 10
+          ) {
+            // Did not move much, so it's a click.
+            const pt = {
+              x: vpCtrXPt + scale.pxToPt(ptr.cur.clientX - vpWidthPx / 2),
+              y: vpCtrYPt + scale.pxToPt(ptr.cur.clientY - vpHeightPx / 2),
+            };
+            map?.setNearbyQuery(pt);
+          }
         }}
         onWheel={(e) => {
           if (!scale || !meta || !vp) {

@@ -8,9 +8,11 @@ import derivedComparator from "@xtjs/lib/derivedComparator";
 import propertyComparator from "@xtjs/lib/propertyComparator";
 import reversedComparator from "@xtjs/lib/reversedComparator";
 import slices from "@xtjs/lib/slices";
-import RBush, { BBox } from "rbush";
+import { BBox } from "rbush";
 import {
   MapStateInit,
+  Point,
+  PointTree,
   ViewportState,
   vPointLabelsMessageToMain,
   vPointLabelsMessageToWorker,
@@ -23,25 +25,6 @@ export const DEBUG_BBOX = false;
 export const MAP_DATASET = "toppost";
 
 export const ZOOM_PER_LOD = 3;
-
-export type Point = { id: number; x: number; y: number; score: number };
-
-export class PointTree extends RBush<Point> {
-  toBBox(item: Point): BBox {
-    return {
-      minX: item.x,
-      maxX: item.x,
-      maxY: item.y,
-      minY: item.y,
-    };
-  }
-  compareMinX(a: Point, b: Point): number {
-    return a.x - b.x;
-  }
-  compareMinY(a: Point, b: Point): number {
-    return a.y - b.y;
-  }
-}
 
 export class MapState {
   readonly lodLevels: number;
@@ -336,6 +319,8 @@ export const createCanvasPointMap = ({
   let theme: "land" | "space" = "space";
   let heatmaps: ImageBitmap[] = [];
   let resultPoints: { x: number; y: number }[] = [];
+  let nearbyPoints: { x: number; y: number }[] = [];
+  let latestNearbyReqId = 0;
 
   let terrain = Array<{ level: number; points: { x: number; y: number }[] }>();
   (async () => {
@@ -391,7 +376,12 @@ export const createCanvasPointMap = ({
   const worker = new Worker("/dist/worker.PointLabels.js");
   worker.addEventListener("message", (e) => {
     const msg = vPointLabelsMessageToMain.parseRoot(e.data);
-    if (msg.$type === "update") {
+    if (msg.$type === "nearby") {
+      if (msg.requestId === latestNearbyReqId) {
+        nearbyPoints = msg.points;
+        render();
+      }
+    } else if (msg.$type === "update") {
       labelledPoints.set(msg.zoom, {
         bboxes: msg.bboxes,
         points: msg.picked,
@@ -536,7 +526,16 @@ export const createCanvasPointMap = ({
       for (const p of resultPoints) {
         const canvasX = scale.ptToPx(p.x - vp.x0Pt);
         const canvasY = scale.ptToPx(p.y - vp.y0Pt);
-        ctx.fillStyle = `rgb(252, 123, 3)`;
+        ctx.fillStyle = `rgb(255, 237, 36)`;
+        ctx.beginPath();
+        ctx.arc(canvasX, canvasY, POINT_LABEL_RADIUS, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // Draw nearby points.
+      for (const p of nearbyPoints) {
+        const canvasX = scale.ptToPx(p.x - vp.x0Pt);
+        const canvasY = scale.ptToPx(p.y - vp.y0Pt);
+        ctx.fillStyle = `rgb(245, 76, 73)`;
         ctx.beginPath();
         ctx.arc(canvasX, canvasY, POINT_LABEL_RADIUS, 0, Math.PI * 2);
         ctx.fill();
@@ -594,6 +593,26 @@ export const createCanvasPointMap = ({
   return {
     destroy: () => {
       abortController.abort();
+    },
+    setNearbyQuery: (pt: { x: number; y: number } | undefined) => {
+      if (!curViewport) {
+        return;
+      }
+      // Increment even if `pt` is undefined (which cancels any current request).
+      const requestId = ++latestNearbyReqId;
+      if (pt) {
+        const msg: Valid<typeof vPointLabelsMessageToWorker> = {
+          $type: "nearby",
+          requestId,
+          lod: map.calcLod(curViewport),
+          xPt: pt.x,
+          yPt: pt.y,
+        };
+        worker.postMessage(msg);
+      } else {
+        nearbyPoints = [];
+        render();
+      }
     },
     setEdge: (e: string) => {
       edge = e;

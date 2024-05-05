@@ -9,6 +9,32 @@ import {
   VTagged,
   Valid,
 } from "@wzlin/valid";
+import RBush, { BBox } from "rbush";
+
+export const vPoint = new VStruct({
+  id: new VInteger(1),
+  x: new VFiniteNumber(),
+  y: new VFiniteNumber(),
+  score: new VInteger(),
+});
+export type Point = Valid<typeof vPoint>;
+
+export class PointTree extends RBush<Point> {
+  toBBox(item: Point): BBox {
+    return {
+      minX: item.x,
+      maxX: item.x,
+      maxY: item.y,
+      minY: item.y,
+    };
+  }
+  compareMinX(a: Point, b: Point): number {
+    return a.x - b.x;
+  }
+  compareMinY(a: Point, b: Point): number {
+    return a.y - b.y;
+  }
+}
 
 export const vMapStateInit = new VStruct({
   lodLevels: new VFiniteNumber(),
@@ -38,9 +64,19 @@ export const vPointLabelsMessageToWorker = new VTagged("$type", {
   calculate: new VStruct({
     viewport: vViewportState,
   }),
+  nearby: new VStruct({
+    requestId: new VInteger(),
+    lod: new VInteger(0),
+    xPt: new VFiniteNumber(),
+    yPt: new VFiniteNumber(),
+  }),
 });
 
 export const vPointLabelsMessageToMain = new VTagged("$type", {
+  nearby: new VStruct({
+    requestId: new VInteger(),
+    points: new VArray(vPoint),
+  }),
   update: new VStruct({
     zoom: new VInteger(0),
     picked: new VSet(new VInteger(0)),

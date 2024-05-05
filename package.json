@@ -37,6 +37,7 @@
     "plotly.js": "^2.32.0",
     "queued-client-js": "^0.2.3",
     "rbush": "^3.0.1",
+    "rbush-knn": "^3.0.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-plotly.js": "^2.6.0",

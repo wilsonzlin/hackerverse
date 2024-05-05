@@ -14,6 +14,7 @@ import reversedComparator from "@xtjs/lib/reversedComparator";
 import RBush, { BBox } from "rbush";
 import {
   MapStateInit,
+  PointTree,
   ViewportState,
   vPointLabelsMessageToMain,
   vPointLabelsMessageToWorker,
@@ -28,6 +29,7 @@ import {
   calcPointLabelBBox,
   ensureFetchedPostTitleLengths,
 } from "./util/map";
+const knn = require("rbush-knn");
 
 const createPointLabelsPicker = ({
   edge,
@@ -39,6 +41,11 @@ const createPointLabelsPicker = ({
   const map = new MapState(mapInit);
   let curViewport: ViewportState | undefined;
   let citiesLoadPromise: Promise<any> | undefined;
+
+  const lodTrees = Array.from({ length: map.lodLevels }, () => ({
+    tree: new PointTree(),
+    tilesProcessed: new Set<string>(),
+  }));
 
   // One for each integer zoom level [0, map.zoomMax] (inclusive).
   const labelledPoints = Array.from({ length: map.zoomMax + 1 }, () => ({
@@ -132,7 +139,18 @@ const createPointLabelsPicker = ({
                     continue;
                   }
                   lp.processedTiles.add(k);
-                  yield cachedFetchTile(undefined, edge, lod, x, y);
+                  yield cachedFetchTile(undefined, edge, lod, x, y).then(
+                    (points) => {
+                      const lodTree = assertExists(lodTrees[lod]);
+                      if (!lodTree.tilesProcessed.has(k)) {
+                        lodTree.tilesProcessed.add(k);
+                        for (const p of points) {
+                          lodTree.tree.insert(p);
+                        }
+                      }
+                      return points;
+                    },
+                  );
                 }
               }
             })(),
@@ -198,6 +216,10 @@ const createPointLabelsPicker = ({
       sendUpdate(vp.zoom);
       pickLabelledPoints();
     },
+    nearby: (lod: number, xPt: number, yPt: number) => {
+      const { tree } = assertExists(lodTrees[lod]);
+      return knn(tree, xPt, yPt, 10);
+    },
   };
 };
 
@@ -207,6 +229,14 @@ addEventListener("message", (e) => {
   const msg = vPointLabelsMessageToWorker.parseRoot(e.data);
   if (msg.$type === "calculate") {
     pointLabelsPicker!.calculate(msg.viewport);
+  } else if (msg.$type === "nearby") {
+    const points = pointLabelsPicker!.nearby(msg.lod, msg.xPt, msg.yPt);
+    const res: Valid<typeof vPointLabelsMessageToMain> = {
+      $type: "nearby",
+      requestId: msg.requestId,
+      points,
+    };
+    self.postMessage(res);
   } else if (msg.$type === "init") {
     pointLabelsPicker = createPointLabelsPicker(msg);
   } else {
