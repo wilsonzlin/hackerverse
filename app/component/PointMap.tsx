@@ -117,6 +117,19 @@ export const PointMap = ({
 
   const edge = useContext(EdgeContext);
   const $canvas = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const $c = $canvas.current;
+    if (!$c) {
+      return;
+    }
+    // https://web.dev/articles/canvas-hidipi
+    $c.width = vpWidthPx * devicePixelRatio;
+    $c.height = vpHeightPx * devicePixelRatio;
+    const ctx = $c.getContext("2d");
+    ctx!.scale(devicePixelRatio, devicePixelRatio);
+    $c.style.width = `${vpWidthPx}px`;
+    $c.style.height = `${vpHeightPx}px`;
+  }, [vpWidthPx, vpHeightPx]);
   const [meta, setMeta] = useState<MapState>();
   const [map, setMap] = useState<ReturnType<typeof createCanvasPointMap>>();
   useEffect(() => map?.setEdge(edge), [map, edge]);
@@ -203,8 +216,6 @@ export const PointMap = ({
       <canvas
         ref={$canvas}
         className="canvas"
-        width={vpWidthPx}
-        height={vpHeightPx}
         onPointerDown={(e) => {
           e.currentTarget.setPointerCapture(e.pointerId);
           ptrs.putIfAbsentOrThrow(e.pointerId, {

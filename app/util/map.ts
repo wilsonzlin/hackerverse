@@ -524,21 +524,21 @@ export const createCanvasPointMap = ({
       }
       // Draw cities.
       for (const p of lp?.cities ?? []) {
-        const fontSize = 13;
+        const fontSize = 14.5;
         const canvasX = scale.ptToPx(p.x - vp.x0Pt);
         const canvasY = scale.ptToPx(p.y - vp.y0Pt);
-        ctx.font = `${fontSize}px InterVariable, sans-serif`;
+        ctx.font = `550 ${fontSize}px InterVariable, sans-serif`;
         ctx.strokeStyle = {
           land: "white",
           space: "black",
         }[theme];
         ctx.lineWidth = 2;
-        ctx.strokeText(p.label.toUpperCase(), canvasX, canvasY);
+        ctx.strokeText(p.label, canvasX, canvasY);
         ctx.fillStyle = {
-          land: "rgb(50, 50, 50)",
-          space: "rgb(222, 222, 222)",
+          land: "black",
+          space: "white",
         }[theme];
-        ctx.fillText(p.label.toUpperCase(), canvasX, canvasY);
+        ctx.fillText(p.label, canvasX, canvasY);
       }
     });
   };
