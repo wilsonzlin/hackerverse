@@ -73,11 +73,10 @@ const Query = ({
   const [simThresholdRaw, setSimThresholdRaw] = useState(
     toSimThresholdRaw(simThreshold),
   );
-  const setSimThreshold = (v: number) => {
-    v = bounded(v, SIM_THRESHOLD_MIN, SIM_THRESHOLD_MAX);
-    setSimThresholdRaw(toSimThresholdRaw(v));
-    onChangeSimThreshold(v);
-  };
+  useEffect(
+    () => setSimThresholdRaw(toSimThresholdRaw(simThreshold)),
+    [simThreshold],
+  );
   const simMinHundredths = Math.ceil(simThreshold * 100);
 
   const [queryRaw, setQueryRaw] = useState(query);
@@ -202,7 +201,9 @@ const Query = ({
           if (!parsed || !Number.isFinite(parsed)) {
             setSimThresholdRaw(toSimThresholdRaw(simThreshold));
           } else {
-            setSimThreshold(parsed);
+            onChangeSimThreshold(
+              bounded(parsed, SIM_THRESHOLD_MIN, SIM_THRESHOLD_MAX),
+            );
           }
         }}
       />

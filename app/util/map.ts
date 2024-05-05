@@ -232,7 +232,6 @@ export const ensureFetchedPostTitleLengths = async (
 
 const POINT_LABEL_FONT_SIZE = 13;
 const POINT_LABEL_POINT_GAP = 4;
-const POINT_LABEL_MARGIN_Y = 6;
 const POINT_LABEL_RADIUS = 3;
 
 const CITY_LABEL_FONT_SIZE = 14.5;
@@ -244,6 +243,8 @@ export const calcPointLabelBBox = (
   vp: ViewportState,
   p: Point,
 ) => {
+  const lod = map.calcLod(vp);
+  const marginY = lod == map.lodLevels - 1 ? 0 : 6;
   const scale = map.viewportScale(vp);
   const canvasX = scale.ptToPx(p.x);
   const canvasY = scale.ptToPx(p.y);
@@ -251,7 +252,7 @@ export const calcPointLabelBBox = (
   // Guessed approximate width based on title length.
   // (We can't reasonably fetch millions of titles just to measure their text and filter down to ~10.)
   const textWidth = titleLen * POINT_LABEL_FONT_SIZE * 0.6;
-  const height = POINT_LABEL_FONT_SIZE + POINT_LABEL_MARGIN_Y * 2;
+  const height = POINT_LABEL_FONT_SIZE + marginY * 2;
   const width = POINT_LABEL_RADIUS + POINT_LABEL_POINT_GAP + textWidth;
   const box: BBox = {
     minX: canvasX,
