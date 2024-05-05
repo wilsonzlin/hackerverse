@@ -18,6 +18,7 @@ import decodeUtf8 from "@xtjs/lib/decodeUtf8";
 import mapExists from "@xtjs/lib/mapExists";
 import parseInteger from "@xtjs/lib/parseInteger";
 import { Duration } from "luxon";
+import { vUrlMeta } from "../common/const";
 import {
   QUEUE_EMBED,
   QUEUE_EMBED_BGEM3,
@@ -34,16 +35,6 @@ setUpUncaughtExceptionHandler();
 const MODE = new VMember(["bgem3", "jinav2small"] as const).parseRoot(
   process.env["HNDR_EMBEDDER_MODE"],
 );
-
-const vMeta = new VStruct({
-  description: new VOptional(new VString()),
-  imageUrl: new VOptional(new VString()),
-  lang: new VOptional(new VString()),
-  snippet: new VOptional(new VString()),
-  timestamp: new VOptional(new VDate()),
-  timestampModified: new VOptional(new VDate()),
-  title: new VOptional(new VString()),
-});
 
 const postEmbMissingPageUpdater = new Batcher(
   async (rows: Array<{ id: number; embMissingPage: boolean }>) => {
@@ -98,7 +89,7 @@ const pageFetcher = new Batcher(async (urlIds: number[]) => {
     ),
   );
   const texts: Record<number, string | undefined> = {};
-  const metas: Record<number, Valid<typeof vMeta> | undefined> = {};
+  const metas: Record<number, Valid<typeof vUrlMeta> | undefined> = {};
   for (const [k, v] of rows) {
     if (!v) {
       continue;
@@ -112,7 +103,7 @@ const pageFetcher = new Batcher(async (urlIds: number[]) => {
         texts[id] = decodeUtf8(v);
         break;
       case "meta":
-        metas[id] = vMeta.parse(new ValuePath([k]), decode(v));
+        metas[id] = vUrlMeta.parse(new ValuePath([k]), decode(v));
         break;
       default:
         throw new UnreachableError();

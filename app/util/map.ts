@@ -16,6 +16,7 @@ import {
   vPointLabelsMessageToWorker,
 } from "./const";
 import { CACHED_FETCH_404, cachedFetch } from "./fetch";
+import { DEFAULT_EDGE } from "./item";
 
 export const MAP_DATASET = "toppost";
 
@@ -282,13 +283,12 @@ const renderImage = ({
 
 export const createCanvasPointMap = ({
   canvas,
-  edge,
   map,
 }: {
   canvas: HTMLCanvasElement;
-  edge: string;
   map: MapState;
 }) => {
+  let edge = DEFAULT_EDGE;
   const abortController = new AbortController();
   const postTitleFetchStarted = new Set<number>();
   const postTitles = new Dict<number, string>();
@@ -546,6 +546,9 @@ export const createCanvasPointMap = ({
   return {
     destroy: () => {
       abortController.abort();
+    },
+    setEdge: (e: string) => {
+      edge = e;
     },
     setTheme: (t: "land" | "space") => {
       theme = t;

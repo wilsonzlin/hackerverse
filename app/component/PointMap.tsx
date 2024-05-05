@@ -4,7 +4,15 @@ import Dict from "@xtjs/lib/Dict";
 import UnreachableError from "@xtjs/lib/UnreachableError";
 import assertExists from "@xtjs/lib/assertExists";
 import bounded from "@xtjs/lib/bounded";
-import { MutableRefObject, useEffect, useMemo, useRef, useState } from "react";
+import {
+  MutableRefObject,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { EdgeContext } from "../util/item";
 import {
   MAP_DATASET,
   MapState,
@@ -23,13 +31,6 @@ const vMapMeta = new VStruct({
   count: new VInteger(0),
   lod_levels: new VInteger(0),
 });
-
-const EDGES = [
-  "ap-sydney-1",
-  "uk-london-1",
-  "us-ashburn-1",
-  "us-sanjose-1",
-] as const;
 
 export type PointMapController = {
   animate(
@@ -114,61 +115,41 @@ export const PointMap = ({
   );
   useEffect(() => localStorage.setItem("hndr-map-theme", theme), [theme]);
 
+  const edge = useContext(EdgeContext);
   const $canvas = useRef<HTMLCanvasElement>(null);
-  const [map, setMap] = useState<ReturnType<typeof createCanvasPointMap>>();
-  useEffect(() => map?.setTheme(theme), [map, theme]);
-  useEffect(() => map?.setHeatmaps(heatmaps), [map, heatmaps]);
   const [meta, setMeta] = useState<MapState>();
+  const [map, setMap] = useState<ReturnType<typeof createCanvasPointMap>>();
+  useEffect(() => map?.setEdge(edge), [map, edge]);
+  useEffect(() => map?.setHeatmaps(heatmaps), [map, heatmaps]);
+  useEffect(() => map?.setTheme(theme), [map, theme]);
   useEffect(() => {
     const ac = new AbortController();
-
-    // Use Promise.race so we don't wait for the slow ones.
-    const findClosestEdge = () =>
-      Promise.race(
-        EDGES.map(async (edge) => {
-          // Run a few times to avoid potential cold start biases.
-          for (let i = 0; i < 3; i++) {
-            await fetch(`https://${edge}.edge-hndr.wilsonl.in/healthz`, {
-              signal: ac.signal,
-            });
-          }
-          return edge;
-        }),
-      );
-
-    const fetchMeta = async () => {
+    (async () => {
       const res = await fetch(
         `https://us-ashburn-1.edge-hndr.wilsonl.in/map/${MAP_DATASET}/meta`,
         { signal: ac.signal },
       );
       const raw = await res.arrayBuffer();
-      const meta = vMapMeta.parseRoot(decode(raw));
-      return new MapState({
-        lodLevels: meta.lod_levels,
-        scoreMax: meta.score_max,
-        scoreMin: meta.score_min,
-        xMaxPt: meta.x_max,
-        xMinPt: meta.x_min,
-        yMaxPt: meta.y_max,
-        yMinPt: meta.y_min,
+      const metaInit = vMapMeta.parseRoot(decode(raw));
+      const meta = new MapState({
+        lodLevels: metaInit.lod_levels,
+        scoreMax: metaInit.score_max,
+        scoreMin: metaInit.score_min,
+        xMaxPt: metaInit.x_max,
+        xMinPt: metaInit.x_min,
+        yMaxPt: metaInit.y_max,
+        yMinPt: metaInit.y_min,
       });
-    };
-
-    (async () => {
-      const [edge, meta] = await Promise.all([findClosestEdge(), fetchMeta()]);
-      console.log("Closest edge:", edge);
       console.log("Map metadata:", meta);
       setMeta(meta);
       setVpCtrXPt(meta.xMinPt + meta.xRangePt / 2);
       setVpCtrYPt(meta.yMinPt + meta.yRangePt / 2);
       const map = createCanvasPointMap({
         canvas: assertExists($canvas.current),
-        edge,
         map: meta,
       });
       setMap(map);
     })();
-
     return () => ac.abort();
   }, []);
 

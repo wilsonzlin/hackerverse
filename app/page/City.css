@@ -1,0 +1,124 @@
+.City {
+  position: fixed;
+  inset: 0;
+  max-width: 108rem;
+  margin: 0 auto;
+
+  display: flex;
+  flex-direction: column;
+
+  img:not([data-loaded="true"]) {
+    position: fixed;
+    opacity: 0;
+  }
+
+  .query-form {
+    flex-shrink: 0;
+
+    background: white;
+    border-radius: 0.25rem;
+    box-shadow: 0 2px 1rem rgba(0, 0, 0, 0.25);
+
+    padding: 0.75rem;
+    margin: 1rem;
+
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    width: 35rem;
+
+    > .Ico {
+      flex-shrink: 0;
+    }
+
+    > input {
+      flex-grow: 1;
+      font-size: 1.5rem;
+    }
+  }
+
+  > main {
+    min-height: 0;
+    flex-grow: 1;
+
+    display: flex;
+    align-items: stretch;
+  }
+
+  .panel {
+    width: 24rem;
+    flex-shrink: 0;
+    border-left: 1px solid #eee;
+    overflow: auto;
+  }
+
+  .posts {
+    min-width: 0;
+    flex-grow: 1;
+    overflow: auto;
+
+    padding: 1rem;
+
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2rem;
+
+    > .post {
+      flex-shrink: 0;
+      width: 45rem;
+
+      border: 1px solid #eee;
+      border-radius: 0.5rem;
+      overflow: hidden;
+
+      &:hover {
+        background-color: #fdfdfd;
+        text-decoration: none;
+      }
+
+      > .text {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+
+        padding: 0.75rem;
+
+        > .header {
+          display: flex;
+          gap: 0.75rem;
+          align-items: center;
+
+          > .favicon {
+            width: 2rem;
+            height: 2rem;
+            border-radius: 100%;
+            border: 1px solid #eee;
+            object-fit: contain;
+          }
+
+          > .right {
+            > .site {
+              font-size: 0.8rem;
+              color: #555;
+            }
+
+            > h2 {
+              font-size: 1.2rem;
+            }
+          }
+        }
+
+        > .snippet {
+          color: #333;
+          font-size: 0.9rem;
+        }
+      }
+
+      > .image {
+        display: block;
+        width: 100%;
+      }
+    }
+  }
+}
