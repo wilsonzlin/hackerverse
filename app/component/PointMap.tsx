@@ -62,7 +62,7 @@ export const PointMap = ({
   nearbyQuery: { x: number; y: number } | undefined;
   onNearbyQuery: (pt: { x: number; y: number } | undefined) => void;
   onNearbyQueryResults: (points: Point[] | undefined) => void;
-  resultPoints: undefined | { x: number; y: number }[];
+  resultPoints: undefined | { id: number; x: number; y: number }[];
   width: number;
 }) => {
   const nextAnimId = useRef(0);

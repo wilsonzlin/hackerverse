@@ -9,6 +9,7 @@ import propertyComparator from "@xtjs/lib/propertyComparator";
 import reversedComparator from "@xtjs/lib/reversedComparator";
 import slices from "@xtjs/lib/slices";
 import { BBox } from "rbush";
+import seedrandom from "seedrandom";
 import {
   MapStateInit,
   Point,
@@ -25,6 +26,11 @@ export const DEBUG_BBOX = false;
 export const MAP_DATASET = "toppost";
 
 export const ZOOM_PER_LOD = 3;
+
+export const resultPointColor = (itemId: number) => {
+  const rng = seedrandom(itemId.toString());
+  return `hsl(${Math.floor(rng() * 360)}, 100%, 50%)`;
+};
 
 export class MapState {
   readonly lodLevels: number;
@@ -318,8 +324,8 @@ export const createCanvasPointMap = ({
   let curViewport: ViewportState | undefined;
   let theme: "land" | "space" = "space";
   let heatmaps: ImageBitmap[] = [];
-  let resultPoints: { x: number; y: number }[] = [];
-  let nearbyPoints: { x: number; y: number }[] = [];
+  let resultPoints: { id: number; x: number; y: number }[] = [];
+  let nearbyPoints: { id: number; x: number; y: number }[] = [];
   let latestNearbyReqId = 0;
   let nearbyQueryResultsCallback:
     | ((points: Point[] | undefined) => void)
@@ -526,20 +532,11 @@ export const createCanvasPointMap = ({
           ctx.stroke();
         }
       }
-      // Draw result points.
-      for (const p of resultPoints) {
+      // Draw result and nearby points.
+      for (const p of [...resultPoints, ...nearbyPoints] as const) {
         const canvasX = scale.ptToPx(p.x - vp.x0Pt);
         const canvasY = scale.ptToPx(p.y - vp.y0Pt);
-        ctx.fillStyle = `rgb(255, 237, 36)`;
-        ctx.beginPath();
-        ctx.arc(canvasX, canvasY, POINT_LABEL_RADIUS, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      // Draw nearby points.
-      for (const p of nearbyPoints) {
-        const canvasX = scale.ptToPx(p.x - vp.x0Pt);
-        const canvasY = scale.ptToPx(p.y - vp.y0Pt);
-        ctx.fillStyle = `rgb(245, 76, 73)`;
+        ctx.fillStyle = resultPointColor(p.id);
         ctx.beginPath();
         ctx.arc(canvasX, canvasY, POINT_LABEL_RADIUS, 0, Math.PI * 2);
         ctx.fill();
@@ -636,7 +633,7 @@ export const createCanvasPointMap = ({
       heatmaps = hm;
       render();
     },
-    setResultPoints: (points: { x: number; y: number }[]) => {
+    setResultPoints: (points: { id: number; x: number; y: number }[]) => {
       resultPoints = points;
       render();
     },

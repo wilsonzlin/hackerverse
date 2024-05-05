@@ -14,6 +14,7 @@ import { Point } from "../util/const";
 import { useMeasure } from "../util/dom";
 import { usePromise } from "../util/fetch";
 import { EdgePost, useEdgePosts } from "../util/item";
+import { resultPointColor } from "../util/map";
 import "./Search.css";
 
 type QueryResults = Array<{
@@ -279,7 +280,15 @@ const Result = ({ id, item }: { id: number; item: EdgePost }) => {
   const ago = ts.toRelative();
   return (
     <div key={id} className="result">
-      <p className="site">{site}</p>
+      <div className="sup">
+        <div
+          className="color"
+          style={{
+            background: resultPointColor(id),
+          }}
+        />
+        <div className="site">{site}</div>
+      </div>
       <a href={url} target="_blank" rel="noopener noreferrer">
         <h1 dangerouslySetInnerHTML={{ __html: item.title ?? "" }} />
       </a>

@@ -114,8 +114,20 @@
         font-size: 1.25rem;
       }
 
-      > .site,
-      > .sub {
+      .color {
+        height: 0.75rem;
+        width: 0.75rem;
+        border-radius: 100%;
+      }
+
+      .sup {
+        display: flex;
+        align-items: center;
+        gap: 0.375rem;
+      }
+
+      .site,
+      .sub {
         color: #444;
         font-size: 0.9rem;
       }
