@@ -17,6 +17,7 @@ use service_toolkit::panic::set_up_panic_hook;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::spawn;
+use tokio::task::spawn_blocking;
 use tokio::time::sleep;
 use tower_http::cors::CorsLayer;
 use tracing_subscriber::EnvFilter;
@@ -245,7 +246,9 @@ async fn main() {
           Ok((StatusCode::NOT_MODIFIED, _, _)) => {}
           Ok((_, new_etag, raw)) => {
             etag = new_etag.clone();
-            *ctx.data.write() = rmp_serde::from_slice(&raw).unwrap();
+            *ctx.data.write() = spawn_blocking(move || rmp_serde::from_slice(&raw).unwrap())
+              .await
+              .unwrap();
             tracing::info!(new_etag, "updated data");
           }
           Err(e) => {
