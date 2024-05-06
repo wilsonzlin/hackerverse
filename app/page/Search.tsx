@@ -17,7 +17,7 @@ import { heatmapApiCall, searchApiCall } from "../util/api";
 import { City, Point } from "../util/const";
 import { useBrowserDimensions, useMeasure } from "../util/dom";
 import { usePromise } from "../util/fetch";
-import { EdgePost, useEdgePosts } from "../util/item";
+import { EdgePost, useEdgePosts, useEdgeUrlMetas } from "../util/item";
 import { resultPointColor } from "../util/map";
 import "./Search.css";
 
@@ -440,6 +440,14 @@ export const SearchPage = () => {
   );
   const items = useEdgePosts(itemIds);
   const results = nearbyResults ?? queryResults;
+  const postUrls = useMemo(
+    () =>
+      Object.values(items)
+        .map((p) => p.url)
+        .filter((u) => u),
+    [items],
+  );
+  const urlMetas = useEdgeUrlMetas(postUrls);
 
   const handleQueryChange = (query: string) => {
     setQuery(query);
@@ -581,7 +589,12 @@ export const SearchPage = () => {
           {results?.map((r) =>
             "id" in r ? (
               mapExists(items[r.id], (item) => (
-                <Post key={r.id} id={r.id} post={item} />
+                <Post
+                  key={r.id}
+                  id={r.id}
+                  post={item}
+                  urlMeta={urlMetas[item.url]}
+                />
               ))
             ) : (
               <RouteLink
