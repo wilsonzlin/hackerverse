@@ -1,6 +1,8 @@
 import defined from "@xtjs/lib/defined";
 import findAndRemove from "@xtjs/lib/findAndRemove";
 import mapExists from "@xtjs/lib/mapExists";
+import randomPick from "@xtjs/lib/randomPick";
+import shuffleArray from "@xtjs/lib/shuffleArray";
 import { produce } from "immer";
 import { DateTime } from "luxon";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -18,6 +20,49 @@ import { EdgePost, useEdgePosts } from "../util/item";
 import { resultPointColor } from "../util/map";
 import "./Search.css";
 
+const EXAMPLE_QUERIES = [
+  // Tech skills.
+  [
+    "how to write good documentation",
+    "entering the tech industry",
+    "getting into open source",
+    "why learn rust",
+    "why learn functional programming",
+    "lessons learnt from typescript",
+    "learning ffmpeg",
+    "video codecs, how do they work?",
+    "tabs vs spaces",
+    "bash flaws",
+    "books on distributed systems",
+    "writing a programming language",
+  ],
+  // Entrepreneurship skills.
+  [
+    "lessons as a solo founder",
+    "marketing for developers",
+    "open source business model",
+    "startup postmortems",
+  ],
+  // History.
+  [
+    "what happened to wework",
+    "google search result quality",
+    "personal data leaks",
+  ],
+  // Life.
+  [
+    "using time wisely",
+    "career growth",
+    "organizing life",
+    "good writing skills",
+    "communicating well",
+    "taking good photos",
+    "what makes good music",
+  ],
+  // Random.
+  ["pixel art", "cool things with css", "cool terminal things", "linus rants"],
+];
+
 type QueryResults = Array<{
   id: number;
   x: number;
@@ -27,13 +72,17 @@ type QueryResults = Array<{
 }>;
 
 const QueryForm = ({
-  onSubmit,
+  onChangeQuery,
   onResults,
+  query,
 }: {
-  onSubmit: () => void;
+  onChangeQuery: (query: string) => void;
   onResults: (results: QueryResults | undefined) => void;
+  query: string;
 }) => {
   const [queryRaw, setQueryRaw] = useState("");
+  useEffect(() => setQueryRaw(query), [query]);
+
   const [weightSimilarity, setWeightSimilarity] = useState(0.7);
   const [weightScore, setWeightScore] = useState(0.1);
   const [weightTimestamp, setWeightTimestamp] = useState(0.2);
@@ -43,28 +92,29 @@ const QueryForm = ({
 
   const queryReq = usePromise<QueryResults>();
   useEffect(() => onResults(queryReq.data), [queryReq.data]);
+  useEffect(() => {
+    queryReq.set(async (signal) => {
+      if (!query) {
+        return;
+      }
+      return await searchApiCall(signal, {
+        query,
+        limit: 10,
+        dataset: "toppost",
+        weightSimilarity,
+        weightScore,
+        weightTimestamp,
+        decayTimestamp,
+      });
+    });
+  }, [query]);
 
   return (
     <form
       className="QueryForm"
       onSubmit={(e) => {
         e.preventDefault();
-        queryReq.set(async (signal) => {
-          const query = queryRaw.trim();
-          if (!query) {
-            return;
-          }
-          onSubmit();
-          return await searchApiCall(signal, {
-            query,
-            limit: 10,
-            dataset: "toppost",
-            weightSimilarity,
-            weightScore,
-            weightTimestamp,
-            decayTimestamp,
-          });
-        });
+        onChangeQuery(queryRaw.trim());
       }}
     >
       <div className="main">
@@ -85,9 +135,8 @@ const QueryForm = ({
           <button
             type="button"
             onClick={() => {
-              setQueryRaw("");
-              queryReq.clear();
-              onResults([]);
+              onChangeQuery("");
+              onResults(undefined);
             }}
           >
             <Ico i="close" size={20} />
@@ -326,6 +375,12 @@ export const SearchPage = () => {
     [heatmapQueries],
   );
 
+  const [query, setQuery] = useState("");
+
+  const generateExampleQueries = () =>
+    shuffleArray(EXAMPLE_QUERIES.map((set) => randomPick(set)));
+  const [exampleQueries, setExampleQueries] = useState(generateExampleQueries);
+
   const [queryResults, setQueryResults] = useState<QueryResults>();
   const [shouldAnimateToResults, setShouldAnimateToResults] = useState(false);
   useEffect(() => {
@@ -444,18 +499,43 @@ export const SearchPage = () => {
       <div className="panel">
         <div className="query-container">
           <QueryForm
-            onSubmit={() => {
+            query={query}
+            onChangeQuery={(query) => {
+              setQuery(query);
               setNearbyQuery(undefined);
               setNearbyResults(undefined);
             }}
             onResults={(results) => {
               setQueryResults(results);
+              if (!results) {
+                setExampleQueries(generateExampleQueries());
+              }
               // Only animate when results come in, not for any other reason that `results` changes (e.g. clearing, deleting).
               if (results?.length && !nearbyQuery) {
                 setShouldAnimateToResults(true);
               }
             }}
           />
+
+          {!query && !nearbyQuery && (
+            <div className="example-queries">
+              <div className="header">
+                <h2>Example queries</h2>
+                <button
+                  onClick={() => setExampleQueries(generateExampleQueries())}
+                >
+                  <Ico i="refresh" size={20} />
+                </button>
+              </div>
+              <div className="list">
+                {exampleQueries.map((query, i) => (
+                  <button key={query} onClick={() => setQuery(query)}>
+                    {query}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {nearbyResults && queryResults && (
             <button
@@ -466,7 +546,8 @@ export const SearchPage = () => {
                 setShouldAnimateToResults(true);
               }}
             >
-              Back to search
+              <Ico i="close" size={20} />
+              <span>Back to search</span>
             </button>
           )}
         </div>
