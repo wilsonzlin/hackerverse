@@ -1,0 +1,4 @@
+img:not([data-loaded="true"]) {
+  position: fixed;
+  opacity: 0;
+}

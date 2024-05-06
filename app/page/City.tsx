@@ -3,12 +3,12 @@ import classNames from "@xtjs/lib/classNames";
 import defined from "@xtjs/lib/defined";
 import mapExists from "@xtjs/lib/mapExists";
 import mapNonEmpty from "@xtjs/lib/mapNonEmpty";
-import { DateTime } from "luxon";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { UrlMeta, vUrlMeta } from "../../common/const";
 import { Ico } from "../component/Ico";
 import { Loading } from "../component/Loading";
 import { PageSwitcher } from "../component/PageSwitcher";
+import { Post } from "../component/Post";
 import { RouteLink } from "../component/RouteLink";
 import { apiCall, postsApiCall, topUsersApiCall } from "../util/api";
 import { useBrowserDimensions } from "../util/dom";
@@ -16,20 +16,6 @@ import { usePromise } from "../util/fetch";
 import { useEdgePosts } from "../util/item";
 import { router } from "../util/router";
 import "./City.css";
-
-const Image = ({ className, src }: { className?: string; src: string }) => {
-  const [loaded, setLoaded] = useState(false);
-  return (
-    <img
-      className={className}
-      data-loaded={loaded}
-      loading="lazy"
-      onLoad={() => setLoaded(true)}
-      referrerPolicy="no-referrer"
-      src={src}
-    />
-  );
-};
 
 const TopUsersSection = ({
   query,
@@ -230,43 +216,9 @@ export const CityPage = ({ params: [query] }: { params: string[] }) => {
           </div>
           {postsReq.loading && <Loading />}
           {postsReq.error && <p className="err">{postsReq.error}</p>}
-          {posts?.map((p) => {
-            const url = p.url || `news.ycombinator.com/item?id=${p.id}`;
-            const proto = p.proto || "https:";
-            const domain = url.split("/")[0];
-            const snippet = (
-              p.urlMeta?.description || p.urlMeta?.snippet
-            )?.trim();
-            const imgUrl = p.urlMeta?.imageUrl;
-            return (
-              <a
-                key={p.id}
-                className="post"
-                href={`${proto}//${url}`}
-                rel="noopener noreferrer"
-                target="_blank"
-              >
-                <div className="text">
-                  <div className="header">
-                    <Image
-                      className="favicon"
-                      src={`https://${domain}/favicon.ico`}
-                    />
-                    <div className="main">
-                      <div className="site">{domain}</div>
-                      <h2>{p.title}</h2>
-                      <div className="sub">
-                        {p.score} points by {p.author}{" "}
-                        {DateTime.fromJSDate(p.ts).toRelative()}
-                      </div>
-                    </div>
-                  </div>
-                  {snippet && <p className="snippet">{snippet}</p>}
-                </div>
-                {imgUrl && <Image className="image" src={imgUrl} />}
-              </a>
-            );
-          })}
+          {posts?.map((p) => (
+            <Post key={p.id} id={p.id} post={p} urlMeta={p.urlMeta} />
+          ))}
           <div ref={$intersectionSentinel} className="intersection-sentinel" />
         </div>
 

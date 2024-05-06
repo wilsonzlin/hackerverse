@@ -24,6 +24,10 @@ import "./Analysis.css";
 const SIM_THRESHOLD_MIN = 0.8;
 const SIM_THRESHOLD_MAX = 1;
 
+const CHART_CONFIG = {
+  displayModeBar: false,
+};
+
 const queryColor = (query: string) => {
   const rng = seedrandom(query);
   return `hsl(${Math.floor(rng() * 360)}, 92%, 50%)`;
@@ -331,9 +335,11 @@ const SentimentSection = ({
         },
       })),
       xaxis: {
+        fixedrange: true, // Disable zoom and pan, which make touch scrolling difficult.
         showgrid: false,
       },
       yaxis: {
+        fixedrange: true, // Disable zoom and pan, which make touch scrolling difficult.
         showgrid: false,
         title: {
           text: "Comments",
@@ -361,6 +367,7 @@ const SentimentSection = ({
         <Plot
           data={chartData}
           layout={chartLayout}
+          config={CHART_CONFIG}
           onClickAnnotation={(a) => {
             const post = topPosts?.at(a.index);
             if (post) {
@@ -430,9 +437,11 @@ const PopularitySection = ({
         t: 14,
       },
       xaxis: {
+        fixedrange: true, // Disable zoom and pan, which make touch scrolling difficult.
         showgrid: false,
       },
       yaxis: {
+        fixedrange: true, // Disable zoom and pan, which make touch scrolling difficult.
         showgrid: false,
         title: {
           text: "Post votes",
@@ -450,7 +459,7 @@ const PopularitySection = ({
         <span>Popularity over time</span>
       </h2>
       <div ref={setChartContainerElem}>
-        <Plot data={chartData} layout={chartLayout} />
+        <Plot data={chartData} layout={chartLayout} config={CHART_CONFIG} />
       </div>
     </section>
   );

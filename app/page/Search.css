@@ -143,11 +143,23 @@
       display: none; /* Hide padding. */
     }
 
-    h1 {
-      font-size: 1.25rem;
-    }
-
     > .city-result {
+      padding: 0.25rem;
+
+      &:hover {
+        text-decoration: none;
+      }
+
+      > h1 {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+
+        > span {
+          font-size: 1.25rem;
+        }
+      }
+
       > p {
         display: flex;
         align-items: center;
@@ -160,23 +172,13 @@
       }
     }
 
-    > .result {
+    > .Post {
+      flex-shrink: 0;
+
       .color {
         height: 0.75rem;
         width: 0.75rem;
         border-radius: 100%;
-      }
-
-      .sup {
-        display: flex;
-        align-items: center;
-        gap: 0.375rem;
-      }
-
-      .site,
-      .sub {
-        color: #444;
-        font-size: 0.9rem;
       }
     }
   }
@@ -185,7 +187,7 @@
     .results {
       display: flex;
       flex-direction: column;
-      gap: 2rem;
+      gap: 1rem;
       min-height: 0;
       overflow: auto;
       padding: var(--card-padding);
@@ -209,10 +211,13 @@
       padding: var(--panel-margin-from-edge);
       width: 100%;
 
-      > .result {
+      > .city-result {
+        padding: var(--card-padding);
+      }
+
+      > * {
         flex: 1 1 0;
         min-width: 100%;
-        padding: var(--card-padding);
 
         background: var(--card-background);
         border-radius: var(--card-border-radius);

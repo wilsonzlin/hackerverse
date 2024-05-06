@@ -11,6 +11,7 @@ import { Ico } from "../component/Ico";
 import { Loading } from "../component/Loading";
 import { PageSwitcher } from "../component/PageSwitcher";
 import { PointMap, PointMapController } from "../component/PointMap";
+import { Post } from "../component/Post";
 import { RouteLink } from "../component/RouteLink";
 import { heatmapApiCall, searchApiCall } from "../util/api";
 import { City, Point } from "../util/const";
@@ -575,18 +576,23 @@ export const SearchPage = () => {
           {results?.map((r) =>
             "id" in r ? (
               mapExists(items[r.id], (item) => (
-                <Result key={r.id} id={r.id} item={item} />
+                <Post key={r.id} id={r.id} post={item} />
               ))
             ) : (
-              <div key={r.label} className="result city-result">
-                <RouteLink href={`/c/${encodeURIComponent(r.label)}`}>
-                  <h1>{r.label}</h1>
-                </RouteLink>
+              <RouteLink
+                key={r.label}
+                className="city-result"
+                href={`/c/${encodeURIComponent(r.label)}`}
+              >
+                <h1>
+                  <Ico i="groups" size={24} />
+                  <span>{r.label}</span>
+                </h1>
                 <p>
-                  <Ico i="open_in_new" size={24} />
+                  <Ico i="open_in_new" size={20} />
                   <span>Visit community</span>
                 </p>
-              </div>
+              </RouteLink>
             ),
           )}
         </div>
