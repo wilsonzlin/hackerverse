@@ -1,6 +1,6 @@
+from common.data import DatasetEmbModel
 from common.data import load_table
-from common.emb_data import DatasetEmbModel
-from common.emb_data import load_umap
+from common.data import load_umap
 from common.terrain import render_terrain
 from typing import Dict
 from typing import List
@@ -60,16 +60,33 @@ CITIES_LOD1 = [
     "Containerization",
     "DevOps",
     "DNS",
+    "Finance",
+    "Functional programming",
     "Git",
     "HTTPS",
     "ICANN",
     "IPv6",
+    "Literature",
+    "Marketing",
+    "Open source",
     "PostgreSQL",
     "Reddit",
     "Semiconductors",
     "SQLite",
+    "Tech careers",
     "Tor",
+    "User acquisition",
+    "UX design",
     "VPN",
+]
+
+CITIES_LOD2 = [
+    "Clojure",
+    "Company culture",
+    "COVID-19",
+    "Game development",
+    "Large language models",
+    "Linux",
 ]
 
 
@@ -150,6 +167,7 @@ model = DatasetEmbModel(DATASET)
 res["cities"] = [
     {"lod": 0, "cities": generate_cities(CITIES_LOD0)},
     {"lod": 1, "cities": generate_cities(CITIES_LOD1)},
+    {"lod": 2, "cities": generate_cities(CITIES_LOD2)},
 ]
 
 df["sampled"] = False
