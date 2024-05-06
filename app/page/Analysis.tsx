@@ -159,7 +159,10 @@ const Query = ({
       className="query"
       onSubmit={(e) => {
         e.preventDefault();
-        onChangeQuery(queryRaw.trim());
+        const q = queryRaw.trim();
+        if (q) {
+          onChangeQuery(q);
+        }
       }}
     >
       {error ? (
@@ -179,9 +182,12 @@ const Query = ({
         value={queryRaw}
         placeholder="Query"
         onChange={(e) => setQueryRaw(e.currentTarget.value)}
+        onBlur={(e) => e.currentTarget.form?.requestSubmit()}
       />
+      {/* Set tabIndex to -1 so that Tab jumps between queries instead of the minor buttons within queries. */}
       <button
         type="button"
+        tabIndex={-1}
         onClick={() => setShowTopPosts(!showTopPosts)}
         style={{
           opacity: showTopPosts ? 1 : 0.4,
@@ -192,6 +198,7 @@ const Query = ({
       <input
         className="sim"
         type="text"
+        tabIndex={-1}
         min={SIM_THRESHOLD_MIN}
         max={SIM_THRESHOLD_MAX}
         step={0.01}
@@ -209,8 +216,12 @@ const Query = ({
         }}
       />
       {loading && <Loading size={18} />}
-      <button type="button" onClick={onDelete}>
+      <button type="button" tabIndex={-1} onClick={onDelete}>
         <Ico i="delete" size={22} />
+      </button>
+      {/* We need at least one submit button, as a form with multiple text inputs doesn't submit on Enter otherwise. */}
+      <button type="submit" tabIndex={-1}>
+        <Ico i="query_stats" size={22} />
       </button>
     </form>
   );
@@ -387,7 +398,10 @@ const PopularitySection = ({
           },
         },
         name: query,
-        y: scores,
+        y: scores.reduce(
+          (cumsums, score) => [...cumsums, (cumsums.at(-1) ?? 0) + score],
+          Array<number>(),
+        ),
         marker: {
           color: queryColor(query),
         },
@@ -554,6 +568,7 @@ export const AnalysisPage = ({ params }: { params: string[] }) => {
             placeholder="Query"
             value={newQuery}
             onChange={(e) => setNewQuery(e.currentTarget.value)}
+            onBlur={(e) => e.currentTarget.form?.requestSubmit()}
           />
         </form>
       </div>

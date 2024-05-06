@@ -41,6 +41,7 @@ const EXAMPLE_QUERIES = [
     "lessons as a solo founder",
     "marketing for developers",
     "open source business model",
+    "self bootstrapping",
     "startup postmortems",
   ],
   // History.
@@ -60,7 +61,13 @@ const EXAMPLE_QUERIES = [
     "what makes good music",
   ],
   // Random.
-  ["pixel art", "cool things with css", "cool terminal things", "linus rants"],
+  [
+    "concept art",
+    "cool terminal things",
+    "cool things with css",
+    "linus rants",
+    "pixel art",
+  ],
 ];
 
 type QueryResults = Array<{
@@ -159,7 +166,7 @@ const QueryForm = ({
             className="error"
             onClick={() => alert(queryReq.error)}
           >
-            <Ico i="error" />
+            <Ico i="error" size={20} />
           </button>
         )}
       </div>

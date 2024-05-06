@@ -198,7 +198,7 @@ export const CityPage = ({ params: [query] }: { params: string[] }) => {
             router.change(`/c/${encodeURIComponent(queryRaw.trim())}`);
           }}
         >
-          <button onClick={() => setShowPanelOnMobile(true)}>
+          <button type="button" onClick={() => setShowPanelOnMobile(true)}>
             <Ico i={onMobile ? "menu" : "groups"} size={24} />
           </button>
           <input
