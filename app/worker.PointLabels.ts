@@ -143,7 +143,9 @@ const createPointLabelsPicker = ({
         );
         for (const { lod, cities } of vCities.parseRoot(raw)) {
           for (const city of cities) {
-            lodTrees[lod].tree.insert(city);
+            for (let l = lod; l < lodTrees.length; l++) {
+              lodTrees[l].tree.insert(city);
+            }
             for (let z = lod * ZOOM_PER_LOD; z < labelledPoints.length; z++) {
               const lp = labelledPoints[z];
               lp.cities.push(city);

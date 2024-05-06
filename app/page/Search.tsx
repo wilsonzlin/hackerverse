@@ -14,7 +14,7 @@ import { PointMap, PointMapController } from "../component/PointMap";
 import { RouteLink } from "../component/RouteLink";
 import { heatmapApiCall, searchApiCall } from "../util/api";
 import { City, Point } from "../util/const";
-import { useMeasure } from "../util/dom";
+import { useBrowserDimensions, useMeasure } from "../util/dom";
 import { usePromise } from "../util/fetch";
 import { EdgePost, useEdgePosts } from "../util/item";
 import { resultPointColor } from "../util/map";
@@ -72,10 +72,12 @@ type QueryResults = Array<{
 }>;
 
 const QueryForm = ({
+  onChangeInputFocused,
   onChangeQuery,
   onResults,
   query,
 }: {
+  onChangeInputFocused: (focused: boolean) => void;
   onChangeQuery: (query: string) => void;
   onResults: (results: QueryResults | undefined) => void;
   query: string;
@@ -120,9 +122,11 @@ const QueryForm = ({
       <div className="main">
         <input
           className="query"
+          onBlur={() => onChangeInputFocused(false)}
+          onChange={(e) => setQueryRaw(e.currentTarget.value)}
+          onFocus={() => onChangeInputFocused(true)}
           placeholder="Search or ask"
           value={queryRaw}
-          onChange={(e) => setQueryRaw(e.currentTarget.value)}
         />
         <button
           type="button"
@@ -361,6 +365,8 @@ const Result = ({ id, item }: { id: number; item: EdgePost }) => {
 };
 
 export const SearchPage = () => {
+  const onMobile = useBrowserDimensions().width < 800;
+
   const [$root, setRootElem] = useState<HTMLDivElement | null>(null);
   const rootDim = useMeasure($root);
 
@@ -376,6 +382,7 @@ export const SearchPage = () => {
   );
 
   const [query, setQuery] = useState("");
+  const [queryInputFocused, setQueryInputFocused] = useState(false);
 
   const generateExampleQueries = () =>
     shuffleArray(EXAMPLE_QUERIES.map((set) => randomPick(set)));
@@ -500,6 +507,7 @@ export const SearchPage = () => {
         <div className="query-container">
           <QueryForm
             query={query}
+            onChangeInputFocused={setQueryInputFocused}
             onChangeQuery={(query) => {
               setQuery(query);
               setNearbyQuery(undefined);
@@ -517,19 +525,23 @@ export const SearchPage = () => {
             }}
           />
 
-          {!query && !nearbyQuery && (
+          {!query && !nearbyQuery && (!onMobile || queryInputFocused) && (
             <div className="example-queries">
               <div className="header">
                 <h2>Example queries</h2>
                 <button
-                  onClick={() => setExampleQueries(generateExampleQueries())}
+                  onMouseDown={(e) => {
+                    // Don't lose focus on input, which dismisses these example queries on mobile.
+                    e.preventDefault();
+                    setExampleQueries(generateExampleQueries());
+                  }}
                 >
                   <Ico i="refresh" size={20} />
                 </button>
               </div>
               <div className="list">
                 {exampleQueries.map((query, i) => (
-                  <button key={query} onClick={() => setQuery(query)}>
+                  <button key={query} onMouseDown={() => setQuery(query)}>
                     {query}
                   </button>
                 ))}
@@ -559,7 +571,7 @@ export const SearchPage = () => {
                 <Result key={r.id} id={r.id} item={item} />
               ))
             ) : (
-              <div key={r.label} className="city-result">
+              <div key={r.label} className="result city-result">
                 <RouteLink href={`/c/${encodeURIComponent(r.label)}`}>
                   <h1>{r.label}</h1>
                 </RouteLink>

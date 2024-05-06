@@ -133,7 +133,9 @@
   }
 
   @media screen and (max-width: 799px) {
-    margin-right: 4.5rem; /* Leave room for PageSelector. */
+    .query-container {
+      margin-right: 4.5rem; /* Leave room for PageSelector. */
+    }
   }
 
   .results {

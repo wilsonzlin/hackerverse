@@ -12,6 +12,7 @@
   }
 
   > .menu {
+    z-index: 1;
     position: absolute;
     top: calc(100% + 0.5rem);
     right: -0.25rem; /* Adjust by a tiny amount so that menu option icons line up with menu toggle icon. */

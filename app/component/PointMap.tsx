@@ -294,7 +294,7 @@ export const PointMap = ({
             Math.hypot(
               ptr.start.clientX - ptr.cur.clientX,
               ptr.start.clientY - ptr.cur.clientY,
-            ) < 10
+            ) < 24
           ) {
             // Did not move much, so it's a click.
             const pt = {
