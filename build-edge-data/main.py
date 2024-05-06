@@ -33,6 +33,17 @@ def load_posts():
     return df.to_dict("index")
 
 
+def load_url_metas():
+    print("Loading URL metas")
+    df = load_table("url_metas").rename(columns={"id": "url_id"})
+    df["timestamp"] = df["timestamp"].astype("int64")
+    df["timestamp_modified"] = df["timestamp_modified"].astype("int64")
+    df_urls = load_table("urls", columns=["id", "url"]).rename(columns={"id": "url_id"})
+    df = df.merge(df_urls, on="url_id", how="inner").drop(columns=["url_id"])
+    df = df.set_index("url")
+    return df.to_dict("index")
+
+
 def load_map_data(dataset: str):
     print(f"Loading map data for {dataset}")
     with open(f"/hndr-data/map-{dataset}.msgpack", "rb") as f:
@@ -51,6 +62,7 @@ out = {
         for dataset in ["toppost"]
     },
     "posts": load_posts(),
+    "url_metas": load_url_metas(),
 }
 print("Packing")
 with open("/hndr-data/edge.msgpack", "wb") as f:

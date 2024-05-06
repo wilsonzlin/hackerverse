@@ -1,19 +1,17 @@
-import { VObjectMap } from "@wzlin/valid";
 import classNames from "@xtjs/lib/classNames";
 import defined from "@xtjs/lib/defined";
 import mapExists from "@xtjs/lib/mapExists";
 import mapNonEmpty from "@xtjs/lib/mapNonEmpty";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { UrlMeta, vUrlMeta } from "../../common/const";
 import { Ico } from "../component/Ico";
 import { Loading } from "../component/Loading";
 import { PageSwitcher } from "../component/PageSwitcher";
 import { Post } from "../component/Post";
 import { RouteLink } from "../component/RouteLink";
-import { apiCall, postsApiCall, topUsersApiCall } from "../util/api";
+import { postsApiCall, topUsersApiCall } from "../util/api";
 import { useBrowserDimensions } from "../util/dom";
 import { usePromise } from "../util/fetch";
-import { useEdgePosts } from "../util/item";
+import { useEdgePosts, useEdgeUrlMetas } from "../util/item";
 import { router } from "../util/router";
 import "./City.css";
 
@@ -120,7 +118,11 @@ export const CityPage = ({ params: [query] }: { params: string[] }) => {
   );
   // Use edge post data as it has the normalized (not raw original) URL, required for `urlMetasReq`.
   const postMetas = useEdgePosts(postsRaw.map((i) => i.id) ?? []);
-  const urlMetasReq = usePromise<Record<string, UrlMeta>>();
+  const urlMetas = useEdgeUrlMetas(
+    Object.values(postMetas)
+      .map((p) => p.url)
+      .filter((u) => u),
+  );
   const posts = useMemo(
     () =>
       postsRaw
@@ -128,20 +130,20 @@ export const CityPage = ({ params: [query] }: { params: string[] }) => {
           mapExists(postMetas[id], (item) =>
             mapNonEmpty(item.title ?? "", () => ({
               ...item,
-              urlMeta: urlMetasReq.data?.[item.url],
+              urlMeta: urlMetas[item.url],
               id,
               sim,
             })),
           ),
         )
         .filter(defined),
-    [postsRaw, postMetas, urlMetasReq.data],
+    [postsRaw, postMetas, urlMetas],
   );
   useEffect(() => {
     const postsLoaded = postsReq.data?.length;
     canLoadMore.current =
-      postsLoaded != undefined && !!urlMetasReq.data && loadLimit < postsLoaded;
-  }, [urlMetasReq.data]);
+      postsLoaded != undefined && !!urlMetas && loadLimit < postsLoaded;
+  }, [urlMetas]);
 
   const POSTS_REQ_LIMIT = 500;
   useEffect(() => {
@@ -157,22 +159,6 @@ export const CityPage = ({ params: [query] }: { params: string[] }) => {
       });
     });
   }, [query, orderBy]);
-  useEffect(() => {
-    urlMetasReq.set(async (signal) => {
-      const urls = Object.values(postMetas)
-        .map((p) => p.url)
-        .filter((u) => u);
-      if (!urls?.length) {
-        return;
-      }
-      return await apiCall(
-        signal,
-        "urlMetas",
-        { urls },
-        new VObjectMap(vUrlMeta),
-      );
-    });
-  }, [postMetas]);
 
   return (
     <div className={classNames("City", onMobile && "mobile")}>

@@ -74,10 +74,22 @@ struct Post {
   found_in_archive: bool, // False if NULL.
 }
 
+#[derive(Clone, Deserialize, Serialize)]
+struct UrlMeta {
+  description: String,
+  image_url: String,
+  lang: String,
+  snippet: String,
+  timestamp: i64,
+  timestamp_modified: i64,
+  title: String,
+}
+
 #[derive(Default, Deserialize)]
 struct Data {
   maps: AHashMap<String, Map>,
   posts: AHashMap<u32, Post>,
+  url_metas: AHashMap<String, UrlMeta>,
 }
 
 struct Ctx {
@@ -204,6 +216,18 @@ async fn get_post_titles(
   Ok(MsgPack(out))
 }
 
+async fn get_url_metas(
+  State(ctx): State<Arc<Ctx>>,
+  MsgPack(urls): MsgPack<Vec<String>>,
+) -> Result<MsgPack<Vec<Option<UrlMeta>>>, axum::http::StatusCode> {
+  let data = ctx.data.read();
+  let mut out = Vec::new();
+  for url in urls {
+    out.push(data.url_metas.get(&url).cloned());
+  }
+  Ok(MsgPack(out))
+}
+
 #[tokio::main]
 async fn main() {
   set_up_panic_hook();
@@ -275,6 +299,7 @@ async fn main() {
     .route("/post-title-lengths", post(get_post_title_lengths))
     .route("/post-titles", post(get_post_titles))
     .route("/post/:id", get(get_post))
+    .route("/url-metas", post(get_url_metas))
     .layer(cors)
     .with_state(ctx.clone());
 

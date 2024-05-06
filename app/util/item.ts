@@ -1,8 +1,10 @@
-import { decode } from "@msgpack/msgpack";
+import { decode, encode } from "@msgpack/msgpack";
 import { Item, fetchHnItem } from "@wzlin/crawler-toolkit-hn";
 import {
+  VArray,
   VBoolean,
   VInteger,
+  VOptional,
   VString,
   VStruct,
   VUnixSecTimestamp,
@@ -100,5 +102,63 @@ export const useHnItems = (ids: number[]) => {
       );
     })();
   }, [ids]);
+  return items;
+};
+
+const vEdgeUrlMeta = new VStruct({
+  description: new VString(),
+  image_url: new VString(),
+  lang: new VString(),
+  snippet: new VString(),
+  timestamp: new VUnixSecTimestamp(),
+  timestamp_modified: new VUnixSecTimestamp(),
+  title: new VString(),
+});
+export type EdgeUrlMeta = Valid<typeof vEdgeUrlMeta>;
+
+export const fetchEdgeUrlMetas = async (
+  signal: AbortSignal | undefined,
+  edge: string,
+  normalizedUrls: string[],
+) => {
+  const res = await fetch(`https://${edge}.edge-hndr.wilsonl.in/url-metas`, {
+    signal,
+    method: "POST",
+    headers: {
+      "Content-Type": "application/msgpack",
+    },
+    body: encode(normalizedUrls),
+  });
+  if (!res.ok) {
+    const raw = await res.text();
+    throw new Error(
+      `Failed to fetch URL metas from edge with ${res.status}: ${raw}`,
+    );
+  }
+  const raw = await res.arrayBuffer();
+  return new VArray(new VOptional(vEdgeUrlMeta)).parseRoot(decode(raw));
+};
+
+export const useEdgeUrlMetas = (normalizedUrls: string[]) => {
+  const edge = useContext(EdgeContext);
+  const fetchStarted = useRef(new Set<string>());
+  const [items, setItems] = useState<Record<string, EdgeUrlMeta>>({});
+  useEffect(() => {
+    (async () => {
+      const pending = Array<string>();
+      for (const url of normalizedUrls) {
+        if (!fetchStarted.current.has(url)) {
+          fetchStarted.current.add(url);
+          pending.push(url);
+        }
+      }
+      const res = await fetchEdgeUrlMetas(undefined, edge, pending);
+      for (const [i, urlMeta] of res.entries()) {
+        if (urlMeta) {
+          setItems((items) => ({ ...items, [pending[i]]: urlMeta }));
+        }
+      }
+    })();
+  }, [normalizedUrls]);
   return items;
 };

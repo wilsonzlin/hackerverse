@@ -13,7 +13,6 @@ import { endpointHeatmap } from "./endpoint/heatmap";
 import { endpointPosts } from "./endpoint/posts";
 import { endpointSearch } from "./endpoint/search";
 import { endpointTopUsers } from "./endpoint/topUsers";
-import { endpointUrlMetas } from "./endpoint/urlMetas";
 
 const getPemEnv = (name: string) =>
   uint8ArrayToBuffer(
@@ -32,7 +31,6 @@ const ENDPOINTS: Record<string, Endpoint> = {
   posts: endpointPosts,
   search: endpointSearch,
   topUsers: endpointTopUsers,
-  urlMetas: endpointUrlMetas,
 };
 
 createSecureServer(
