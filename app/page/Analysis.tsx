@@ -13,7 +13,7 @@ import { PageSwitcher } from "../component/PageSwitcher";
 import {
   analyzePopularityApiCall,
   analyzeSentimentApiCall,
-  topPostsApiCall,
+  postsApiCall,
 } from "../util/api";
 import { useMeasure } from "../util/dom";
 import { usePromise } from "../util/fetch";
@@ -134,10 +134,11 @@ const Query = ({
       if (!query) {
         return;
       }
-      return await topPostsApiCall(signal, {
+      return await postsApiCall(signal, {
         limit: 8,
         query,
         simMinHundredths,
+        orderBy: "votes",
       });
     });
   }, [query, simMinHundredths]);

@@ -12,6 +12,10 @@
     opacity: 0;
   }
 
+  .err {
+    color: red;
+  }
+
   .query-form-container {
     flex-shrink: 0;
     padding: 1rem;
@@ -122,6 +126,7 @@
       border: 1px solid #ddd;
       border-radius: 0.25rem;
       padding: 0.5rem;
+      font-size: 0.875rem;
     }
   }
 
@@ -130,12 +135,24 @@
     flex-grow: 1;
     overflow: auto;
 
-    padding: 1.75rem 1rem;
+    padding: 1rem 1rem 2rem 1rem;
 
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 1.75rem;
+
+    > .controls {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.9rem;
+      width: 100%;
+
+      > p {
+        color: #666;
+      }
+    }
 
     > .post {
       flex-shrink: 0;

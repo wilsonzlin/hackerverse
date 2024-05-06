@@ -102,17 +102,18 @@ export const searchApiCall = async (
     ),
   );
 
-export const topPostsApiCall = async (
+export const postsApiCall = async (
   signal: AbortSignal,
   req: {
     query: string;
     limit: number;
     simMinHundredths: number;
+    orderBy: "votes" | "ts";
   },
 ) =>
   apiCall(
     signal,
-    "topPosts",
+    "posts",
     req,
     new VArray(
       new VStruct({

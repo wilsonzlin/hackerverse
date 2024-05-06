@@ -2,6 +2,7 @@ import {
   VFiniteNumber,
   VHumanString,
   VInteger,
+  VMember,
   VStruct,
   Valid,
 } from "@wzlin/valid";
@@ -10,13 +11,19 @@ import { QueryItemsOutput, makeQuery } from "../query";
 
 const input = new VStruct({
   query: new VHumanString(1, 512),
-  limit: new VInteger(1, 20),
+  limit: new VInteger(1, 500),
   simMinHundredths: new VInteger(80, 100),
+  orderBy: new VMember(["votes", "ts"] as const),
 });
 
-export const endpointTopPosts = {
+export const endpointPosts = {
   input,
-  handler: async ({ query, limit, simMinHundredths }: Valid<typeof input>) => {
+  handler: async ({
+    query,
+    limit,
+    simMinHundredths,
+    orderBy,
+  }: Valid<typeof input>) => {
     const simThreshold = simMinHundredths / 100;
     const res = await makeQuery({
       dataset: "post",
@@ -30,7 +37,7 @@ export const endpointTopPosts = {
             cols: ["id", "sim"],
             limit,
             order_asc: false,
-            order_by: "votes",
+            order_by: orderBy,
           },
         },
       ],

@@ -49,7 +49,8 @@ select {
 }
 
 button,
-input {
+input,
+select {
   background: transparent;
   border-radius: 0;
   border: 0;
