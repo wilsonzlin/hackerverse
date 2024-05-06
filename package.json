@@ -7,12 +7,14 @@
   },
   "author": "Wilson Lin <npm@wilsonl.in>",
   "scripts": {
-    "build-app": "esbuild --bundle --legal-comments=none --loader:.gif=dataurl --minify --outdir=app/dist app/index.tsx app/worker.PointLabels.ts",
-    "dev-app": "esbuild --bundle --loader:.gif=dataurl --outdir=app/dist --servedir=app --serve-fallback=app/index.html --watch app/index.tsx app/worker.PointLabels.ts",
+    "esbuild-app": "esbuild --bundle --legal-comments=none --loader:.gif=dataurl --outdir=app/dist app/index.tsx app/worker.PointLabels.ts",
+    "build-app": "npm run esbuild-app -- --minify",
+    "dev-app": "npm run esbuild-app -- --servedir=app --serve-fallback=app/index.html --watch",
     "test": "jest"
   },
   "dependencies": {
     "@aws-sdk/client-ec2": "^3.554.0",
+    "@aws-sdk/client-s3": "^3.569.0",
     "@msgpack/msgpack": "^2",
     "@msgpipe/nodejs": "^0.1.0",
     "@petamoriken/float16": "^3.8.6",

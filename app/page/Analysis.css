@@ -47,7 +47,11 @@
   .queries {
     display: grid;
     gap: 1rem;
-    grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
+    grid-template-columns: repeat(
+      auto-fill,
+      /* Be careful when adjusting this on the mobile layout; ensure the PageSwitcher is not cut off. */
+        minmax(18rem, 1fr)
+    );
 
     margin-right: 4rem; /* Make room for PageSwitcher. */
 

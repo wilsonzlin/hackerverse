@@ -441,6 +441,12 @@ export const SearchPage = () => {
   const items = useEdgePosts(itemIds);
   const results = nearbyResults ?? queryResults;
 
+  const handleQueryChange = (query: string) => {
+    setQuery(query);
+    setNearbyQuery(undefined);
+    setNearbyResults(undefined);
+  };
+
   return (
     <div ref={setRootElem} className="SearchPage">
       <PointMap
@@ -516,11 +522,7 @@ export const SearchPage = () => {
           <QueryForm
             query={query}
             onChangeInputFocused={setQueryInputFocused}
-            onChangeQuery={(query) => {
-              setQuery(query);
-              setNearbyQuery(undefined);
-              setNearbyResults(undefined);
-            }}
+            onChangeQuery={handleQueryChange}
             onResults={(results) => {
               setQueryResults(results);
               if (!results) {
@@ -533,7 +535,7 @@ export const SearchPage = () => {
             }}
           />
 
-          {!query && !nearbyQuery && (!onMobile || queryInputFocused) && (
+          {!query && (onMobile ? queryInputFocused : !nearbyQuery) && (
             <div className="example-queries">
               <div className="header">
                 <h2>Example queries</h2>
@@ -548,8 +550,11 @@ export const SearchPage = () => {
                 </button>
               </div>
               <div className="list">
-                {exampleQueries.map((query, i) => (
-                  <button key={query} onMouseDown={() => setQuery(query)}>
+                {exampleQueries.map((query) => (
+                  <button
+                    key={query}
+                    onMouseDown={() => handleQueryChange(query)}
+                  >
                     {query}
                   </button>
                 ))}

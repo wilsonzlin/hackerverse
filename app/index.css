@@ -54,6 +54,7 @@ select {
   background: transparent;
   border-radius: 0;
   border: 0;
+  color: inherit; /* iOS Safari has a different color for buttons. */
   font: inherit;
   margin: 0;
   min-width: 0;
