@@ -6,10 +6,12 @@ import "./Post.css";
 
 export const Post = ({
   id,
+  pointColor,
   post: p,
   urlMeta,
 }: {
   id: number;
+  pointColor?: string;
   post: EdgePost;
   urlMeta?: UrlMeta;
 }) => {
@@ -32,7 +34,12 @@ export const Post = ({
             src={`https://${domain}/favicon.ico`}
           />
           <div className="main">
-            <div className="site">{domain}</div>
+            <div className="sup">
+              {pointColor && (
+                <div className="point" style={{ background: pointColor }} />
+              )}
+              <div className="site">{domain}</div>
+            </div>
             <h2>{p.title}</h2>
             <div className="sub">
               {p.score} points by {p.author}{" "}

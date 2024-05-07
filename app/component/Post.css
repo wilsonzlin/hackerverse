@@ -35,9 +35,21 @@
 
         word-wrap: break-word;
 
-        > .site {
-          font-size: 0.9rem;
-          color: #555;
+        > .sup {
+          display: flex;
+          align-items: center;
+          gap: 0.375rem;
+
+          > .point {
+            height: 0.75rem;
+            width: 0.75rem;
+            border-radius: 100%;
+          }
+
+          > .site {
+            font-size: 0.9rem;
+            color: #555;
+          }
         }
 
         > h2 {

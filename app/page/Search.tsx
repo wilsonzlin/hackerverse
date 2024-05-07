@@ -60,6 +60,7 @@ const EXAMPLE_QUERIES = [
     "communicating well",
     "taking good photos",
     "what makes good music",
+    "exposing yourself to difficulties",
   ],
   // Random.
   [
@@ -592,6 +593,7 @@ export const SearchPage = () => {
                 <Post
                   key={r.id}
                   id={r.id}
+                  pointColor={resultPointColor(r.id)}
                   post={item}
                   urlMeta={urlMetas[item.url]}
                 />
