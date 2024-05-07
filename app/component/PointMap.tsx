@@ -232,6 +232,9 @@ export const PointMap = ({
         ref={$canvas}
         className="canvas"
         onPointerDown={(e) => {
+          if (e.pointerType == "mouse" && e.button != 0) {
+            return;
+          }
           e.currentTarget.setPointerCapture(e.pointerId);
           // Weirdly, duplicate keys can happen (either pointer can have multiple pointerdown events, or pointerId values can be reused), so don't assert it doesn't exist.
           ptrs.set(e.pointerId, {
