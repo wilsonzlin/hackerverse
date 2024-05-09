@@ -19,6 +19,7 @@ import { useBrowserDimensions, useMeasure } from "../util/dom";
 import { usePromise } from "../util/fetch";
 import { EdgePost, useEdgePosts, useEdgeUrlMetas } from "../util/item";
 import { resultPointColor } from "../util/map";
+import { router } from "../util/router";
 import "./Search.css";
 
 const EXAMPLE_QUERIES = [
@@ -374,7 +375,7 @@ const Result = ({ id, item }: { id: number; item: EdgePost }) => {
   );
 };
 
-export const SearchPage = () => {
+export const SearchPage = ({ params: [query = ""] }: { params: string[] }) => {
   const onMobile = useBrowserDimensions().width < 800;
 
   const [$root, setRootElem] = useState<HTMLDivElement | null>(null);
@@ -391,7 +392,6 @@ export const SearchPage = () => {
     [heatmapQueries],
   );
 
-  const [query, setQuery] = useState("");
   const [queryInputFocused, setQueryInputFocused] = useState(false);
 
   const generateExampleQueries = () =>
@@ -452,7 +452,7 @@ export const SearchPage = () => {
   const urlMetas = useEdgeUrlMetas(postUrls);
 
   const handleQueryChange = (query: string) => {
-    setQuery(query);
+    router.change(`/s/${encodeURIComponent(query)}`);
     setNearbyQuery(undefined);
     setNearbyResults(undefined);
   };

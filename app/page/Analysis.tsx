@@ -139,6 +139,7 @@ const Query = ({
         return;
       }
       return await itemsApiCall(signal, {
+        dataset: "post",
         limit: 8,
         query,
         simMinHundredths,

@@ -22,6 +22,7 @@ export const App = () => {
     const Page =
       {
         "": SearchPage,
+        s: SearchPage,
         c: CityPage,
         a: AnalysisPage,
       }[pfx] ?? NotFoundPage;
