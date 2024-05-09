@@ -174,11 +174,13 @@
             font-size: 0.95rem;
 
             white-space: pre-wrap;
+            word-wrap: break-word;
             user-select: text;
             line-height: 1.5;
 
-            p {
-              margin-top: 1rem;
+            p,
+            pre {
+              margin: 1rem 0 0 0;
             }
           }
         }

@@ -196,7 +196,7 @@ const processItem = async (item: Item) => {
     const topComments = item.kids?.slice() ?? [];
     const MAX_LEN = 1024 * 64; // 64 KiB.
     while (topComments.length && embInput.length < MAX_LEN) {
-      // Embelish with top-level top comments (`item.kids` are ranked already). This is useful if the page isn't primarily text, could not be fetched, etc.
+      // Embellish with top-level top comments (`item.kids` are ranked already). This is useful if the page isn't primarily text, could not be fetched, etc.
       const i = await fetchItem(topComments.shift()!);
       // We don't want to include negative comments as part of the post's text representation.
       if (!i || i.type !== "comment" || i.dead || i.deleted || i.score! < 0) {

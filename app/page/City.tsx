@@ -372,7 +372,7 @@ export const CityPage = ({
 }) => {
   const go = (q: string, m: string, o: string) =>
     router.change(
-      `/c/${encodeURIComponent(q)}/${m}/${m == "comment" ? "new" : o}`,
+      `/c/${encodeURIComponent(q)}/${m}/${m == "comments" ? "new" : o}`,
     );
 
   const [simThreshold, setSimThreshold] = useState(0.8);
