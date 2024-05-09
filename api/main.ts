@@ -10,7 +10,7 @@ import { lg } from "../common/res";
 import { endpointAnalyzePopularity } from "./endpoint/analyzePopularity";
 import { endpointAnalyzeSentiment } from "./endpoint/analyzeSentiment";
 import { endpointHeatmap } from "./endpoint/heatmap";
-import { endpointPosts } from "./endpoint/posts";
+import { endpointItems } from "./endpoint/items";
 import { endpointSearch } from "./endpoint/search";
 import { endpointTopUsers } from "./endpoint/topUsers";
 
@@ -28,7 +28,7 @@ const ENDPOINTS: Record<string, Endpoint> = {
   analyzePopularity: endpointAnalyzePopularity,
   analyzeSentiment: endpointAnalyzeSentiment,
   heatmap: endpointHeatmap,
-  posts: endpointPosts,
+  items: endpointItems,
   search: endpointSearch,
   topUsers: endpointTopUsers,
 };

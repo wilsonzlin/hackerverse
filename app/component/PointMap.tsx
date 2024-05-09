@@ -363,6 +363,12 @@ export const PointMap = ({
 
         <div className="info">
           <p>
+            Made by{" "}
+            <a href="https://wilsonl.in/blog/hackerverse" target="_blank">
+              Wilson Lin
+            </a>
+          </p>
+          <p>
             ({vpCtrXPt.toFixed(2)}, {vpCtrYPt.toFixed(2)})
           </p>
           <p>LOD: {lod == (meta?.lodLevels ?? 0) - 1 ? "max" : lod}</p>

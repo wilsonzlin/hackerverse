@@ -44,6 +44,7 @@ const EXAMPLE_QUERIES = [
     "open source business model",
     "self bootstrapping",
     "startup postmortems",
+    "The Law of Accelerating Returns",
   ],
   // History.
   [

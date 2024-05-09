@@ -1,6 +1,5 @@
 import { DateTime } from "luxon";
-import { UrlMeta } from "../../common/const";
-import { EdgePost } from "../util/item";
+import { EdgePost, EdgeUrlMeta } from "../util/item";
 import { ImageOnLoad } from "./ImageOnLoad";
 import "./Post.css";
 
@@ -13,13 +12,13 @@ export const Post = ({
   id: number;
   pointColor?: string;
   post: EdgePost;
-  urlMeta?: UrlMeta;
+  urlMeta?: EdgeUrlMeta;
 }) => {
   const url = p.url || `news.ycombinator.com/item?id=${id}`;
   const proto = p.proto || "https:";
   const domain = url.split("/")[0];
   const snippet = (urlMeta?.description || urlMeta?.snippet)?.trim();
-  const imgUrl = urlMeta?.imageUrl;
+  const imgUrl = urlMeta?.image_url;
   return (
     <a
       className="Post"

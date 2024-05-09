@@ -102,9 +102,10 @@ export const searchApiCall = async (
     ),
   );
 
-export const postsApiCall = async (
+export const itemsApiCall = async (
   signal: AbortSignal,
   req: {
+    dataset: "comment" | "post";
     query: string;
     limit: number;
     simMinHundredths: number;
@@ -113,7 +114,7 @@ export const postsApiCall = async (
 ) =>
   apiCall(
     signal,
-    "posts",
+    "items",
     req,
     new VArray(
       new VStruct({

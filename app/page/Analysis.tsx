@@ -13,7 +13,7 @@ import { PageSwitcher } from "../component/PageSwitcher";
 import {
   analyzePopularityApiCall,
   analyzeSentimentApiCall,
-  postsApiCall,
+  itemsApiCall,
 } from "../util/api";
 import { useMeasure } from "../util/dom";
 import { usePromise } from "../util/fetch";
@@ -138,7 +138,7 @@ const Query = ({
       if (!query) {
         return;
       }
-      return await postsApiCall(signal, {
+      return await itemsApiCall(signal, {
         limit: 8,
         query,
         simMinHundredths,

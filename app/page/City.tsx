@@ -1,17 +1,31 @@
+import { Item } from "@wzlin/crawler-toolkit-hn";
 import classNames from "@xtjs/lib/classNames";
 import defined from "@xtjs/lib/defined";
 import mapExists from "@xtjs/lib/mapExists";
 import mapNonEmpty from "@xtjs/lib/mapNonEmpty";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { DateTime } from "luxon";
+import {
+  MutableRefObject,
+  ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Ico } from "../component/Ico";
 import { Loading } from "../component/Loading";
 import { PageSwitcher } from "../component/PageSwitcher";
 import { Post } from "../component/Post";
 import { RouteLink } from "../component/RouteLink";
-import { postsApiCall, topUsersApiCall } from "../util/api";
+import { itemsApiCall, topUsersApiCall } from "../util/api";
 import { useBrowserDimensions } from "../util/dom";
 import { usePromise } from "../util/fetch";
-import { useEdgePosts, useEdgeUrlMetas } from "../util/item";
+import {
+  useEdgePosts,
+  useEdgeUrlMetas,
+  useHnCommentPosts,
+  useHnItems,
+} from "../util/item";
 import { router } from "../util/router";
 import "./City.css";
 
@@ -81,11 +95,20 @@ const TopUsersSection = ({
   );
 };
 
-export const CityPage = ({ params: [query] }: { params: string[] }) => {
-  const simThreshold = 0.8;
-
+const InfiniteScroll = ({
+  canLoadMore,
+  onLoadMore,
+  children,
+  error,
+  loading,
+}: {
+  canLoadMore: MutableRefObject<boolean>;
+  onLoadMore: () => void;
+  children: ReactNode | ReactNode[];
+  error: string | undefined;
+  loading: boolean;
+}) => {
   const $intersectionSentinel = useRef<HTMLDivElement>(null);
-  const canLoadMore = useRef(false);
   useEffect(() => {
     if (!$intersectionSentinel.current) {
       return;
@@ -95,20 +118,187 @@ export const CityPage = ({ params: [query] }: { params: string[] }) => {
         return;
       }
       canLoadMore.current = false;
-      setLoadLimit((l) => l + 20);
+      onLoadMore();
     });
     observer.observe($intersectionSentinel.current);
     return () => observer.disconnect();
   }, []);
 
-  const [queryRaw, setQueryRaw] = useState("");
-  useEffect(() => setQueryRaw(query), [query]);
+  return (
+    <div className="items">
+      {loading && <Loading />}
+      {error && <p className="err">{error}</p>}
+      {children}
+      <div ref={$intersectionSentinel} className="intersection-sentinel" />
+    </div>
+  );
+};
 
-  const [orderBy, setOrderBy] = useState<"votes" | "ts">("votes");
+const CommentNode = ({
+  comment: c,
+  parent,
+  post,
+}: {
+  comment: Item;
+  parent: Item | undefined;
+  post: Item | undefined;
+}) => {
+  if (!c || !c.text || !c.time || !c.by) {
+    return null;
+  }
 
-  const onMobile = useBrowserDimensions().width <= 1024;
-  const [showPanelOnMobile, setShowPanelOnMobile] = useState(false);
-  const showPanel = showPanelOnMobile || !onMobile;
+  return (
+    <div className="comment">
+      <p className="sup">
+        By{" "}
+        <a
+          href={`https://news.ycombinator.com/user?id=${encodeURIComponent(c.by)}`}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {c.by}
+        </a>{" "}
+        <a
+          href={`https://news.ycombinator.com/item?id=${c.id}`}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {DateTime.fromJSDate(c.time).toRelative()}
+        </a>
+        {post && post.title && (
+          <>
+            {" "}
+            on{" "}
+            <a
+              href={`https://news.ycombinator.com/item?id=${post.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              dangerouslySetInnerHTML={{ __html: post.title }}
+            />
+          </>
+        )}
+      </p>
+
+      {parent && (
+        <CommentNode comment={parent} parent={undefined} post={undefined} />
+      )}
+
+      {/* TODO Sanitize, just in case. */}
+      <p className="text" dangerouslySetInnerHTML={{ __html: c.text }} />
+    </div>
+  );
+};
+
+const Comments = ({
+  query,
+  simThreshold,
+}: {
+  query: string;
+  simThreshold: number;
+}) => {
+  const canLoadMore = useRef(false);
+
+  const commentsReq = usePromise<Array<{ id: number; sim: number }>>();
+  const [loadLimit, setLoadLimit] = useState(20);
+  const commentsRaw = useMemo(
+    () => commentsReq.data?.slice(0, loadLimit) ?? [],
+    [commentsReq.data, loadLimit],
+  );
+  const items = useHnItems(commentsRaw.flatMap((i) => i.id) ?? []);
+  const parents = useHnItems(
+    Object.values(items)
+      .map((i) => i?.parent)
+      .filter(defined) ?? [],
+  );
+  const kids = useHnItems(
+    Object.values(items)
+      .flatMap((i) => i?.kids)
+      .filter(defined) ?? [],
+  );
+  const posts = useHnCommentPosts(
+    Object.values(items)
+      .map((i) => i?.id)
+      .filter(defined) ?? [],
+  );
+  const roots = useMemo(() => {
+    const ordered = commentsRaw.flatMap((c) => c.id);
+    const roots = new Set(ordered);
+    for (const c of Object.values(items).filter(defined)) {
+      if (roots.has(c.parent!)) {
+        roots.delete(c.id);
+      }
+    }
+    for (const c of Object.values(kids).filter(defined)) {
+      roots.delete(c.id);
+    }
+    return ordered.filter((id) => roots.has(id));
+  }, [items, parents, kids]);
+  useEffect(() => {
+    const commentCount = commentsReq.data?.length;
+    // Use "in" as value may be undefined.
+    const allLoaded = commentsRaw.every((c) => c.id in items);
+    canLoadMore.current =
+      commentCount != undefined && allLoaded && loadLimit < commentCount;
+  }, [items]);
+  const COMMENTS_REQ_LIMIT = 500;
+  useEffect(() => {
+    commentsReq.set(async (signal) => {
+      if (!query) {
+        return;
+      }
+      return await itemsApiCall(signal, {
+        dataset: "comment",
+        limit: COMMENTS_REQ_LIMIT,
+        query,
+        simMinHundredths: Math.ceil(simThreshold * 100),
+        // Comment scores aren't exposed by HN API.
+        orderBy: "ts",
+      });
+    });
+  }, [query]);
+
+  return (
+    <InfiniteScroll
+      loading={commentsReq.loading}
+      error={commentsReq.error}
+      canLoadMore={canLoadMore}
+      onLoadMore={() => setLoadLimit((l) => l + 20)}
+    >
+      {roots.map((id) =>
+        mapExists(items[id], (c) => (
+          <div key={c.id} className="comment-thread">
+            <CommentNode
+              comment={c}
+              parent={parents[c.parent!]}
+              post={posts[c.id]}
+            />
+            {c.kids?.map((kidId) =>
+              mapExists(items[kidId], (k) => (
+                <CommentNode
+                  key={k.id}
+                  comment={k}
+                  parent={undefined}
+                  post={undefined}
+                />
+              )),
+            )}
+          </div>
+        )),
+      )}
+    </InfiniteScroll>
+  );
+};
+
+const Posts = ({
+  query,
+  orderBy,
+  simThreshold,
+}: {
+  query: string;
+  orderBy: string;
+  simThreshold: number;
+}) => {
+  const canLoadMore = useRef(false);
 
   const postsReq = usePromise<Array<{ id: number; sim: number }>>();
   const [loadLimit, setLoadLimit] = useState(20);
@@ -151,14 +341,48 @@ export const CityPage = ({ params: [query] }: { params: string[] }) => {
       if (!query) {
         return;
       }
-      return await postsApiCall(signal, {
+      return await itemsApiCall(signal, {
+        dataset: "post",
         limit: POSTS_REQ_LIMIT,
         query,
         simMinHundredths: Math.ceil(simThreshold * 100),
-        orderBy,
+        orderBy: orderBy == "new" ? "ts" : "votes",
       });
     });
   }, [query, orderBy]);
+
+  return (
+    <InfiniteScroll
+      loading={postsReq.loading}
+      error={postsReq.error}
+      canLoadMore={canLoadMore}
+      onLoadMore={() => setLoadLimit((l) => l + 20)}
+    >
+      {posts?.map((p) => (
+        <Post key={p.id} id={p.id} post={p} urlMeta={p.urlMeta} />
+      ))}
+    </InfiniteScroll>
+  );
+};
+
+export const CityPage = ({
+  params: [query, mode = "posts", orderBy = "top"],
+}: {
+  params: string[];
+}) => {
+  const go = (q: string, m: string, o: string) =>
+    router.change(
+      `/c/${encodeURIComponent(q)}/${m}/${m == "comment" ? "new" : o}`,
+    );
+
+  const [simThreshold, setSimThreshold] = useState(0.8);
+
+  const [queryRaw, setQueryRaw] = useState("");
+  useEffect(() => setQueryRaw(query), [query]);
+
+  const onMobile = useBrowserDimensions().width <= 1024;
+  const [showPanelOnMobile, setShowPanelOnMobile] = useState(false);
+  const showPanel = showPanelOnMobile || !onMobile;
 
   return (
     <div className={classNames("City", onMobile && "mobile")}>
@@ -167,7 +391,10 @@ export const CityPage = ({ params: [query] }: { params: string[] }) => {
           className="query-form"
           onSubmit={(e) => {
             e.preventDefault();
-            router.change(`/c/${encodeURIComponent(queryRaw.trim())}`);
+            const q = queryRaw.trim();
+            if (q) {
+              go(q, mode, orderBy);
+            }
           }}
         >
           <button type="button" onClick={() => setShowPanelOnMobile(true)}>
@@ -184,30 +411,35 @@ export const CityPage = ({ params: [query] }: { params: string[] }) => {
       <PageSwitcher />
 
       <main>
-        <div className="posts">
+        <div className="items-container">
           <div className="controls">
-            <p>
-              {mapExists(
-                postsReq.data?.length,
-                (n) => `${n}${n == POSTS_REQ_LIMIT ? "+" : ""} posts`,
-              )}
-            </p>
+            <select
+              value={mode}
+              onChange={(e) => go(query, e.currentTarget.value, orderBy)}
+            >
+              <option value="posts">Posts</option>
+              <option value="comments">Comments</option>
+            </select>
+
             <select
               value={orderBy}
-              onChange={(e) => setOrderBy(e.currentTarget.value as any)}
+              onChange={(e) => go(query, mode, e.currentTarget.value)}
             >
-              <option value="votes">Top</option>
-              <option value="ts">New</option>
+              {mode != "comments" && <option value="top">Top</option>}
+              <option value="new">New</option>
             </select>
           </div>
-          {postsReq.loading && <Loading />}
-          {postsReq.error && <p className="err">{postsReq.error}</p>}
-          {posts?.map((p) => (
-            <Post key={p.id} id={p.id} post={p} urlMeta={p.urlMeta} />
-          ))}
-          <div ref={$intersectionSentinel} className="intersection-sentinel" />
+          {mode == "posts" && (
+            <Posts
+              orderBy={orderBy}
+              query={query}
+              simThreshold={simThreshold}
+            />
+          )}
+          {mode == "comments" && (
+            <Comments query={query} simThreshold={simThreshold} />
+          )}
         </div>
-
         {showPanel && (
           <div className="panel">
             {onMobile && (

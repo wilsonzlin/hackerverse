@@ -105,6 +105,37 @@ export const useHnItems = (ids: number[]) => {
   return items;
 };
 
+export const useHnCommentPosts = (ids: number[]) => {
+  const fetchStarted = useRef(new Set<number>());
+  const [items, setItems] = useState<Record<number, Item | undefined>>({});
+  useEffect(() => {
+    (async () => {
+      await Promise.all(
+        ids.map(async (id) => {
+          if (!fetchStarted.current.has(id)) {
+            fetchStarted.current.add(id);
+            let curId = id;
+            let cur: Item | undefined;
+            while (true) {
+              cur = await fetchHnItem(curId);
+              if (cur?.type === "story") {
+                break;
+              }
+              if (cur?.type !== "comment" || !cur.parent) {
+                cur = undefined;
+                break;
+              }
+              curId = cur.parent;
+            }
+            setItems((items) => ({ ...items, [id]: cur }));
+          }
+        }),
+      );
+    })();
+  }, [ids]);
+  return items;
+};
+
 const vEdgeUrlMeta = new VStruct({
   description: new VString(),
   image_url: new VString(),

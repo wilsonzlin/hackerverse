@@ -10,15 +10,17 @@ import assertInstanceOf from "@xtjs/lib/assertInstanceOf";
 import { QueryItemsOutput, makeQuery } from "../query";
 
 const input = new VStruct({
+  dataset: new VMember(["comment", "post"] as const),
   query: new VHumanString(1, 512),
   limit: new VInteger(1, 500),
   simMinHundredths: new VInteger(80, 100),
   orderBy: new VMember(["votes", "ts"] as const),
 });
 
-export const endpointPosts = {
+export const endpointItems = {
   input,
   handler: async ({
+    dataset,
     query,
     limit,
     simMinHundredths,
@@ -26,7 +28,7 @@ export const endpointPosts = {
   }: Valid<typeof input>) => {
     const simThreshold = simMinHundredths / 100;
     const res = await makeQuery({
-      dataset: "post",
+      dataset,
       queries: [query],
       post_filter_clip: {
         sim: { min: simThreshold, max: 1 },
