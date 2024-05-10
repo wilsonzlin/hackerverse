@@ -364,7 +364,7 @@ export const PointMap = ({
         <div className="info">
           <p>
             Made by{" "}
-            <a href="https://wilsonl.in/blog/hackerverse" target="_blank">
+            <a href="https://blog.wilsonl.in/hackerverse" target="_blank">
               Wilson Lin
             </a>
           </p>

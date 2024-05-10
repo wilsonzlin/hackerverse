@@ -8,11 +8,13 @@ export const Post = ({
   pointColor,
   post: p,
   urlMeta,
+  hideImage,
 }: {
   id: number;
   pointColor?: string;
   post: EdgePost;
   urlMeta?: EdgeUrlMeta;
+  hideImage?: boolean;
 }) => {
   const url = p.url || `news.ycombinator.com/item?id=${id}`;
   const proto = p.proto || "https:";
@@ -48,7 +50,7 @@ export const Post = ({
         </div>
         {snippet && <p className="snippet">{snippet}</p>}
       </div>
-      {imgUrl && <ImageOnLoad className="image" src={imgUrl} />}
+      {imgUrl && !hideImage && <ImageOnLoad className="image" src={imgUrl} />}
     </a>
   );
 };

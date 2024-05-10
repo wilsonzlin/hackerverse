@@ -608,6 +608,7 @@ export const SearchPage = ({ params: [query = ""] }: { params: string[] }) => {
                   pointColor={resultPointColor(r.id)}
                   post={item}
                   urlMeta={urlMetas[item.url]}
+                  hideImage={onMobile}
                 />
               ))
             ) : (
