@@ -211,17 +211,22 @@
       padding: var(--panel-margin-from-edge);
       width: 100%;
 
-      > .city-result {
-        padding: var(--card-padding);
-      }
+      /* .result elements have different heights, so make sure invisible .results empty height space as a result does not intercept map pointer events. */
+      pointer-events: none !important;
 
       > * {
+        pointer-events: auto;
+        
         flex: 1 1 0;
         min-width: 100%;
 
         background: var(--card-background);
         border-radius: var(--card-border-radius);
         box-shadow: var(--card-shadow);
+      }
+
+      > .city-result {
+        padding: var(--card-padding);
       }
     }
   }

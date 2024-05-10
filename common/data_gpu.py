@@ -104,7 +104,7 @@ class ApiDatasetOnGpu:
     y_max: Optional[float] = None
 
     @staticmethod
-    def load(name: str, *, to_gpu=False):
+    def load(name: str):
         pfx = f"/hndr-data/api-{name}"
         with open(f"{pfx}-meta.json", "r") as f:
             meta = json.load(f)

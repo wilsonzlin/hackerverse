@@ -585,6 +585,17 @@ export const SearchPage = ({ params: [query = ""] }: { params: string[] }) => {
               <span>Back to search</span>
             </button>
           )}
+          {nearbyResults && !queryResults && (
+            <button
+              className="back-to-search"
+              onClick={() => {
+                setNearbyQuery(undefined);
+              }}
+            >
+              <Ico i="close" size={20} />
+              <span>Dismiss nearby</span>
+            </button>
+          )}
         </div>
 
         <div className="results">
