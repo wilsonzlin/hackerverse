@@ -43,6 +43,10 @@ createSecureServer(
     requestCert: true,
   },
   async (req, res) => {
+    if (req.url === "/healthz") {
+      return res.writeHead(200).end("OK");
+    }
+
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "*");
     res.setHeader("Access-Control-Allow-Headers", "*");
