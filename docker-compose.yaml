@@ -47,6 +47,7 @@ services:
       API_WORKER_NODE_DATASETS: ${API_WORKER_NODE_DATASETS}
       API_WORKER_NODE_LOAD_ANN: ${API_WORKER_NODE_LOAD_ANN}
       API_WORKER_NODE_TOKEN: ${API_WORKER_NODE_TOKEN}
+      API_WORKER_NODE_USE_GPU: 1
       INFLUXDB_BUCKET: ${INFLUXDB_BUCKET}
       INFLUXDB_ENDPOINT: ${INFLUXDB_ENDPOINT}
       INFLUXDB_ORGANIZATION: ${INFLUXDB_ORGANIZATION}
@@ -54,6 +55,21 @@ services:
       LOKI_BASICAUTH_PASSWORD: ${LOKI_BASICAUTH_PASSWORD}
       LOKI_BASICAUTH_USER: ${LOKI_BASICAUTH_USER}
       LOKI_ENDPOINT: ${LOKI_ENDPOINT}
+
+  api-worker-node-cpu:
+    image: wilsonzlin/hndr-api-worker-node-cpu
+    init: true
+    build:
+      context: .
+      dockerfile: Dockerfile.python-base
+      args:
+        MAIN: api-worker-node
+    environment:
+      API_WORKER_NODE_CERT_B64: ${API_WORKER_NODE_CERT_B64}
+      API_WORKER_NODE_DATASETS: ${API_WORKER_NODE_DATASETS}
+      API_WORKER_NODE_LOAD_ANN: ${API_WORKER_NODE_LOAD_ANN}
+      API_WORKER_NODE_TOKEN: ${API_WORKER_NODE_TOKEN}
+      API_WORKER_NODE_USE_GPU: 0
 
   build-ann:
     image: wilsonzlin/hndr-build-ann

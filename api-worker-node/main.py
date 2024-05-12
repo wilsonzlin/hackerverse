@@ -3,8 +3,6 @@ from common.data_gpu import ApiDatasetOnGpu
 from common.data_gpu import DatasetEmbModelOnGpu
 from common.heatmap import render_heatmap
 from common.util import env
-from cudf import DataFrame
-from cudf import Series
 from dataclasses import dataclass
 from dataclasses import field
 from dataclasses_json import dataclass_json
@@ -15,7 +13,6 @@ from typing import Optional
 from typing import Tuple
 from typing import Union
 import base64
-import cupy as cp
 import msgpack
 import os
 import requests
@@ -27,6 +24,16 @@ import websocket
 DATASETS = os.getenv("API_WORKER_NODE_DATASETS", "comment,post,toppost").split(",")
 LOAD_ANN = os.getenv("API_WORKER_NODE_LOAD_ANN", "0") == "1"
 TOKEN = env("API_WORKER_NODE_TOKEN")
+USE_GPU = os.getenv("API_WORKER_NODE_USE_GPU", "1") == "1"
+
+if USE_GPU:
+    from cudf import DataFrame
+    from cudf import Series
+    import cupy as xp
+else:
+    from pandas import DataFrame
+    from pandas import Series
+    import numpy as xp
 
 
 def load_data():
@@ -210,9 +217,9 @@ def request_handler(input: QueryInput) -> bytes:
     if input.queries:
         # Our dataset embedding matrix is loaded as float16.
         q_mat = model.encode_f16(input.queries)
-        assert type(q_mat) == cp.ndarray
+        assert type(q_mat) == xp.ndarray
         assert q_mat.shape[0] == len(input.queries)
-        assert q_mat.dtype == cp.float16
+        assert q_mat.dtype == xp.float16
 
         if input.pre_filter_ann is not None:
             if ann_idx is None:
@@ -222,14 +229,17 @@ def request_handler(input: QueryInput) -> bytes:
             sims = 1 - dists
             raw = DataFrame(
                 {
-                    "id": cp.unique(ids).astype(cp.uint32),
+                    "id": xp.unique(ids).astype(xp.uint32),
                 }
             )
             for i in range(len(input.queries)):
-                raw[f"sim{i}"] = cp.float32(0.0)
+                raw[f"sim{i}"] = xp.float32(0.0)
                 raw.loc[raw["id"].isin(ids[i]), f"sim{i}"] = sims[i]
             cols = [f"sim{i}" for i in range(len(input.queries))]
-            mat_sims = raw[cols].to_cupy()
+            if USE_GPU:
+                mat_sims = raw[cols].to_cupy()
+            else:
+                mat_sims = raw[cols].to_numpy()
             raw.drop(columns=cols, inplace=True)
             # This is why we index "id" in `d.table`.
             df = df.merge(raw, how="inner", on="id")
@@ -240,7 +250,7 @@ def request_handler(input: QueryInput) -> bytes:
     df = df.reset_index()
 
     today = time.time() / (60 * 60 * 24)
-    df = df.assign(ts_norm=cp.exp(-input.ts_decay * (today - df["ts_day"])))
+    df = df.assign(ts_norm=xp.exp(-input.ts_decay * (today - df["ts_day"])))
 
     if mat_sims is not None:
         assert mat_sims.shape == (len(df), len(input.queries)), mat_sims.shape
@@ -250,7 +260,7 @@ def request_handler(input: QueryInput) -> bytes:
             "sim",
             # cuDF doesn't support float16, a TypeError is raised.
             # https://github.com/rapidsai/cudf/issues/5770
-            getattr(cp, input.sim_agg)(mat_sims, axis=1).astype(cp.float32),
+            getattr(xp, input.sim_agg)(mat_sims, axis=1).astype(xp.float32),
         )
 
     for c, scale in input.scales.items():
@@ -269,7 +279,7 @@ def request_handler(input: QueryInput) -> bytes:
             df[c] >= t,
         )
 
-    df["final_score"] = cp.float32(0.0)
+    df["final_score"] = xp.float32(0.0)
     for c, w in input.weights.items():
         df["final_score"] += df[c] * (df[w] if type(w) == str else w)
     df = assign_then_post_filter(
