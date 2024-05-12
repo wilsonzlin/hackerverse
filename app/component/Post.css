@@ -3,11 +3,6 @@
   border-radius: 0.5rem;
   overflow: hidden;
 
-  &:hover {
-    background-color: #fdfdfd;
-    text-decoration: none;
-  }
-
   > .text {
     display: flex;
     flex-direction: column;
