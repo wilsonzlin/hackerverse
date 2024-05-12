@@ -1,6 +1,4 @@
 from common.data import load_ann
-from common.data_gpu import ApiDatasetOnGpu
-from common.data_gpu import DatasetEmbModelOnGpu
 from common.heatmap import render_heatmap
 from common.util import env
 from dataclasses import dataclass
@@ -27,10 +25,14 @@ TOKEN = env("API_WORKER_NODE_TOKEN")
 USE_GPU = os.getenv("API_WORKER_NODE_USE_GPU", "1") == "1"
 
 if USE_GPU:
+    from common.data_gpu import ApiDatasetOnGpu as ApiDataset
+    from common.data_gpu import DatasetEmbModelOnGpu as DatasetEmbModel
     from cudf import DataFrame
     from cudf import Series
     import cupy as xp
 else:
+    from common.data import ApiDataset
+    from common.data import DatasetEmbModel
     from pandas import DataFrame
     from pandas import Series
     import numpy as xp
@@ -40,8 +42,8 @@ def load_data():
     print("Loading datasets:", DATASETS)
     res = {
         name: (
-            ApiDatasetOnGpu.load(name, to_gpu=True),
-            DatasetEmbModelOnGpu(name),
+            ApiDataset.load(name),
+            DatasetEmbModel(name),
             load_ann(name) if LOAD_ANN else None,
         )
         for name in DATASETS
@@ -73,8 +75,11 @@ def pack_rows(df: DataFrame, cols: Iterable[str]):
         out += dt.kind.encode()
         if dt == object:
             # Probably strings. Anyway, use msgpack for simplicity (instead of inventing our own mechanism).
-            # > TypeError: cuDF does not support conversion to host memory via the `tolist()` method. Consider using `.to_arrow().to_pylist()` to construct a Python list.
-            raw = msgpack.packb(df[col].to_arrow().to_pylist())
+            if USE_GPU:
+                # > TypeError: cuDF does not support conversion to host memory via the `tolist()` method. Consider using `.to_arrow().to_pylist()` to construct a Python list.
+                raw = msgpack.packb(df[col].to_arrow().to_pylist())
+            else:
+                raw = msgpack.packb(df[col].tolist())
             assert type(raw) == bytes
             out += struct.pack("<I", len(raw))
             out += raw
@@ -100,7 +105,7 @@ class HeatmapOutput:
     sigma: int = 1
     upscale: int = 1  # Max 4.
 
-    def calculate(self, d: ApiDatasetOnGpu, df: DataFrame):
+    def calculate(self, d: ApiDataset, df: DataFrame):
         webp = render_heatmap(
             xs=df["x"].to_numpy(),
             ys=df["y"].to_numpy(),
@@ -125,7 +130,7 @@ class ItemsOutput:
     order_asc: bool = False
     limit: Optional[int] = None
 
-    def calculate(self, d: ApiDatasetOnGpu, df: DataFrame):
+    def calculate(self, d: ApiDataset, df: DataFrame):
         df = df.sort_values(self.order_by, ascending=self.order_asc)
         if self.limit is not None:
             df = df[: self.limit]
@@ -147,7 +152,7 @@ class GroupByOutput:
     order_asc: bool = True
     limit: Optional[int] = None
 
-    def calculate(self, d: ApiDatasetOnGpu, df: DataFrame):
+    def calculate(self, d: ApiDataset, df: DataFrame):
         if self.bucket is not None:
             df = df.assign(group=(df[self.by] // self.bucket).astype("int32"))
         else:
@@ -167,7 +172,7 @@ class Output:
     heatmap: Optional[HeatmapOutput] = None
     items: Optional[ItemsOutput] = None
 
-    def calculate(self, d: ApiDatasetOnGpu, df: DataFrame):
+    def calculate(self, d: ApiDataset, df: DataFrame):
         if self.group_by is not None:
             return self.group_by.calculate(d, df)
         if self.heatmap is not None:
@@ -215,11 +220,18 @@ def request_handler(input: QueryInput) -> bytes:
 
     mat_sims = None
     if input.queries:
-        # Our dataset embedding matrix is loaded as float16.
-        q_mat = model.encode_f16(input.queries)
-        assert type(q_mat) == xp.ndarray
-        assert q_mat.shape[0] == len(input.queries)
-        assert q_mat.dtype == xp.float16
+        if USE_GPU:
+            # Our dataset embedding matrix is loaded as float16 on GPU, for the faster performance, but also because it won't fit otherwise
+            q_mat = model.encode_f16(input.queries)
+            assert type(q_mat) == xp.ndarray
+            assert q_mat.shape[0] == len(input.queries)
+            assert q_mat.dtype == xp.float16
+        else:
+            # Most CPUs don't have accelerated fp16 support.
+            q_mat = model.encode(input.queries)
+            assert type(q_mat) == xp.ndarray
+            assert q_mat.shape[0] == len(input.queries)
+            assert q_mat.dtype == xp.float32
 
         if input.pre_filter_ann is not None:
             if ann_idx is None:
