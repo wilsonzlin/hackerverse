@@ -10,6 +10,20 @@ create table kv (
   primary key (k)
 );
 
+create table community (
+  name varchar(200) not null,
+  sim_threshold float not null,
+  primary key (name)
+);
+
+create table community_example (
+  community varchar(200) not null,
+  item int not null,
+  positive boolean not null,
+  sim float not null,
+  primary key (community, item)
+);
+
 create table usr (
   id bigint not null auto_increment,
   username varchar(100) not null,

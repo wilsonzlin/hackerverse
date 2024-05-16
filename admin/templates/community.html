@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% block title %}{{ community }} Community{% endblock %}
+{% block content %}
+<form action="/c">
+  <input name="community" value="{{ community }}" />
+  <input name="sim_threshold" value="{{ sim_threshold }}" />
+  <button type="submit">Go</button>
+</form>
+
+<div>
+  {% for post in posts %}
+  <article>
+    <h1>
+      <a href="/post/{{ post.id }}" target="_blank">{{ post.title }}</a>
+    </h1>
+    <a
+      href="https://news.ycombinator.com/item?id={{ post.id }}"
+      target="_blank"
+      rel="noopener noreferrer"
+      >HN</a
+    >
+    <a
+      href="{{ post.proto }}//{{ post.url }}"
+      target="_blank"
+      rel="noopener noreferrer"
+      >URL</a
+    >
+    <a
+      href="https://web.archive.org/web/{{ post.proto }}//{{ post.url }}"
+      target="_blank"
+      rel="noopener noreferrer"
+      >Archive</a
+    >
+    <p>URL: {{ post.url }}</p>
+    <p>Similarity: {{ post.sim }}</p>
+    <form action="/c/examples" method="post" target="_blank">
+      <input type="hidden" name="community" value="{{ community }}" />
+      <input type="hidden" name="item" value="{{ post.id }}" />
+      <input type="hidden" name="sim" value="{{ post.sim }}" />
+      <input type="hidden" name="positive" value="true" />
+      <button type="submit">Positive</button>
+    </form>
+    <form action="/c/examples" method="post" target="_blank">
+      <input type="hidden" name="community" value="{{ community }}" />
+      <input type="hidden" name="item" value="{{ post.id }}" />
+      <input type="hidden" name="sim" value="{{ post.sim }}" />
+      <button type="submit">Negative</button>
+    </form>
+  </article>
+  {% endfor %}
+</div>
+{% endblock %}
