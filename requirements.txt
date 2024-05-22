@@ -11,7 +11,7 @@ pyarrow
 requests
 scikit-learn
 scipy
-sentence_transformers
+sentence-transformers
 service-toolkit
 statsd
 uvicorn
