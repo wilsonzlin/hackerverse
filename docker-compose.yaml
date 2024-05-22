@@ -1,21 +1,6 @@
 # We use `init: true` as many processes won't respond to signals or process.exit() when PID 1.
 
 services:
-  admin:
-    network_mode: host
-    image: wilsonzlin/hndr-admin
-    init: true
-    build:
-      context: .
-      dockerfile: Dockerfile.python-base
-      args:
-        MAIN: admin
-    environment:
-      ADMIN_PORT: 9345
-      DB_RPC_API_KEY: ${DB_RPC_API_KEY}
-    volumes:
-      - "${DOCKER_VOLUME_DIR}:/hndr-data"
-
   api:
     network_mode: host
     image: wilsonzlin/hndr-api

@@ -1,16 +1,13 @@
 dataclasses-json
-db-rpc-client-py
 fastapi
 FlagEmbedding
 implicit
-jinja2
 msgpipe
 numpy
 opencv-contrib-python-headless
 pandas
 Pillow
 pyarrow
-python-multipart
 requests
 scikit-learn
 scipy
