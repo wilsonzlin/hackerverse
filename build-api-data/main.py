@@ -1,7 +1,7 @@
-from common.api_data import ApiDataset
+from common.data import ApiDataset
+from common.data import load_embs_as_table
 from common.data import load_table
-from common.emb_data import load_embs_as_table
-from common.emb_data import load_umap
+from common.data import load_umap
 import multiprocessing
 import numpy as np
 import pandas as pd
